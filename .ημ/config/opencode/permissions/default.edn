@@ -1,8 +1,12 @@
 {:permissions
- [{:id       :default/deny-dangerous
-   :applies  #{:bash :write :edit}
-   :policy   :require-confirmation}
-
-  {:id       :default/allow-actors
+ [{:id       :default/allow-actors
    :applies  #{:muse_* :phase_* :actor_*}
+   :policy   :allow}
+
+  {:id       :default/allow-ledgers
+   :applies  #{:receipt_river :session_mycology}
+   :policy   :allow}
+
+  {:id       :default/allow-websearch
+   :applies  #{:websearch_openhax}
    :policy   :allow}]}

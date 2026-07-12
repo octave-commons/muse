@@ -1,14 +1,18 @@
 {:dev
  {:allow #{:muse/*
            :phase/*
-           :actor/*}
+           :actor/*
+           :receipt/*
+           :session/*
+           :web/*}
   :audit :verbose}
 
  :ci
- {:allow #{:actor/list}
+ {:allow #{:actor/list :receipt/*}
   :deny #{:muse/* :phase/*}
+  :deny-effects #{:network/search}
   :audit :strict}
 
  :prod
- {:allow #{:muse/* :phase/* :actor/*}
+ {:allow #{:muse/* :phase/* :actor/* :receipt/* :session/* :web/*}
   :audit :full}}

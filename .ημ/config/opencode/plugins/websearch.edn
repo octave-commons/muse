@@ -1,0 +1,5 @@
+{:resource plugins.websearch/plugin
+ :expose   [:web/*]
+ ;; opencode ships a built-in tool named "websearch"; expose ours under a
+ ;; non-colliding name for this target.
+ :overrides {:web/search {:name "websearch_openhax"}}}

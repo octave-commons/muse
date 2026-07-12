@@ -2,7 +2,11 @@
  :id                     :eta-mu/actors
 
  :imports
- ["permissions/default.edn"
-  "plugins/actors.edn"]
+ ["profiles.edn"
+  "permissions/default.edn"
+  "plugins/actors.edn"
+  "plugins/receipt-river.edn"
+  "plugins/session-mycology.edn"
+  "plugins/websearch.edn"]
 
  :profile :dev}

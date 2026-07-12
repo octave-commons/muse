@@ -1,0 +1,2 @@
+{:resource plugins.session-mycology/plugin
+ :expose   [:session/*]}

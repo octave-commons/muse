@@ -31,3 +31,5 @@ credentials*
 src/gen/
 .opencode/dist/
 .shadow-cljs/
+
+pseudo/
