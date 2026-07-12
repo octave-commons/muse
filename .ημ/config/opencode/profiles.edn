@@ -2,6 +2,7 @@
  {:allow #{:muse/*
            :phase/*
            :actor/*
+           :apifany/*
            :receipt/*
            :session/*
            :web/*}
@@ -14,5 +15,5 @@
   :audit :strict}
 
  :prod
- {:allow #{:muse/* :phase/* :actor/* :receipt/* :session/* :web/*}
+ {:allow #{:muse/* :phase/* :actor/* :apifany/* :receipt/* :session/* :web/*}
   :audit :full}}

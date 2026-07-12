@@ -8,6 +8,7 @@
             [eta-mu.dsl.profile :as dsl.profile]
             [eta-mu.opencode.config :as config]
             [plugins.actors :as actors]
+            [plugins.apifany :as apifany]
             [plugins.receipt-river :as receipt-river]
             [plugins.session-mycology :as session-mycology]
             [plugins.websearch :as websearch]))
@@ -16,6 +17,7 @@
 
 (def resource-table
   {'plugins.actors/plugin           actors/plugin
+   'plugins.apifany/plugin          apifany/plugin
    'plugins.receipt-river/plugin    receipt-river/plugin
    'plugins.session-mycology/plugin session-mycology/plugin
    'plugins.websearch/plugin        websearch/plugin})
@@ -31,6 +33,7 @@
   (is (contains? (config/profiles loaded) :ci))
   (is (seq (config/permissions loaded)))
   (is (= ['plugins.actors/plugin
+          'plugins.apifany/plugin
           'plugins.receipt-river/plugin
           'plugins.session-mycology/plugin
           'plugins.websearch/plugin]
@@ -39,14 +42,15 @@
 (deftest exposure-linking
   (let [registry (config/apply-exposure loaded resource-table)]
     (testing "all exposed tools have real function handlers"
-      (is (= 15 (count (:tools registry))))
+      (is (= 22 (count (:tools registry))))
       (is (every? fn? (map :handler (:tools registry)))))
     (testing "plugin init carried into the registry"
-      (is (= [actors/init!] (:inits registry))))
+      (is (= [actors/init! apifany/init!] (:inits registry))))
     (testing "default names follow the namespace_name convention"
       (let [names (set (map :name (:tools registry)))]
         (is (contains? names "muse_spawn"))
         (is (contains? names "phase_list_active"))
+        (is (contains? names "apifany_read_mailbox"))
         (is (contains? names "receipt_river"))
         (is (contains? names "session_mycology"))
         ;; the opencode config renames :web/search to avoid the host's
@@ -59,7 +63,7 @@
                          :data {:resource 'plugins.actors/plugin
                                 :expose   [:muse/*]}}])
         registry (config/apply-exposure config' resource-table)]
-    (is (= #{:muse/spawn :muse/phases}
+    (is (= #{:muse/spawn :muse/phases :muse/influence}
            (set (map :id (:tools registry)))))))
 
 (deftest exposure-overrides-win
@@ -80,9 +84,9 @@
                      (dsl.profile/apply-profile (config/active-profile loaded))
                      dsl.normalize/validate-registry!
                      dsl.compile/compile-adapter)]
-    (is (= 15 (count (:tools adapter))))
+    (is (= 22 (count (:tools adapter))))
     (is (every? string? (map :name (:tools adapter))))
-    (is (= 1 (count (:inits adapter))))))
+    (is (= 2 (count (:inits adapter))))))
 
 (deftest ci-profile-restricts
   (let [registry (->> (config/apply-exposure loaded resource-table)

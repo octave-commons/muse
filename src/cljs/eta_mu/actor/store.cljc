@@ -1,17 +1,21 @@
 (ns eta-mu.actor.store
-  "In-memory actor mailbox store.
-   Events are envelopes conforming to the event-ledger schema.
-   Each actor has an append-only mailbox (vector of envelopes in an atom)."
-  (:require [malli.core :as m]))
+  "The actor-store contract. Events are envelopes conforming to the
+   event-ledger schema (@promethean-os/event-ledger); each actor owns an
+   append-only mailbox ledger.
+
+   Store operations MAY return promises (Mongo) or plain values (memory,
+   EDN files). eta-mu.actor normalizes every public API call to a
+   promise, so callers never care which backend is underneath.")
 
 ;; ---------------------------------------------------------------------------
-;; Envelope schema (mirrors event-ledger without Mongo)
+;; Envelope schema (mirrors event-ledger's schema.cljs)
 ;; ---------------------------------------------------------------------------
 
 (def from-to-schema
   [:map
    [:actor-id :string]
-   [:actor-kind :string]])
+   [:actor-kind :string]
+   [:actor-node {:optional true} :string]])
 
 (def envelope-schema
   [:map
@@ -25,7 +29,10 @@
    [:session/id {:optional true} :string]
    [:turn/id {:optional true} :string]
    [:delivery/mode {:optional true} [:enum "tell" "ask" "stream" "ack-required"]]
-   [:payload {:optional true} :map]])
+   [:delivery/id {:optional true} :string]
+   [:payload {:optional true} :map]
+   [:contracts {:optional true} [:vector :string]]
+   [:expectations {:optional true} :map]])
 
 ;; ---------------------------------------------------------------------------
 ;; Store protocol
@@ -33,9 +40,10 @@
 
 (defprotocol IActorStore
   (-spawn! [store actor-id opts] "Register an actor. Returns the actor-id.")
-  (-send! [store from-id to-id envelope] "Append envelope to to-id's mailbox.")
-  (-recv [store actor-id opts] "Read messages from actor's mailbox.")
+  (-send! [store from-id to-id envelope] "Append envelope to to-id's mailbox ledger. Returns the event-id.")
+  (-recv [store actor-id opts] "Read messages from actor's mailbox. opts: {:since-id :limit :filter-type}.")
   (-actors [store] "Return all registered actor-ids.")
   (-actor-meta [store actor-id] "Return actor metadata map.")
-  (-mailbox [store actor-id] "Return the raw mailbox vector for an actor.")
+  (-registry [store] "Return {actor-id meta-map} for every registered actor.")
+  (-mailbox [store actor-id] "Return the full mailbox vector for an actor.")
   (-clear! [store actor-id] "Clear an actor's mailbox."))

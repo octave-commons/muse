@@ -1,8 +1,10 @@
 (ns eta-mu.actor
-  "Public API for the actor system.
-   Uses a mutable store reference (atom) instead of dynamic binding for CLJS compat."
-  (:require [eta-mu.actor.store :as store]
-            [eta-mu.actor.memory :as mem]))
+  "Public API for the actor system. Every operation returns a promise
+   regardless of backend — in-memory, EDN-file ledgers, or Mongo — so
+   callers compose with promesa and never care which store is active."
+  (:require [eta-mu.actor.memory :as mem]
+            [eta-mu.actor.store :as store]
+            [promesa.core :as p]))
 
 ;; ---------------------------------------------------------------------------
 ;; Store reference (atom-wrapped for CLJS dynamic binding compat)
@@ -25,47 +27,54 @@
         s)))
 
 ;; ---------------------------------------------------------------------------
-;; Core operations
+;; Core operations — each normalized to a promise (sync stores may
+;; return plain values or throw; p/do captures both).
 ;; ---------------------------------------------------------------------------
 
 (defn spawn!
-  "Register a new actor. Returns the actor-id."
+  "Register a new actor. Resolves to the actor-id."
   ([actor-id] (spawn! actor-id {}))
   ([actor-id opts]
-   (store/-spawn! (the-store) actor-id opts)))
+   (p/do (store/-spawn! (the-store) actor-id opts))))
 
 (defn send!
-  "Send an envelope from one actor to another.
-   Returns the event-id."
+  "Send an envelope from one actor to another: the envelope is appended
+   to the recipient's ledger, to be read when they get around to it.
+   Resolves to the event-id."
   [from-id to-id envelope]
-  (store/-send! (the-store) from-id to-id envelope))
+  (p/do (store/-send! (the-store) from-id to-id envelope)))
 
 (defn recv
   "Read messages from an actor's mailbox.
    opts: {:since-id \"...\" :limit 100 :filter-type \"event.type\"}"
   ([actor-id] (recv actor-id {}))
   ([actor-id opts]
-   (store/-recv (the-store) actor-id opts)))
+   (p/do (store/-recv (the-store) actor-id opts))))
 
 (defn actors
-  "Return all registered actor-ids."
+  "Resolves to all registered actor-ids."
   []
-  (store/-actors (the-store)))
+  (p/do (store/-actors (the-store))))
 
 (defn actor-meta
-  "Return the metadata map for an actor."
+  "Resolves to the metadata map for an actor."
   [actor-id]
-  (store/-actor-meta (the-store) actor-id))
+  (p/do (store/-actor-meta (the-store) actor-id)))
+
+(defn registry
+  "Resolves to {actor-id meta-map} for every registered actor."
+  []
+  (p/do (store/-registry (the-store))))
 
 (defn mailbox
-  "Return the raw mailbox for an actor."
+  "Resolves to the full mailbox ledger for an actor."
   [actor-id]
-  (store/-mailbox (the-store) actor-id))
+  (p/do (store/-mailbox (the-store) actor-id)))
 
 (defn clear!
   "Clear an actor's mailbox."
   [actor-id]
-  (store/-clear! (the-store) actor-id))
+  (p/do (store/-clear! (the-store) actor-id)))
 
 ;; ---------------------------------------------------------------------------
 ;; Convenience: send a simple message
@@ -73,14 +82,16 @@
 
 (defn tell!
   "Send a simple payload message between actors.
-   event-type is a string like \"phase.observation\" or \"muse.command\"."
+   event-type is a string like \"phase.observation\" or \"muse.influence\"."
   [from-id to-id event-type payload]
   (send! from-id to-id
          {:event/type event-type
           :payload    payload}))
 
 (defn ask!
-  "Send a request and expect a response. delivery/mode = \"ask\"."
+  "Send a request that expects a response. delivery/mode = \"ask\".
+   Note: still a ledger append — the recipient answers on their own
+   time. Policies decide which actors may use this mode at all."
   [from-id to-id event-type payload]
   (send! from-id to-id
          {:event/type    event-type

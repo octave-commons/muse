@@ -1,0 +1,9 @@
+{
+  "name": "muse",
+  "private": true,
+  "description": "eta-mu muse workspace. Runtime deps for tests and the mongo ledger boundary; plugin/daemon bundles carry their own package.json.",
+  "dependencies": {
+    "@promethean-os/event-ledger": "file:../eta-mu/packages/event-ledger",
+    "mongodb": "^6.10.0"
+  }
+}

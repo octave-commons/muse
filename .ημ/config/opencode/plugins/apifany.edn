@@ -1,0 +1,2 @@
+{:resource plugins.apifany/plugin
+ :expose   [:apifany/*]}

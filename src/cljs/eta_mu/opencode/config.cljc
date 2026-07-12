@@ -56,6 +56,7 @@
   (cond
     (:resource data)    :exposure
     (:permissions data) :permissions
+    (:settings data)    :settings
     (and (map? data)
          (every? map? (vals data))
          (some #(or (:allow %) (:deny %)) (vals data))) :profiles
@@ -82,6 +83,25 @@
 (defn profiles
   [config]
   (apply merge {} (fragments-of config :profiles)))
+
+(defn settings-fragments
+  "The :settings payloads in import order. A settings fragment carries host
+   configuration verbatim (model, providers, skills, …) rather than plugin
+   exposure — eta-mu.opencode.settings deep-merges and renders them."
+  [config]
+  (into [] (map :settings) (fragments-of config :settings)))
+
+(defn emit-target
+  "The root's :emit declaration ({:path \"…\"} or nil): where the daemon
+   renders this tree's merged settings."
+  [config]
+  (get-in config [:root :emit]))
+
+(defn build-command
+  "The root's :build command vector (or nil): what the daemon runs in the
+   repo when this tree (or its plugin sources) change."
+  [config]
+  (get-in config [:root :build]))
 
 (defn active-profile
   "The profile rule selected by the root's :profile key. {} when none."

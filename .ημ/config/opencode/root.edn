@@ -5,8 +5,19 @@
  ["profiles.edn"
   "permissions/default.edn"
   "plugins/actors.edn"
+  "plugins/apifany.edn"
   "plugins/receipt-river.edn"
   "plugins/session-mycology.edn"
   "plugins/websearch.edn"]
 
- :profile :dev}
+ :profile :dev
+
+ ;; What the eta-mu daemon runs (from the repo root) when this tree or
+ ;; .ημ/plugins/* change.
+ :build ["shadow-cljs" "release" "opencode-plugin"]
+
+ ;; Also publish the plugin shims and agent definitions globally so
+ ;; every opencode session gets them, not just sessions in this repo.
+ :publish {:plugins-dir "~/.config/opencode/plugins"
+           :agents-dir  "~/.config/opencode/agents"}}
+

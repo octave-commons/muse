@@ -55,6 +55,42 @@
 (defn tail-lines [p n]
   (vec (take-last n (read-lines p))))
 
+(defn write-text-if-changed!
+  "Write only when content differs; returns true when it wrote."
+  [p text]
+  (if (= text (read-text p))
+    false
+    (do (write-text! p text) true)))
+
+(defn find-dirs
+  "Breadth-first search under `root` for real directories named `target`,
+   descending at most `max-depth` levels and skipping directories where
+   (skip? name) is true. Symlinked directories are never followed, so a
+   .eta-mu → .ημ symlink is not double-counted."
+  [root target {:keys [max-depth skip?] :or {max-depth 4 skip? (constantly false)}}]
+  (loop [frontier [[root 0]]
+         found    []]
+    (if-let [[dir depth] (first frontier)]
+      (let [entries (try
+                      (.readdirSync fs dir #js {:withFileTypes true})
+                      (catch :default _ #js []))
+            dirs    (into []
+                          (comp (filter #(.isDirectory ^js %))
+                                (map #(.-name ^js %))
+                                (remove skip?))
+                          entries)
+            hits    (into [] (comp (filter #(= target %))
+                                   (map #(join dir %)))
+                          dirs)
+            next-fr (when (< depth max-depth)
+                      (into []
+                            (comp (remove #(= target %))
+                                  (map (fn [n] [(join dir n) (inc depth)])))
+                            dirs))]
+        (recur (into (vec (rest frontier)) next-fr)
+               (into found hits)))
+      found)))
+
 ;; ---------------------------------------------------------------------------
 ;; JSONL (wire format owned by the boundary)
 ;; ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 {:permissions
  [{:id       :default/allow-actors
-   :applies  #{:muse_* :phase_* :actor_*}
+   :applies  #{:muse_* :phase_* :actor_* :apifany_*}
    :policy   :allow}
 
   {:id       :default/allow-ledgers

@@ -1,77 +1,96 @@
 (ns eta-mu.actor.muse
-  "The Muse: primary actor that orchestrates sub-actors (phases).
-   A Muse cannot inspect truth directly — she reads phase mailboxes
-   and requires evidence in ledgers to verify claims."
-  (:require [eta-mu.actor :as actor]))
+  "The Muse: she bestows what she does not possess. A Muse has no tools
+   of her own creativity — she can only influence and observe the phases
+   she spawns. She cannot inspect truth directly: she reads phase
+   ledgers, and a phase's claim is worth nothing to her without evidence
+   recorded there. Influence is a ledger append the phase reads when it
+   gets around to it — guidance lands only if the phase chooses to look.
+
+   She is not an orchestrator. All functions resolve promises."
+  (:require [eta-mu.actor :as actor]
+            [promesa.core :as p]))
 
 ;; ---------------------------------------------------------------------------
 ;; Muse lifecycle
 ;; ---------------------------------------------------------------------------
 
 (defn spawn-muse!
-  "Register a new Muse actor. Returns the muse-id."
+  "Register a new Muse actor. Resolves to the muse-id."
   [muse-id]
-  (actor/spawn! muse-id {:kind "muse"})
-  muse-id)
+  (p/let [_ (actor/spawn! muse-id {:kind "muse"})]
+    muse-id))
 
 (defn spawn-phase!
-  "Spawn a phase sub-actor under this Muse.
-   Returns the phase-id (muse-id + phase-type + sequence number)."
+  "Spawn a phase actor under this Muse. Resolves to the phase-id
+   (muse-id + phase-type + sequence number, so the first Discover
+   phase's ledger is findable by the 99th)."
   [muse-id phase-type]
-  (let [n (->> (actor/actors)
-               (filter #(let [m (actor/actor-meta %)]
-                          (and (= muse-id (:muse-id m))
-                               (= phase-type (:phase-type m)))))
-               count)
-        phase-id (keyword (str muse-id "." (name phase-type) "." (inc n)))]
-    (actor/spawn! phase-id {:kind    "phase"
-                            :muse-id muse-id
-                            :phase-type phase-type
-                            :sequence (inc n)})
-    phase-id))
+  (p/let [registry (actor/registry)]
+    (let [n (->> (vals registry)
+                 (filter #(and (= muse-id (:muse-id %))
+                               (= phase-type (:phase-type %))))
+                 count)
+          phase-id (keyword (str (name muse-id) "." (name phase-type) "." (inc n)))]
+      (p/let [_ (actor/spawn! phase-id {:kind       "phase"
+                                        :muse-id    muse-id
+                                        :phase-type phase-type
+                                        :sequence   (inc n)})]
+        phase-id))))
 
 (defn list-phases
-  "Return all phase actor-ids spawned by this Muse."
+  "Resolves to all phase actor-ids spawned by this Muse."
   [muse-id]
-  (->> (actor/actors)
-       (filter #(let [m (actor/actor-meta %)]
-                  (= muse-id (:muse-id m))))))
+  (p/let [registry (actor/registry)]
+    (into [] (keep (fn [[id meta]]
+                     (when (= muse-id (:muse-id meta)) id)))
+          registry)))
+
+(defn- phases-with-mailboxes [muse-id]
+  (p/let [ids       (list-phases muse-id)
+          mailboxes (p/all (map actor/mailbox ids))]
+    (map vector ids mailboxes)))
 
 (defn list-active
-  "Return phase-ids that have received messages since last checked."
+  "Resolves to phase-ids whose ledgers hold messages."
   [muse-id]
-  (->> (list-phases muse-id)
-       (filter #(seq (actor/mailbox %)))))
+  (p/let [pairs (phases-with-mailboxes muse-id)]
+    (into [] (keep (fn [[id mb]] (when (seq mb) id))) pairs)))
 
 (defn list-idle
-  "Return phase-ids with empty mailboxes."
+  "Resolves to phase-ids with empty ledgers."
   [muse-id]
-  (->> (list-phases muse-id)
-       (filter #(empty? (actor/mailbox %)))))
+  (p/let [pairs (phases-with-mailboxes muse-id)]
+    (into [] (keep (fn [[id mb]] (when (empty? mb) id))) pairs)))
 
 ;; ---------------------------------------------------------------------------
-;; Message operations
+;; Influence — not command. A record in the phase's ledger, nothing more.
 ;; ---------------------------------------------------------------------------
 
-(defn command!
-  "Muse sends a command to a phase."
-  [muse-id phase-id command-type payload]
-  (actor/tell! muse-id phase-id (str "muse.command." (name command-type)) payload))
+(defn influence!
+  "The Muse appends guidance to a phase's ledger. The phase reads it
+   when it reads it; nothing is interrupted, nothing is forced."
+  [muse-id phase-id influence-type payload]
+  (actor/tell! muse-id phase-id
+               (str "muse.influence." (name influence-type)) payload))
+
+;; ---------------------------------------------------------------------------
+;; Observation — how the Muse sees the world: through her phases' eyes.
+;; ---------------------------------------------------------------------------
 
 (defn tail
-  "Return the last n messages from a phase mailbox."
+  "Resolves to the last n events of a phase ledger."
   [phase-id n]
-  (let [mb (actor/mailbox phase-id)]
+  (p/let [mb (actor/mailbox phase-id)]
     (vec (take-last n mb))))
 
 (defn head
-  "Return the first n messages from a phase mailbox."
+  "Resolves to the first n events of a phase ledger."
   [phase-id n]
-  (let [mb (actor/mailbox phase-id)]
+  (p/let [mb (actor/mailbox phase-id)]
     (vec (take n mb))))
 
 (defn filter-events
-  "Filter a phase mailbox by event type."
+  "Resolves to a phase's ledger events of one type."
   [phase-id event-type]
   (actor/recv phase-id {:filter-type event-type}))
 
@@ -86,6 +105,7 @@
   (filter-events phase-id "phase.conclusion"))
 
 (defn evidence
-  "All evidence events from a phase."
+  "All evidence events from a phase. A conclusion without evidence
+   recorded here is just a claim."
   [phase-id]
   (filter-events phase-id "phase.evidence"))

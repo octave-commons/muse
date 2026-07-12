@@ -109,6 +109,19 @@
     {:output-feature-set :es-next,
      :macros {:open-hax.sol.macros true},
      :infer-externs false}},
+    :daemon
+    {:target :esm,
+     :runtime :node,
+     :output-dir "dist-daemon",
+     :modules {:daemon {:init-fn eta-mu.daemon.core/init}},
+     :build-hooks [(eta-mu.daemon.build/emit-package-json)],
+     :js-options {:js-provider :import},
+     :compiler-options
+     {:output-feature-set :es-next,
+      :optimizations :simple,
+      :source-map false,
+      :infer-externs false,
+      :warnings {:infer-warning false}}},
     :opencode-plugin
     {:target :esm,
      :runtime :node,

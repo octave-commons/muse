@@ -5,13 +5,15 @@ node_modules/
 target/
 dist/
 dist-dev/
+dist-daemon/
 
 # IDE and tooling caches
 .clj-kondo/.cache/
 .lsp/.cache/
 
-# OpenCode plugins (generated)
+# OpenCode plugins and agents (generated)
 .opencode/plugins/
+.opencode/agents/
 
 # OS files
 .DS_Store
@@ -33,3 +35,4 @@ src/gen/
 .shadow-cljs/
 
 pseudo/
+.opencode/opencode.json
