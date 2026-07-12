@@ -1,7 +1,7 @@
 # Π Fork Tax - Last Snapshot
 
 ## Commit
-- **Hash**: TBD (pending commit)
+- **Hash**: `e1154b3`
 - **Tag**: `Π/dsl-refactor`
 - **Branch**: `main`
 - **Timestamp**: 2026-07-11
