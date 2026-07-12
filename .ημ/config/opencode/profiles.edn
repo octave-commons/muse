@@ -1,0 +1,14 @@
+{:dev
+ {:allow #{:muse/*
+           :phase/*
+           :actor/*}
+  :audit :verbose}
+
+ :ci
+ {:allow #{:actor/list}
+  :deny #{:muse/* :phase/*}
+  :audit :strict}
+
+ :prod
+ {:allow #{:muse/* :phase/* :actor/*}
+  :audit :full}}

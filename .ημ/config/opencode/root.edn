@@ -1,0 +1,8 @@
+{:eta-mu/opencode-version 1
+ :id                     :eta-mu/actors
+
+ :imports
+ ["permissions/default.edn"
+  "plugins/actors.edn"]
+
+ :profile :dev}

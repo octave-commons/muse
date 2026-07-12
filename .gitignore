@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build artifacts
+target/
+dist/
+dist-dev/
+
+# IDE and tooling caches
+.clj-kondo/.cache/
+.lsp/.cache/
+
+# OpenCode plugins (generated)
+.opencode/plugins/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment and secrets
+.env
+.env.local
+*.secret
+*.key
+credentials*
+
+# Logs
+*.log
