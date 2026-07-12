@@ -66,7 +66,7 @@
     ".opencode/opencode.json (modified)")
 
   (blockers
-    "Push requires write access to upstream remote")
+    "none")
 
   (verification
     (status "committed")
