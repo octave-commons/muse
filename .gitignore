@@ -26,3 +26,8 @@ credentials*
 
 # Logs
 *.log
+
+# Generated entrypoints (from .ημ config by build hooks)
+src/gen/
+.opencode/dist/
+.shadow-cljs/

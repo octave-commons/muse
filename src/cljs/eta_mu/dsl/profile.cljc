@@ -1,11 +1,11 @@
-(ns eta-mu.opencode.profile
+(ns eta-mu.dsl.profile
   "Profile-based filtering of registry entries.
-   A profile selects which tools/hooks are active based on allow/deny rules."
-  (:require [eta-mu.opencode.schema :as schema]
-            [clojure.set :as set]))
+   A profile selects which tools/hooks are active based on allow/deny rules.
+   Host-agnostic: targets choose which profile applies."
+  (:require [clojure.set :as set]))
 
 ;; ---------------------------------------------------------------------------
-;; Profile selection
+;; Pattern matching
 ;; ---------------------------------------------------------------------------
 
 (defn matches-pattern?
@@ -25,7 +25,7 @@
 (defn selected?
   "True if an entry passes the profile's allow/deny filters."
   [{:keys [allow deny deny-effects]}
-   {:keys [id tags effects]}]
+   {:keys [id effects]}]
   (and
    ;; Must be in allow set (or allow is empty = allow all)
    (or (empty? allow)
@@ -36,15 +36,13 @@
    (not (some #(contains? (or effects #{}) %) (or deny-effects #{})))))
 
 (defn apply-profile
-  "Filter a registry's tools and hooks by a profile rule.
-   Returns a new registry with only enabled entries."
+  "Filter a registry's tools and hooks by a profile rule."
   [profile registry]
   (-> registry
       (update :tools #(filterv (partial selected? profile) %))
       (update :hooks #(filterv (partial selected? profile) %))))
 
 (defn available-profiles
-  "Return the set of profile names defined in a profiles map."
   [profiles]
   (set (keys profiles)))
 

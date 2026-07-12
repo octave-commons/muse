@@ -1,5 +1,5 @@
 {:http {:port 9633},
- :source-paths ["src/cljs" "test/cljs"
+ :source-paths ["src/cljs" "src/clj" "src/gen" ".ημ" "test/cljs"
                 "../katamorph/src/cljs"
                 "../event-ledger/src"],
  :dependencies
@@ -109,15 +109,22 @@
     {:output-feature-set :es-next,
      :macros {:open-hax.sol.macros true},
      :infer-externs false}},
-   :opencode-plugin
-    {:target :node,
-     :output-to ".opencode/plugins/eta-mu-actors-bundled.js",
-     :output-dir ".opencode/plugins/cljs-runtime",
-     :main eta-mu.opencode.entrypoint/eta-mu-plugin,
+    :opencode-plugin
+    {:target :esm,
+     :runtime :node,
+     :output-dir ".opencode/dist",
+     :modules
+     {:eta-mu-actors
+      {:exports
+       {:EtaMuActorsPlugin eta-mu.gen.opencode-plugin/plugin}}},
+     :build-hooks [(eta-mu.opencode.build/generate-entrypoint)
+                   (eta-mu.opencode.build/emit-host-config)],
      :js-options
-     {:js-provider :closure},
+     {:js-provider :import,
+      :keep-as-import #{"zod"}},
      :compiler-options
      {:output-feature-set :es-next,
-      :optimizations :advanced,
+      :optimizations :simple,
       :source-map false,
-      :infer-externs false}}}
+      :infer-externs false,
+      :warnings {:infer-warning false}}}}}

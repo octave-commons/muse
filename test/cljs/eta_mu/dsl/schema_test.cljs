@@ -1,6 +1,6 @@
-(ns eta-mu.opencode.schema-test
+(ns eta-mu.dsl.schema-test
   (:require [cljs.test :refer-macros [deftest is testing]]
-            [eta-mu.opencode.schema :as schema]
+            [eta-mu.dsl.schema :as schema]
             [malli.core :as m]))
 
 ;; ---------------------------------------------------------------------------
@@ -67,9 +67,9 @@
       (is (m/validate schema/hook hook)))))
 
 (deftest hook-invalid-event-test
-  (testing "invalid hook event fails"
+  (testing "non-keyword hook event fails (vocabulary is target-validated)"
     (let [hook {:id      :policy/test
-                :event   :invalid/event
+                :event   "tool.execute.before"
                 :handler 'my.ns/test!}]
       (is (not (m/validate schema/hook hook))))))
 

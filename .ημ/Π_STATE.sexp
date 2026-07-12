@@ -2,63 +2,67 @@
 ;; Generated: 2026-07-11
 
 (π-state
-  (commit "fcbde97")
-  (tag "Π/initial")
+  (commit "TBD")
+  (tag "Π/dsl-refactor")
   (branch "main")
-  (timestamp "2026-07-11T19:35:00Z")
-  (description "Initial workspace snapshot with ClojureScript actor system")
-  
+  (timestamp "2026-07-11T20:45:00Z")
+  (description "DSL namespace refactor: opencode → dsl, host-agnostic compilation, opencode-plugin ESM migration")
+
   (staged-files
-    ".gitignore"
-    "AGENTS.md"
-    "shadow-cljs.edn"
-    "src/cljs/eta_mu/actor.cljc"
-    "src/cljs/eta_mu/actor/memory.cljc"
-    "src/cljs/eta_mu/actor/muse.cljc"
-    "src/cljs/eta_mu/actor/store.cljc"
-    "src/cljs/eta_mu/opencode/compile.cljc"
+    "src/cljs/eta_mu/dsl/compile.cljc"
+    "src/cljs/eta_mu/dsl/profile.cljc"
     "src/cljs/eta_mu/opencode/dsl.cljc"
     "src/cljs/eta_mu/opencode/entrypoint.cljs"
     "src/cljs/eta_mu/opencode/normalize.cljc"
     "src/cljs/eta_mu/opencode/plugin.cljc"
     "src/cljs/eta_mu/opencode/plugin.cljs"
-    "src/cljs/eta_mu/opencode/profile.cljc"
     "src/cljs/eta_mu/opencode/schema.cljc"
-    "test/cljs/eta_mu/actor/muse_test.cljs"
-    "test/cljs/eta_mu/actor_test.cljs"
-    "test/cljs/eta_mu/opencode/normalize_test.cljs"
-    "test/cljs/eta_mu/opencode/schema_test.cljs"
-    "docs/notes/opencode-dsl/00-index.md"
-    "docs/notes/opencode-dsl/01-dsl-design.md"
-    "docs/notes/opencode-dsl/02-edn-config.md"
-    "docs/notes/opencode-dsl/03-profiles.md"
-    "docs/notes/opencode-dsl/04-opencode-integration.md"
-    "docs/notes/opencode-dsl/05-boundary-law.md"
-    "docs/notes/opencode-dsl/06-typescript-emission.md"
-    "docs/inbox/2026.07.11.17.19.10.md"
-    "docs/inbox/2026.07.11.17.19.19.md"
-    "docs/inbox/2026.07.11.19.03.03.md"
-    ".clj-kondo/imports/funcool/promesa/config.edn"
-    ".clj-kondo/imports/metosin/malli/config.edn"
-    ".clj-kondo/imports/rewrite-clj/rewrite-clj/config.edn"
-    ".opencode/opencode.json"
-    ".ημ/PRINCIPLE.edn"
-    ".ημ/config/opencode/permissions/default.edn"
-    ".ημ/config/opencode/plugins/actors.edn"
-    ".ημ/config/opencode/profiles.edn"
-    ".ημ/config/opencode/root.edn"
-    ".ημ/config/opencode/tools/receipt-river.edn")
-  
-  (untracked
-    ".eta-mu")
-  
+    "src/cljs/eta_mu/opencode/compile.cljc"
+    "test/cljs/eta_mu/dsl/normalize_test.cljs"
+    "test/cljs/eta_mu/dsl/schema_test.cljs"
+    "shadow-cljs.edn"
+    ".gitignore")
+
+  (untracked-left-behind
+    ".eta-mu"
+    "src/clj/"
+    "src/cljs/eta_mu/boundaries/"
+    "src/cljs/eta_mu/domain/"
+    "src/cljs/eta_mu/dsl.cljc"
+    "src/cljs/eta_mu/dsl/normalize.cljc"
+    "src/cljs/eta_mu/dsl/schema.cljc"
+    "src/cljs/eta_mu/opencode/config.cljc"
+    "src/cljs/eta_mu/util/"
+    "test/cljs/eta_mu/domain/"
+    "test/cljs/eta_mu/dsl_test.cljs"
+    "test/cljs/eta_mu/opencode/"
+    "test/cljs/eta_mu/util/"
+    "receipts.edn"
+    "pseudo/"
+    "STYLE.md"
+    "openhax-kanban.json"
+    ".ημ/plugins/"
+    ".ημ/config/opencode/plugins/receipt-river.edn"
+    ".ημ/config/opencode/plugins/session-mycology.edn"
+    ".ημ/config/opencode/plugins/websearch.edn"
+    "docs/inbox/2026.07.11.20.28.09.md")
+
   (concurrent-dirt
-    "None detected - fresh repository")
-  
+    ".opencode/opencode.json (modified)"
+    ".ημ/config/opencode/permissions/default.edn (modified)"
+    ".ημ/config/opencode/plugins/actors.edn (modified)"
+    ".ημ/config/opencode/profiles.edn (modified)"
+    ".ημ/config/opencode/root.edn (modified)"
+    ".ημ/config/opencode/tools/receipt-river.edn (deleted)"
+    "docs/inbox/2026.07.11.17.19.10.md (modified)"
+    "docs/inbox/2026.07.11.17.19.19.md (deleted)"
+    "docs/inbox/2026.07.11.19.03.03.md (deleted)"
+    "docs/notes/opencode-dsl/ (all deleted)")
+
   (blockers
     "No remote configured - push skipped")
-  
+
   (verification
     (status "committed")
-    (lint "skipped - no lint config found")
-    (tests "skipped - test runner not configured")))
+    (tests "passed - 104 tests, 231 assertions, 0 failures, 0 errors")
+    (build "passed - shadow-cljs compile test, 0 warnings")))

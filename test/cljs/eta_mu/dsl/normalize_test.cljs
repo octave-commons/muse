@@ -1,7 +1,7 @@
-(ns eta-mu.opencode.normalize-test
+(ns eta-mu.dsl.normalize-test
   (:require [cljs.test :refer-macros [deftest is testing]]
-            [eta-mu.opencode.normalize :as normalize]
-            [eta-mu.opencode.schema :as schema]
+            [eta-mu.dsl.normalize :as normalize]
+            [eta-mu.dsl.schema :as schema]
             [malli.core :as m]))
 
 ;; ---------------------------------------------------------------------------
@@ -15,9 +15,9 @@
                           :description "Search."
                           :args        [:map [:query :string]]}
                    'my.ns/search])]
-      (is (= :tool (:opencode/kind result)))
+      (is (= :tool (:ημ/kind result)))
       (is (= :research/search (:id result)))
-      (is (= "search" (:name result)))
+      (is (= "research_search" (:name result)))
       (is (= 'my.ns/search (:handler result))))))
 
 (deftest normalize-tool-custom-name-test
@@ -37,7 +37,7 @@
                           :event    :tool.execute.before
                           :priority 50}
                    'my.ns/test!])]
-      (is (= :hook (:opencode/kind result)))
+      (is (= :hook (:ημ/kind result)))
       (is (= 50 (:priority result)))
       (is (= :tool.execute.before (:event result))))))
 
@@ -60,10 +60,10 @@
                    [:hook {:id    :policy/audit
                            :event :tool.execute.after}
                     'my.ns/audit!]])]
-      (is (= :plugin (:opencode/kind result)))
+      (is (= :plugin (:ημ/kind result)))
       (is (= 2 (count (:entries result))))
-      (is (= :tool (:opencode/kind (first (:entries result)))))
-      (is (= :hook (:opencode/kind (second (:entries result))))))))
+      (is (= :tool (:ημ/kind (first (:entries result)))))
+      (is (= :hook (:ημ/kind (second (:entries result))))))))
 
 (deftest normalize-unknown-tag-test
   (testing "unknown tag throws"
@@ -76,19 +76,19 @@
 
 (deftest merge-fragments-test
   (testing "multiple fragments merge into a registry"
-    (let [tool1 {:opencode/kind :tool
+    (let [tool1 {:ημ/kind :tool
                  :id :a/tool
                  :name "a"
                  :description "A"
                  :args [:map]
                  :handler 'a/handler}
-          tool2 {:opencode/kind :tool
+          tool2 {:ημ/kind :tool
                  :id :b/tool
                  :name "b"
                  :description "B"
                  :args [:map]
                  :handler 'b/handler}
-          hook1 {:opencode/kind :hook
+          hook1 {:ημ/kind :hook
                  :id :c/hook
                  :event :tool.execute.before
                  :priority 0
