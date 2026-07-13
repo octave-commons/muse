@@ -1,0 +1,7 @@
+{:dev
+ {:allow #{:receipt/*}
+  :audit :verbose}
+
+ :prod
+ {:allow #{:receipt/*}
+  :audit :full}}

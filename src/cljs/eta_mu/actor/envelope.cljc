@@ -1,6 +1,6 @@
 (ns eta-mu.actor.envelope
   "The envelope: the one record shape every actor ledger speaks,
-   mirroring @promethean-os/event-ledger's Malli schema so EDN-file
+   mirroring @open-hax/event-ledger's Malli schema so EDN-file
    ledgers, Mongo ledgers, and epiphany-side consumers stay compatible.
 
    Also owns the wire format for file ledgers: one single-line EDN map

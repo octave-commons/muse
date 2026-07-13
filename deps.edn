@@ -1,0 +1,13 @@
+{:paths ["src/cljs" "src/clj" "src/gen" ".ημ" "test/cljs"]
+ :deps {thheller/shadow-cljs        {:mvn/version "3.4.4"}
+        metosin/malli               {:mvn/version "0.16.4"}
+        funcool/promesa             {:mvn/version "11.0.678"}
+        cider/cider-nrepl           {:mvn/version "0.50.2"}
+        refactor-nrepl/refactor-nrepl {:mvn/version "3.9.1"}
+        ;; Foundational concepts, consumed by immutable git ref (not a
+        ;; filesystem sibling). Bump the :git/sha + :git/tag to adopt a new
+        ;; release; muse never breaks from in-place dev on these repos.
+        io.github.open-hax/katamorph    {:git/tag "v0.1.0"
+                                         :git/sha "509878193515b199ce8477b3c2d583f0d5b32ac8"}
+        io.github.open-hax/event-ledger {:git/tag "v0.2.0"
+                                         :git/sha "9e7fd430c26b245a3b120f5d2dee33fc8cb4a71f"}}}

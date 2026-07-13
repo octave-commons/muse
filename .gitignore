@@ -10,6 +10,7 @@ dist-daemon/
 # IDE and tooling caches
 .clj-kondo/.cache/
 .lsp/.cache/
+.cpcache/
 
 # OpenCode plugins and agents (generated)
 .opencode/plugins/
@@ -32,7 +33,9 @@ credentials*
 # Generated entrypoints (from .ημ config by build hooks)
 src/gen/
 .opencode/dist/
+.mcp/dist/
 .shadow-cljs/
 
 pseudo/
 .opencode/opencode.json
+.mcp.json

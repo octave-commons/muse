@@ -1,12 +1,8 @@
 {:http {:port 9633},
- :source-paths ["src/cljs" "src/clj" "src/gen" ".ημ" "test/cljs"
-                "../katamorph/src/cljs"
-                "../event-ledger/src"],
- :dependencies
- [[cider/cider-nrepl "0.50.2"]
-  [refactor-nrepl "3.9.1"]
-  [metosin/malli "0.16.4"]
-  [funcool/promesa "11.0.678"]],
+ ;; Classpath (paths + JVM deps) comes from deps.edn. katamorph and
+ ;; event-ledger are git-ref deps there — no fragile "../katamorph/src/cljs"
+ ;; sibling paths, no bootstrap stubs.
+ :deps true,
  :nrepl {:port 4501},
  :js-options {:js-provider :import},
  :builds
@@ -135,6 +131,24 @@
      :js-options
      {:js-provider :import,
       :keep-as-import #{"zod"}},
+     :compiler-options
+     {:output-feature-set :es-next,
+      :optimizations :simple,
+      :source-map false,
+      :infer-externs false,
+      :warnings {:infer-warning false}}},
+    :mcp-server
+    {:target :esm,
+     :runtime :node,
+     :output-dir ".mcp/dist",
+     :modules {:receipt-river {:init-fn eta-mu.gen.mcp-server/init}},
+     :build-hooks [(eta-mu.mcp.build/generate-entrypoint)
+                   (eta-mu.mcp.build/emit-host-config)],
+     :js-options
+     {:js-provider :import,
+      :keep-as-import #{"zod"
+                         "@modelcontextprotocol/sdk/server/mcp.js"
+                         "@modelcontextprotocol/sdk/server/stdio.js"}},
      :compiler-options
      {:output-feature-set :es-next,
       :optimizations :simple,

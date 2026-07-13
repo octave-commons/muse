@@ -1,0 +1,20 @@
+{:eta-mu/mcp-version 1
+ :id                 :eta-mu/claude-receipt-river
+
+ ;; Passed straight to the SDK's McpServer constructor.
+ :info {:name "eta-mu-receipt-river" :version "1.0.0"}
+
+ :imports
+ ["profiles.edn"
+  "permissions/default.edn"
+  "plugins/receipt-river.edn"]
+
+ :profile :dev
+
+ ;; What the eta-mu daemon runs (from the repo root) when this tree or
+ ;; .ημ/plugins/* change.
+ :build ["shadow-cljs" "release" "mcp-server"]
+
+ ;; Registers the built server in this repo's .mcp.json so any Claude Code
+ ;; session opened here picks it up automatically.
+ :publish {:mcp-config ".mcp.json"}}

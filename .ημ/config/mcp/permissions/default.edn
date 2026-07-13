@@ -1,0 +1,4 @@
+{:permissions
+ [{:id      :default/allow-ledgers
+   :applies #{:receipt_river}
+   :policy  :allow}]}

@@ -1,0 +1,2 @@
+{:resource plugins.receipt-river/plugin
+ :expose   [:receipt/*]}

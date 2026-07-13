@@ -1,5 +1,5 @@
 (ns eta-mu.boundaries.mongo.ledger
-  "Mongo-backed actor ledgers speaking @promethean-os/event-ledger's
+  "Mongo-backed actor ledgers speaking @open-hax/event-ledger's
    DOCUMENTED wire format: envelopes in the event_ledger collection with
    full-name keys (\"event/type\"), a monotonic ledger/seq from the
    _counters collection, TTL via expiresAt, and its index set.

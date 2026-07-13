@@ -1,18 +1,12 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["file://./plugins/eta-mu-actors.mjs"],
   "permission": {
-    "muse_spawn": "allow",
-    "muse_phases": "allow",
-    "phase_spawn": "allow",
-    "phase_list_active": "allow",
-    "phase_list_idle": "allow",
-    "phase_tail": "allow",
-    "phase_head": "allow",
-    "phase_filter": "allow",
-    "phase_observations": "allow",
-    "phase_conclusions": "allow",
-    "actor_tell": "allow",
-    "actor_list": "allow"
+    "actor_*": "allow",
+    "apifany_*": "allow",
+    "muse_*": "allow",
+    "phase_*": "allow",
+    "receipt_river": "allow",
+    "session_mycology": "allow",
+    "websearch_openhax": "allow"
   }
 }

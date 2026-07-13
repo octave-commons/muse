@@ -1,6 +1,6 @@
 (ns eta-mu.actor.store
   "The actor-store contract. Events are envelopes conforming to the
-   event-ledger schema (@promethean-os/event-ledger); each actor owns an
+   event-ledger schema (@open-hax/event-ledger); each actor owns an
    append-only mailbox ledger.
 
    Store operations MAY return promises (Mongo) or plain values (memory,
