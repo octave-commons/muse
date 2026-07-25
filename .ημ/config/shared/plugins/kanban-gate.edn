@@ -1,0 +1,2 @@
+{:resource plugins.kanban-gate/plugin
+ :expose   [:policy/kanban-done-gate :policy/kanban-direct-edit-guard]}

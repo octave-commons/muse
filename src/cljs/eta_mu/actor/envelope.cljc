@@ -24,14 +24,16 @@
   (if (get envelope k) envelope (assoc envelope k (f))))
 
 (defn fill-defaults
-  "Fill event/id, event/time, causal/root, session/id, delivery/mode."
+  "Fill event/id, event/time, causal/root, session/id, delivery/mode.
+   causal/root defaults to the event's own id: every event is a causal
+   root unless the sender explicitly threads it under an existing root."
   [envelope]
-  (-> envelope
-      (with-default :event/id new-id)
-      (with-default :event/time now-iso)
-      (with-default :causal/root new-id)
-      (with-default :session/id new-id)
-      (with-default :delivery/mode (constantly "tell"))))
+  (let [with-id (with-default envelope :event/id new-id)]
+    (-> with-id
+        (with-default :event/time now-iso)
+        (with-default :causal/root (fn [] (:event/id with-id)))
+        (with-default :session/id new-id)
+        (with-default :delivery/mode (constantly "tell")))))
 
 (defn stamp-route
   "Stamp sender and recipient actor descriptors onto an envelope."

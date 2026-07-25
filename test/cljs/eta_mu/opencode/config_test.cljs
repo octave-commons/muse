@@ -9,6 +9,8 @@
             [eta-mu.opencode.config :as config]
             [plugins.actors :as actors]
             [plugins.apifany :as apifany]
+            [plugins.edn-ledger :as edn-ledger]
+            [plugins.kanban-gate :as kanban-gate]
             [plugins.receipt-river :as receipt-river]
             [plugins.session-mycology :as session-mycology]
             [plugins.websearch :as websearch]))
@@ -18,6 +20,8 @@
 (def resource-table
   {'plugins.actors/plugin           actors/plugin
    'plugins.apifany/plugin          apifany/plugin
+   'plugins.edn-ledger/plugin       edn-ledger/plugin
+   'plugins.kanban-gate/plugin      kanban-gate/plugin
    'plugins.receipt-river/plugin    receipt-river/plugin
    'plugins.session-mycology/plugin session-mycology/plugin
    'plugins.websearch/plugin        websearch/plugin})
@@ -32,17 +36,19 @@
   (is (contains? (config/profiles loaded) :dev))
   (is (contains? (config/profiles loaded) :ci))
   (is (seq (config/permissions loaded)))
-  (is (= ['plugins.actors/plugin
-          'plugins.apifany/plugin
-          'plugins.receipt-river/plugin
+  (is (= ['plugins.receipt-river/plugin
           'plugins.session-mycology/plugin
-          'plugins.websearch/plugin]
+          'plugins.edn-ledger/plugin
+          'plugins.websearch/plugin
+          'plugins.actors/plugin
+          'plugins.apifany/plugin
+          'plugins.kanban-gate/plugin]
          (config/resources loaded))))
 
 (deftest exposure-linking
   (let [registry (config/apply-exposure loaded resource-table)]
     (testing "all exposed tools have real function handlers"
-      (is (= 22 (count (:tools registry))))
+      (is (= 34 (count (:tools registry))))
       (is (every? fn? (map :handler (:tools registry)))))
     (testing "plugin init carried into the registry"
       (is (= [actors/init! apifany/init!] (:inits registry))))
@@ -52,6 +58,7 @@
         (is (contains? names "phase_list_active"))
         (is (contains? names "apifany_read_mailbox"))
         (is (contains? names "receipt_river"))
+        (is (contains? names "edn_ledger"))
         (is (contains? names "session_mycology"))
         ;; the opencode config renames :web/search to avoid the host's
         ;; built-in websearch tool
@@ -84,7 +91,7 @@
                      (dsl.profile/apply-profile (config/active-profile loaded))
                      dsl.normalize/validate-registry!
                      dsl.compile/compile-adapter)]
-    (is (= 22 (count (:tools adapter))))
+    (is (= 34 (count (:tools adapter))))
     (is (every? string? (map :name (:tools adapter))))
     (is (= 2 (count (:inits adapter))))))
 

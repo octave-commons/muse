@@ -4,7 +4,8 @@
    init fns carried through. Target boundaries render the adapter into
    whatever their host expects. Pure functions."
   (:require [eta-mu.dsl :as dsl]
-            [eta-mu.dsl.schema :as schema]))
+            [eta-mu.dsl.schema :as schema]
+            [promesa.core :as p]))
 
 ;; ---------------------------------------------------------------------------
 ;; Tool compilation
@@ -40,20 +41,28 @@
 
 (defn compose-event-handler
   "One callback per event, running hooks in priority order.
-   Hooks receive [input ctx] and may return the effect algebra:
-     nil | {:effect :reject :message ...} | {:effect :patch :output {...}}"
+   Hooks receive [input ctx] and may return the effect algebra directly OR
+   as a promise of it (e.g. a hook that awaits an HTTP call before deciding):
+     nil | {:effect :reject :message ...} | {:effect :patch :output {...}}
+
+   Always returns a promise of the first non-nil verdict (or nil once every
+   hook has been asked), regardless of whether any individual hook was
+   itself synchronous -- callers never need to branch on that; they just
+   `.then`/await the result. A `reduce` cannot do this (it can't suspend
+   between synchronous steps to await one), so this steps through `hooks`
+   explicitly via a promise chain instead."
   [hooks]
   (fn [input ctx]
-    (reduce
-     (fn [_ hook]
-       (let [result ((:handler hook) input ctx)]
-         (cond
-           (nil? result) nil
-           (= :reject (:effect result)) (reduced result)
-           (= :patch (:effect result)) (reduced result)
-           :else nil)))
-     nil
-     hooks)))
+    (letfn [(step [i]
+              (if (>= i (count hooks))
+                nil
+                (p/let [result ((:handler (nth hooks i)) input ctx)]
+                  (cond
+                    (nil? result) (step (inc i))
+                    (= :reject (:effect result)) result
+                    (= :patch (:effect result)) result
+                    :else (step (inc i))))))]
+      (step 0))))
 
 (defn compile-hooks
   [hooks]

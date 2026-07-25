@@ -1,0 +1,16 @@
+{:dev
+ {:allow #{:receipt/* :session/* :web/* :muse/* :phase/* :actor/* :task/* :agent/* :apifany/* :policy/* :edn/*}
+  :audit :verbose}
+
+ :ci
+ ;; :policy/* stays allowed even under ci's otherwise-tight allow-list: a
+ ;; mechanical review->done gate is exactly the kind of check ci should
+ ;; keep enforced, not lose by omission from an allow-set enumeration.
+ {:allow #{:actor/list :receipt/* :policy/*}
+  :deny #{:muse/* :phase/*}
+  :deny-effects #{:network/search}
+  :audit :strict}
+
+ :prod
+ {:allow #{:receipt/* :session/* :web/* :muse/* :phase/* :actor/* :task/* :agent/* :apifany/* :policy/* :edn/*}
+  :audit :full}}

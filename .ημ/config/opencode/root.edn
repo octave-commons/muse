@@ -2,22 +2,22 @@
  :id                     :eta-mu/actors
 
  :imports
- ["profiles.edn"
-  "permissions/default.edn"
-  "plugins/actors.edn"
-  "plugins/apifany.edn"
-  "plugins/receipt-river.edn"
-  "plugins/session-mycology.edn"
-  "plugins/websearch.edn"]
+ ["../shared/profiles.edn"
+  "../shared/permissions/default.edn"
+  "../shared/plugins/receipt-river.edn"
+  "../shared/plugins/session-mycology.edn"
+  "../shared/plugins/edn-ledger.edn"
+  "../shared/plugins/websearch.edn"
+  "../shared/plugins/actors.edn"
+  "../shared/plugins/apifany.edn"
+  "../shared/plugins/kanban-gate.edn"
+  ;; target-specific overrides below
+  ;; "plugins/custom.edn"
+  ]
 
  :profile :dev
 
- ;; What the eta-mu daemon runs (from the repo root) when this tree or
- ;; .ημ/plugins/* change.
  :build ["shadow-cljs" "release" "opencode-plugin"]
 
- ;; Also publish the plugin shims and agent definitions globally so
- ;; every opencode session gets them, not just sessions in this repo.
  :publish {:plugins-dir "~/.config/opencode/plugins"
            :agents-dir  "~/.config/opencode/agents"}}
-

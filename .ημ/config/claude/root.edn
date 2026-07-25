@@ -1,7 +1,7 @@
-{:eta-mu/mcp-version 1
- :id                 :eta-mu/claude-receipt-river
+{:eta-mu/claude-version 1
+ :id                    :eta-mu/claude
 
- :info {:name "eta-mu-receipt-river" :version "1.0.0"}
+ :info {:name "eta-mu-claude" :version "1.0.0"}
 
  :imports
  ["../shared/profiles.edn"
@@ -12,10 +12,11 @@
   "../shared/plugins/websearch.edn"
   "../shared/plugins/actors.edn"
   "../shared/plugins/apifany.edn"
+  "../shared/plugins/kanban-gate.edn"
   ]
 
  :profile :dev
 
- :build ["shadow-cljs" "release" "mcp-server"]
+ :build ["bash" "scripts/build-claude-target.sh"]
 
  :publish {:mcp-config ".mcp.json"}}

@@ -1,0 +1,2 @@
+{:resource plugins.actors/plugin
+ :expose   [:muse/* :phase/* :actor/* :task/* :agent/*]}

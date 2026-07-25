@@ -1,5 +1,5 @@
 (ns eta-mu.domain.websearch-test
-  (:require [cljs.test :refer [deftest is testing]]
+  (:require [cljs.test :refer [deftest is]]
             [clojure.string :as str]
             [eta-mu.domain.websearch :as ws]))
 

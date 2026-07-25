@@ -2,11 +2,13 @@
   "$schema": "https://opencode.ai/config.json",
   "permission": {
     "actor_*": "allow",
+    "agent_*": "allow",
     "apifany_*": "allow",
     "muse_*": "allow",
     "phase_*": "allow",
     "receipt_river": "allow",
     "session_mycology": "allow",
+    "task_*": "allow",
     "websearch_openhax": "allow"
   }
 }

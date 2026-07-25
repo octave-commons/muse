@@ -7,7 +7,8 @@
      tool args    → zod raw shape (z.ZodRawShape)
      tool result  → string | {output, title?, metadata?}
      plugin       → (input) => Promise<Hooks>"
-  (:require [eta-mu.dsl.zod :as zod]))
+  (:require [eta-mu.dsl.events :as events]
+            [eta-mu.dsl.zod :as zod]))
 
 ;; ---------------------------------------------------------------------------
 ;; Ingress / egress
@@ -62,22 +63,28 @@
     out))
 
 (defn- wrap-hook
-  "Compiled hooks return an effect algebra:
+  "Compiled hooks resolve to an effect algebra:
      nil | {:effect :reject :message ...} | {:effect :patch :output {...}}
-   The boundary decides what those mean to the host."
+   `composed` always returns a promise of that (see
+   eta-mu.dsl.compile/compose-event-handler) even when every underlying hook
+   was itself synchronous, so this always awaits it before deciding what it
+   means to the host -- a hook that does async work (an HTTP call, a file
+   read) to reach its verdict is not silently ignored."
   [composed]
   (fn [js-input js-output]
-    (let [result (composed (js->clj js-input :keywordize-keys true)
-                           (js->clj js-output :keywordize-keys true))]
-      (case (:effect result)
-        :reject (js/Promise.reject (js/Error. (or (:message result) "rejected")))
-        :patch  (do (js/Object.assign js-output (clj->js (:output result)))
-                    (js/Promise.resolve nil))
-        (js/Promise.resolve nil)))))
+    (-> (js/Promise.resolve (composed (js->clj js-input :keywordize-keys true)
+                                      (js->clj js-output :keywordize-keys true)))
+        (.then (fn [result]
+                 (case (:effect result)
+                   :reject (js/Promise.reject (js/Error. (or (:message result) "rejected")))
+                   :patch  (do (js/Object.assign js-output (clj->js (:output result)))
+                               nil)
+                   nil))))))
 
 (defn render-hooks-into! [js-hooks hooks]
-  (doseq [[event composed] hooks]
-    (unchecked-set js-hooks (name event) (wrap-hook composed)))
+  (doseq [[canonical-event composed] hooks]
+    (let [host-event (events/for-host canonical-event :opencode)]
+      (unchecked-set js-hooks (name host-event) (wrap-hook composed))))
   js-hooks)
 
 (defn render-plugin

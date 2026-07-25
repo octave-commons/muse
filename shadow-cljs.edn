@@ -154,4 +154,22 @@
       :optimizations :simple,
       :source-map false,
       :infer-externs false,
+      :warnings {:infer-warning false}}},
+    :claude-server
+    {:target :esm,
+     :runtime :node,
+     :output-dir ".claude/dist",
+     :modules {:claude-server {:init-fn eta-mu.gen.claude-server/init}},
+     :build-hooks [(eta-mu.claude.build/generate-entrypoint)
+                   (eta-mu.claude.build/emit-host-config)],
+     :js-options
+     {:js-provider :import,
+      :keep-as-import #{"zod"
+                         "@modelcontextprotocol/sdk/server/mcp.js"
+                         "@modelcontextprotocol/sdk/server/stdio.js"}},
+     :compiler-options
+     {:output-feature-set :es-next,
+      :optimizations :simple,
+      :source-map false,
+      :infer-externs false,
       :warnings {:infer-warning false}}}}}

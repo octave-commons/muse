@@ -86,6 +86,13 @@ Always use `^:async` metadata (ClojureScript ≥ 1.12.145). Never use
 - **Walk lawful hops.** There are no shortcut edges. To move a card multiple columns forward, step through each lawful transition in order. The direct `in_progress → review` edge exists only when the build-gate passes.
 - **Regenerate snapshots when needed.** The web UI and `kanban/.kanban/board.json` are generated snapshots; the source of truth is the task files plus the ledger in `kanban/.events/ledger.edn`. If a snapshot is stale, regenerate it from the CLI or the web UI.
 
+## Muse / Plugin Authoring
+
+- **muse-config-authoring** — Create/modify `.ημ/config/opencode/` config trees (root.edn, plugin exposure fragments, profiles, permissions). Use when registering new plugins, adjusting tool exposure, or setting up a project's eta-mu config.
+- **muse-plugin-authoring** — Write new muse plugins using the eta-mu DSL (deftool, defhook, defplugin). Use when creating new tools, hooks, or plugin bundles for the OpenCode target.
+- **mcp-server-authoring** — Build MCP servers from muse plugins for Claude Code, Codex, and other MCP clients. Use when exposing tools via the Model Context Protocol.
+- **claude-integration** — Set up Claude Code integration: the Claude target compiles the same DSL plugins into MCP tools + native hooks. Use when configuring how Claude Code interacts with a muse-powered repository.
+
 ## Code Style
 - **ClojureScript** (all new code): Reagent components, kebab-case functions, atoms for state, Tailwind CSS
 - **Types**: Strict TypeScript enabled for legacy TS; ClojureScript uses Malli schemas for validation

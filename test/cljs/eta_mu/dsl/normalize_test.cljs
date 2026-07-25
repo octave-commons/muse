@@ -1,8 +1,6 @@
 (ns eta-mu.dsl.normalize-test
   (:require [cljs.test :refer-macros [deftest is testing]]
-            [eta-mu.dsl.normalize :as normalize]
-            [eta-mu.dsl.schema :as schema]
-            [malli.core :as m]))
+            [eta-mu.dsl.normalize :as normalize]))
 
 ;; ---------------------------------------------------------------------------
 ;; normalize-entry

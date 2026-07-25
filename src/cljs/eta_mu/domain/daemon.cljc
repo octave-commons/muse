@@ -6,9 +6,10 @@
 
 (def eta-mu-dir-name ".ημ")
 
-(def config-root-rel
-  "Where a tree's opencode root lives, relative to its .ημ dir."
-  "config/opencode/root.edn")
+(def config-targets
+  "Target config directories, relative to the .ημ dir. Each has its own
+   root.edn with :imports, :build, :emit, and :publish."
+  ["opencode" "mcp" "claude"])
 
 (def watch-prefixes
   "Change paths (relative to the .ημ dir) the daemon reacts to."
@@ -34,7 +35,7 @@
   "Directories discovery never descends into."
   [dir-name]
   (contains? #{"node_modules" ".git" ".shadow-cljs" "target"
-               "dist" "dist-dev" "dist-daemon" ".opencode"}
+               "dist" "dist-dev" "dist-daemon" ".opencode" ".mcp" ".claude"}
              dir-name))
 
 (defn expand-home

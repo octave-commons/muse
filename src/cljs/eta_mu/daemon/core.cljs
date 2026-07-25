@@ -54,11 +54,10 @@
         nil))))
 
 (defn- read-tree
-  "Runtime analogue of eta-mu.opencode.config/read-config: the root.edn
-   plus its :imports, in the {:root … :fragments […]} shape the config
-   accessors expect. nil when the tree has no opencode config."
-  [eta-mu-dir]
-  (let [dir (nfs/join eta-mu-dir "config" "opencode")]
+  "Runtime analogue of config/read-config: the root.edn plus its :imports,
+   in the {:root … :fragments […]} shape. nil when the target has no config."
+  [eta-mu-dir target]
+  (let [dir (nfs/join eta-mu-dir "config" target)]
     (when-let [root (read-edn (nfs/join dir "root.edn"))]
       {:root root
        :fragments (mapv (fn [rel]
@@ -97,17 +96,18 @@
                    (exec! action)))))))
 
 (defn- process!
-  "Re-read a tree and run what it asks for. Boot-time convergence passes
-   exec? false so a daemon restart re-renders cheap targets but does not
-   kick off builds."
+  "Re-read all target trees for a .ημ dir and run what each asks for.
+   Boot-time convergence passes exec? false so a daemon restart re-renders
+   cheap targets but does not kick off builds."
   [eta-mu-dir {:keys [exec?] :or {exec? true}}]
-  (when-let [tree (read-tree eta-mu-dir)]
-    (doseq [action (domain/plan-actions {:home (nfs/home-dir)
-                                         :eta-mu-dir eta-mu-dir
-                                         :root (:root tree)})]
-      (case (:action action)
-        :render (render! tree action)
-        :exec   (when exec? (exec! action))))))
+  (doseq [target domain/config-targets]
+    (when-let [tree (read-tree eta-mu-dir target)]
+      (doseq [action (domain/plan-actions {:home (nfs/home-dir)
+                                           :eta-mu-dir eta-mu-dir
+                                           :root (:root tree)})]
+        (case (:action action)
+          :render (render! tree action)
+          :exec   (when exec? (exec! action)))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Watching

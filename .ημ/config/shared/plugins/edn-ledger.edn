@@ -1,0 +1,2 @@
+{:resource plugins.edn-ledger/plugin
+ :expose   [:edn/*]}
