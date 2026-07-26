@@ -7,8 +7,8 @@
    optionally notifies a subscriber actor. Pending watches are resumable from
    the actor registry when a target plugin starts."
   (:require [eta-mu.actor :as actor]
-            [eta-mu.actor.backend :as backend]
             [eta-mu.actor.envelope :as envelope]
+            [eta-mu.actor.monitor :as monitor]
             [eta-mu.domain.watch :as domain]
             [promesa.core :as p]))
 
@@ -40,12 +40,12 @@
       (throw (ex-info "Watch not found" {:watch-id watch-id})))
     (let [terminal (terminal-event events)
           payload  (:payload terminal)]
-      (cond-> {:watch-id      watch-id
-               :actor-id      (->actor-id (:watch/target meta))
-               :subscriber-id (->actor-id (:watch/subscriber meta))
-               :status        (or (:watch/status meta) "pending")
-               :condition     (:watch/condition meta)
-               :cursor        (:watch/cursor meta)
+      (cond-> {:watch-id        watch-id
+               :actor-id        (->actor-id (:watch/target meta))
+               :subscriber-id   (->actor-id (:watch/subscriber meta))
+               :status          (or (:watch/status meta) "pending")
+               :condition       (:watch/condition meta)
+               :cursor          (:watch/cursor meta)
                :registration-id (:watch/registration-id meta)}
         (:count payload) (assoc :count (:count payload))
         (:event payload) (assoc :event (:event payload))
@@ -138,9 +138,7 @@
   [watch-id]
   (p/let [state (evaluate! watch-id)]
     (if (= "pending" (:status state))
-      (p/let [_ (backend/watch-once (:actor-id state)
-                                    (constantly true)
-                                    watch-window-ms)]
+      (p/let [_ (monitor/monitor (:actor-id state) {} watch-window-ms)]
         (run-loop! watch-id))
       state)))
 
