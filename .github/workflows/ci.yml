@@ -33,11 +33,11 @@ jobs:
           node-version: "22"
           cache: npm
 
-      - name: Use HTTPS for locked GitHub dependencies
+      - name: Use HTTPS for GitHub dependencies
         run: git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
 
-      - name: Install locked JavaScript dependencies
-        run: npm ci
+      - name: Install JavaScript dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
 
       - name: Compile and run ClojureScript tests
         run: npx shadow-cljs compile test
