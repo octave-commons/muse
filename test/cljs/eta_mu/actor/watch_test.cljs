@@ -20,6 +20,27 @@
   [event-type events]
   (first (filter #(= event-type (:event/type %)) events)))
 
+(defn- wait-for-status
+  [watch-id expected timeout-ms]
+  (let [deadline (+ (js/Date.now) timeout-ms)]
+    (letfn [(step []
+              (p/let [state (watch/snapshot watch-id)]
+                (cond
+                  (= expected (:status state))
+                  state
+
+                  (< (js/Date.now) deadline)
+                  (js/Promise.
+                   (fn [resolve _]
+                     (js/setTimeout #(resolve (step)) 25)))
+
+                  :else
+                  (throw (ex-info "Timed out waiting for watch status"
+                                  {:watch-id watch-id
+                                   :expected expected
+                                   :actual (:status state)})))))]
+      (step))))
+
 (deftest nonblocking-watch-fulfillment-test
   (async done
     (run-async
@@ -35,7 +56,7 @@
                          :session-id "session-1"
                          :turn-id "turn-1"})
                _       (actor/tell! :worker :target "job.done" {:ok true})
-               met     (watch/evaluate! (:watch-id pending))
+               met     (wait-for-status (:watch-id pending) "met" 2000)
                watch-events (actor/mailbox (:watch-id pending))
                subscriber-events (actor/mailbox :subscriber)]
          (testing "registration returns a resumable pending watch"
@@ -66,7 +87,7 @@
                pending   (watch/register! :target {:event-type "later"} {})
                cancelled (watch/cancel! (:watch-id pending))
                _         (actor/tell! :worker :target "later" {})
-               final     (watch/evaluate! (:watch-id pending))
+               final     (watch/snapshot (:watch-id pending))
                events    (actor/mailbox (:watch-id pending))]
          (is (= "cancelled" (:status cancelled)))
          (is (= "cancelled" (:status final)))
@@ -83,7 +104,7 @@
                pending (watch/register! :target
                                         {:event-type "already"}
                                         {:include-existing true})
-               met     (watch/evaluate! (:watch-id pending))]
+               met     (wait-for-status (:watch-id pending) "met" 2000)]
          (is (contains? #{"pending" "met"} (:status pending)))
          (is (= "met" (:status met)))
          (is (= "already" (get-in met [:event :event/type]))))))))
