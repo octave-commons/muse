@@ -45,24 +45,24 @@
   "Resolve the current durable watch state. A terminal ledger event takes
    precedence over a stale registry projection after an interrupted write."
   [watch-id]
-  (p/let [meta   (actor/actor-meta watch-id)
-          events (actor/mailbox watch-id)]
+  (p/let [meta (actor/actor-meta watch-id)]
     (when-not meta
       (throw (ex-info "Watch not found" {:watch-id watch-id})))
-    (let [terminal (terminal-event events)
-          payload  (:payload terminal)]
-      (cond-> {:watch-id        watch-id
-               :actor-id        (->actor-id (:watch/target meta))
-               :subscriber-id   (->actor-id (:watch/subscriber meta))
-               :status          (or (terminal-status terminal)
-                                    (:watch/status meta)
-                                    "pending")
-               :condition       (:watch/condition meta)
-               :cursor          (:watch/cursor meta)
-               :registration-id (:watch/registration-id meta)}
-        (:count payload) (assoc :count (:count payload))
-        (:event payload) (assoc :event (:event payload))
-        (:message payload) (assoc :message (:message payload))))))
+    (p/let [events (actor/mailbox watch-id)]
+      (let [terminal (terminal-event events)
+            payload  (:payload terminal)]
+        (cond-> {:watch-id        watch-id
+                 :actor-id        (->actor-id (:watch/target meta))
+                 :subscriber-id   (->actor-id (:watch/subscriber meta))
+                 :status          (or (terminal-status terminal)
+                                      (:watch/status meta)
+                                      "pending")
+                 :condition       (:watch/condition meta)
+                 :cursor          (:watch/cursor meta)
+                 :registration-id (:watch/registration-id meta)}
+          (:count payload) (assoc :count (:count payload))
+          (:event payload) (assoc :event (:event payload))
+          (:message payload) (assoc :message (:message payload)))))))
 
 (defn- try-claim-terminal!
   [watch-id]
