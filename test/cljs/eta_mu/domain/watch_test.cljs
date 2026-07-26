@@ -35,16 +35,18 @@
     (is (= "e-2" (get-in result [:event :event/id])))))
 
 (deftest count-condition-test
-  (let [cursor (watch/cursor existing false)]
+  (let [cursor (watch/cursor existing false)
+        result (watch/evaluate {:min-count 3}
+                               cursor
+                               (conj existing
+                                     {:event/id "e-3"
+                                      :event/type "anything"
+                                      :payload {}}))]
     (is (= "pending"
            (:status (watch/evaluate {:min-count 3} cursor existing))))
-    (is (= "met"
-           (:status (watch/evaluate {:min-count 3}
-                                    cursor
-                                    (conj existing
-                                          {:event/id "e-3"
-                                           :event/type "anything"
-                                           :payload {}})))))))
+    (is (= "met" (:status result)))
+    (is (= 3 (:count result)))
+    (is (not (contains? result :event)))))
 
 (deftest empty-condition-means-next-event-test
   (let [cursor (watch/cursor existing false)]
