@@ -1,25 +1,36 @@
 # muse
 
-The muse is a ClojureScript workspace that authors OpenCode plugins as pure
-data (an EDN/CLJC DSL) and runs a small filesystem daemon that keeps those
-plugins built and published. Her flagship artifact is the **`receipt_river`**
-plugin — an append-only `receipts.edn` execution ledger — which is the stable
-reference implementation the wider eta-mu constellation should consume.
+Muse is a ClojureScript compatibility and compilation workspace. It authors
+host-agnostic eta-mu/Katamorph resources as data, links implementations and
+exposures, and emits host-native artifacts for OpenCode, Claude, MCP, and later
+agent harnesses.
 
-To stand her up on another machine, see **[docs/DEPLOY.md](docs/DEPLOY.md)**
+Muse is **not** a new agent harness and does not own the canonical actor,
+session, policy, capability, event, or workflow model. The embedded actor,
+task, ledger, and plugin implementations are bootstrap code, conformance
+fixtures, and migration residue unless an authoritative upstream package says
+otherwise. See
+[`docs/architecture/compatibility-boundary.md`](docs/architecture/compatibility-boundary.md).
+
+Her current flagship compatibility fixture is **`receipt_river`**, an
+append-only `receipts.edn` execution-ledger projection used to exercise the
+generated host surfaces. Event-envelope, causality, append, ordering, and replay
+laws remain owned by `event-ledger`.
+
+To stand Muse up on another machine, see **[docs/DEPLOY.md](docs/DEPLOY.md)**
 or run `scripts/bootstrap.sh`.
 
 ## What lives here
 
 | Piece | Where | What it does |
 |---|---|---|
-| Daemon | `src/cljs/eta_mu/daemon/core.cljs` → `dist-daemon/daemon.js` | Watches `.ημ/` trees, rebuilds/republishes plugins on change |
-| Plugin DSL | `src/cljs/eta_mu/dsl.cljc` + `dsl/{compile,normalize,profile,schema}.cljc` | `deftool`/`defhook`/`defplugin` emit host-agnostic data |
-| Plugins | `.ημ/plugins/*.cljs` (`receipt_river`, `apifany`, `websearch`, …) | Tool definitions; pure logic delegated to `domain.*` |
-| Config tree | `.ημ/config/opencode/root.edn` + `:imports` fragments | Declares which plugins are exposed, permissions, profiles, publish targets |
-| Boundaries | `src/cljs/eta_mu/boundaries/**` | The only namespaces that touch I/O: node fs/proc/watch, mongo ledger, OpenCode host, fetch |
-| Domain | `src/cljs/eta_mu/domain/*.cljc` | Pure decision logic (daemon plans, receipts, repo, mycology, websearch) |
-| Handoff | `.ημ/Π_LAST.md`, `receipts.edn` | Fork-tax snapshots and the append-only execution ledger |
+| Compiler DSL | `src/cljs/eta_mu/dsl.cljc` + `dsl/{compile,normalize,profile,schema}.cljc` | Authors and links host-agnostic declarations; capability/implementation/exposure separation is the active migration target |
+| Target adapters | `src/clj/eta_mu/{opencode,claude,mcp}/` + `src/cljs/eta_mu/boundaries/**` | Render linked declarations into host-native tools, hooks, config, MCP servers, and codecs |
+| Daemon | `src/cljs/eta_mu/daemon/core.cljs` → `dist-daemon/daemon.js` | Watches `.ημ/` trees and converges generated compatibility artifacts |
+| Compatibility fixtures | `.ημ/plugins/*.cljs` (`receipt_river`, `actors`, `apifany`, `websearch`, …) | Exercise target compilation; semantic ownership remains with the implementing runtime/domain package |
+| Config tree | `.ημ/config/{shared,opencode,claude,mcp}/` | Selects profiles, implementations, exposures, permissions, and publish targets |
+| Embedded runtime prototypes | `src/cljs/eta_mu/{actor,domain}/**` | Temporary bootstrap/conformance implementations; not Muse's canonical system boundary |
+| Handoff | `.ημ/Π_LAST.md`, `receipts.edn` | Fork-tax snapshots and an append-only execution-ledger fixture |
 
 House rules for the layer architecture are in [AGENTS.md](AGENTS.md); engineering
 style in [STYLE.md](STYLE.md).
@@ -57,7 +68,8 @@ output, not a source file.
 
 ## The daemon
 
-The daemon is a filesystem watcher, not a server; it binds no ports.
+The daemon is a filesystem watcher and compatibility-artifact convergence
+service, not an agent runtime server; it binds no ports.
 
 - On start it scans for `.ημ/` directories under `~` (depth 1), `~/spaces`
   (depth 3), and `~/devel` (depth 4), and re-scans every 5 minutes.
@@ -82,15 +94,15 @@ Source: `.ημ/plugins/receipt_river.cljs` (host tool name `receipt_river`,
 id `:receipt/river`), pure logic in `src/cljs/eta_mu/domain/receipts.cljc`.
 Actions: `status | bootstrap | append | tail | validate` over a per-repo
 append-only `receipts.edn`. This repo's own `receipts.edn` is both the ledger
-and the living example of the format.
+and the living compatibility fixture for the format.
 
-Other worlds (eta-mu et al.) should consume the plugin published by *this*
-repo's daemon rather than maintaining their own variant — see
+Other worlds may consume the plugin generated and published by this repository,
+but doing so does not transfer event-ledger or runtime authority into Muse. See
 [docs/DEPLOY.md](docs/DEPLOY.md) § "Serving other worlds".
 
 ## Ledger backends
 
-The actor ledger backend is selected by environment variables
+The embedded actor-fixture ledger backend is selected by environment variables
 (`src/cljs/eta_mu/actor/backend.cljs`):
 
 | Variable | Default | Meaning |
@@ -102,9 +114,10 @@ The actor ledger backend is selected by environment variables
 
 `mongodb` is loaded dynamically, so plugin/daemon bundles don't require it
 unless a mongo backend is configured. The mongo boundary
-(`src/cljs/eta_mu/boundaries/mongo/ledger.cljs`) speaks
-`@promethean-os/event-ledger`'s wire format directly (see its docstring for
-why it doesn't call the package).
+(`src/cljs/eta_mu/boundaries/mongo/ledger.cljs`) currently speaks
+`@promethean-os/event-ledger`'s wire format directly. That is a compatibility
+adapter and must remain conformant with the authoritative package rather than
+becoming a local fork of its laws.
 
 ## Tests
 
@@ -112,6 +125,6 @@ why it doesn't call the package).
 shadow-cljs compile test    # :node-test target, autoruns target/test/test.cjs
 ```
 
-Currently 124 tests / 286 assertions. The mongo ledger test self-skips
-(800 ms server-selection timeout) when no local mongod is reachable, so the
-suite is green without Mongo.
+The latest handoff records 143 tests and zero warnings. Mongo-dependent tests
+self-skip when no local server is reachable, so the suite remains runnable
+without Mongo.
