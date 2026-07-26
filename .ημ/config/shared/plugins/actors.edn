@@ -1,2 +1,9 @@
 {:resource plugins.actors/plugin
- :expose   [:muse/* :phase/* :actor/* :task/* :agent/*]}
+ :expose   [:muse/*
+            :phase/*
+            :actor/tell
+            :actor/list
+            :actor/spawn
+            :actor/mailbox
+            :task/*
+            :agent/*]}
