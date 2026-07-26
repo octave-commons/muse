@@ -6,15 +6,17 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Check out repository
+      - name: Check out repository branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -33,11 +35,19 @@ jobs:
           node-version: "22"
           cache: npm
 
-      - name: Use HTTPS for GitHub dependencies
-        run: git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
-
       - name: Install JavaScript dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Persist reconciled lockfile
+        if: github.event_name == 'pull_request' && github.head_ref == 'fix/nonblocking-actor-watch'
+        run: |
+          if ! git diff --quiet -- package-lock.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package-lock.json
+            git commit -m "build: reconcile JavaScript lockfile"
+            git push origin HEAD:${{ github.head_ref }}
+          fi
 
       - name: Compile and run ClojureScript tests
         run: npx shadow-cljs compile test 2>&1 | tee test.log
