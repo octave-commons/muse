@@ -20,6 +20,12 @@
   [event-type events]
   (first (filter #(= event-type (:event/type %)) events)))
 
+(defn- terminal-events
+  [events]
+  (filterv #(contains? #{"watch.met" "watch.cancelled" "watch.failed"}
+                        (:event/type %))
+           events))
+
 (defn- wait-for-status
   [watch-id expected timeout-ms]
   (let [deadline (+ (js/Date.now) timeout-ms)]
@@ -93,6 +99,44 @@
          (is (= "cancelled" (:status final)))
          (is (some? (event-of-type "watch.cancelled" events)))
          (is (nil? (event-of-type "watch.met" events))))))))
+
+(deftest concurrent-terminal-transition-is-exactly-once-test
+  (async done
+    (run-async
+     done
+     (fn []
+       (p/let [_       (actor/spawn! :target)
+               pending (watch/register! :target {:event-type "later"} {})
+               _       (actor/tell! :worker :target "later" {})
+               _       (p/all [(watch/cancel! (:watch-id pending))
+                               (watch/evaluate! (:watch-id pending))])
+               final   (watch/snapshot (:watch-id pending))
+               events  (actor/mailbox (:watch-id pending))]
+         (let [terminal (terminal-events events)
+               expected-status {"watch.met" "met"
+                                "watch.cancelled" "cancelled"
+                                "watch.failed" "failed"}]
+           (is (= 1 (count terminal)))
+           (is (contains? #{"met" "cancelled"} (:status final)))
+           (is (= (:status final)
+                  (get expected-status (:event/type (first terminal)))))))))))
+
+(deftest count-only-fulfillment-omits-event-test
+  (async done
+    (run-async
+     done
+     (fn []
+       (p/let [_       (actor/spawn! :target)
+               _       (actor/tell! :worker :target "existing" {})
+               pending (watch/register! :target
+                                        {:min-count 1}
+                                        {:include-existing true})
+               met     (wait-for-status (:watch-id pending) "met" 2000)
+               events  (actor/mailbox (:watch-id pending))]
+         (let [fulfilled (event-of-type "watch.met" events)]
+           (is (= 1 (:count met)))
+           (is (not (contains? met :event)))
+           (is (not (contains? (:payload fulfilled) :event)))))))))
 
 (deftest include-existing-can-fulfill-on-registration-test
   (async done
