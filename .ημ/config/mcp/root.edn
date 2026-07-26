@@ -11,6 +11,7 @@
   "../shared/plugins/edn-ledger.edn"
   "../shared/plugins/websearch.edn"
   "../shared/plugins/actors.edn"
+  "../shared/plugins/actor-watch.edn"
   "../shared/plugins/apifany.edn"
   ]
 
