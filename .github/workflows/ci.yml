@@ -33,6 +33,9 @@ jobs:
           node-version: "22"
           cache: npm
 
+      - name: Use HTTPS for locked GitHub dependencies
+        run: git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+
       - name: Install locked JavaScript dependencies
         run: npm ci
 
