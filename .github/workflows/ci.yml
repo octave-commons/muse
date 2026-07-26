@@ -40,14 +40,17 @@ jobs:
         run: npm install --ignore-scripts --no-audit --no-fund
 
       - name: Compile and run ClojureScript tests
-        run: |
-          set -o pipefail
-          npx shadow-cljs compile test 2>&1 | tee test.log
+        run: npx shadow-cljs compile test 2>&1 | tee test.log
 
-      - name: Upload test log
+      - name: Verify ClojureScript assertions
+        run: grep -q "0 failures, 0 errors." test.log
+
+      - name: Upload CI evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cljs-test-log
-          path: test.log
+          name: ci-evidence
+          path: |
+            test.log
+            package-lock.json
           if-no-files-found: error
