@@ -13,8 +13,10 @@
             [promesa.core :as p]))
 
 (def watch-window-ms 1000)
+(def terminal-lock-poll-ms 5)
 
 (defonce ^:private active-watches (atom #{}))
+(defonce ^:private terminal-claims (atom #{}))
 
 (declare start!)
 
@@ -31,8 +33,17 @@
                 (:event/type %))
     events)))
 
+(defn- terminal-status
+  [event]
+  (case (:event/type event)
+    "watch.met" "met"
+    "watch.cancelled" "cancelled"
+    "watch.failed" "failed"
+    nil))
+
 (defn snapshot
-  "Resolve the current durable watch state."
+  "Resolve the current durable watch state. A terminal ledger event takes
+   precedence over a stale registry projection after an interrupted write."
   [watch-id]
   (p/let [meta   (actor/actor-meta watch-id)
           events (actor/mailbox watch-id)]
@@ -43,13 +54,58 @@
       (cond-> {:watch-id        watch-id
                :actor-id        (->actor-id (:watch/target meta))
                :subscriber-id   (->actor-id (:watch/subscriber meta))
-               :status          (or (:watch/status meta) "pending")
+               :status          (or (terminal-status terminal)
+                                    (:watch/status meta)
+                                    "pending")
                :condition       (:watch/condition meta)
                :cursor          (:watch/cursor meta)
                :registration-id (:watch/registration-id meta)}
         (:count payload) (assoc :count (:count payload))
         (:event payload) (assoc :event (:event payload))
         (:message payload) (assoc :message (:message payload))))))
+
+(defn- try-claim-terminal!
+  [watch-id]
+  (loop []
+    (let [claimed @terminal-claims]
+      (cond
+        (contains? claimed watch-id)
+        false
+
+        (compare-and-set! terminal-claims claimed (conj claimed watch-id))
+        true
+
+        :else
+        (recur)))))
+
+(defn- acquire-terminal!
+  "Resolve after acquiring the process-local terminal transition claim. Every
+   terminal path re-checks the durable ledger after acquiring it, so an
+   interrupted prior transition is reconciled rather than duplicated."
+  [watch-id]
+  (js/Promise.
+   (fn [resolve _reject]
+     (letfn [(attempt []
+               (if (try-claim-terminal! watch-id)
+                 (resolve true)
+                 (js/setTimeout attempt terminal-lock-poll-ms)))]
+       (attempt)))))
+
+(defn- with-terminal-lock
+  [watch-id transition]
+  (p/let [_ (acquire-terminal! watch-id)]
+    (-> (p/let [result (transition)] result)
+        (p/finally (fn [_ _]
+                     (swap! terminal-claims disj watch-id))))))
+
+(defn- reconcile-terminal!
+  [watch-id meta terminal]
+  (let [status (terminal-status terminal)]
+    (p/let [_ (when (and status (not= status (:watch/status meta)))
+                (actor/spawn! watch-id
+                              {:watch/status       status
+                               :watch/completed-at (envelope/now-iso)}))]
+      (snapshot watch-id))))
 
 (defn- terminal-envelope
   [meta event-type payload]
@@ -87,52 +143,72 @@
 
 (defn- fulfill!
   [watch-id result]
-  (p/let [meta (actor/actor-meta watch-id)]
-    (if (not= "pending" (:watch/status meta))
-      (snapshot watch-id)
-      (let [payload {:watch/id (:watch/id meta)
-                     :actor/id (:watch/target meta)
-                     :event    (:event result)
-                     :count    (:count result)}
-            {:keys [event-id envelope]} (terminal-envelope meta "watch.met" payload)]
-        (p/let [_ (actor/send! watch-id watch-id envelope)
-                _ (actor/spawn! watch-id
-                                {:watch/status       "met"
-                                 :watch/completed-at (envelope/now-iso)})
-                _ (notify-subscriber! watch-id meta event-id payload)]
-          (snapshot watch-id))))))
+  (with-terminal-lock
+   watch-id
+   (fn []
+     (p/let [meta   (actor/actor-meta watch-id)
+             events (actor/mailbox watch-id)]
+       (if-let [terminal (terminal-event events)]
+         (reconcile-terminal! watch-id meta terminal)
+         (if (not= "pending" (:watch/status meta))
+           (snapshot watch-id)
+           (let [payload (cond-> {:watch/id (:watch/id meta)
+                                  :actor/id (:watch/target meta)
+                                  :count    (:count result)}
+                           (:event result) (assoc :event (:event result)))
+                 {:keys [event-id envelope]}
+                 (terminal-envelope meta "watch.met" payload)]
+             (p/let [_ (actor/send! watch-id watch-id envelope)
+                     _ (actor/spawn! watch-id
+                                     {:watch/status       "met"
+                                      :watch/completed-at (envelope/now-iso)})
+                     _ (notify-subscriber! watch-id meta event-id payload)]
+               (snapshot watch-id)))))))))
 
 (defn- fail!
   [watch-id error]
-  (p/let [meta (actor/actor-meta watch-id)]
-    (if (or (nil? meta) (not= "pending" (:watch/status meta)))
-      nil
-      (let [payload {:watch/id (:watch/id meta)
-                     :actor/id (:watch/target meta)
-                     :message  (or (.-message error) (str error))}
-            {:keys [envelope]} (terminal-envelope meta "watch.failed" payload)]
-        (p/let [_ (actor/send! watch-id watch-id envelope)
-                _ (actor/spawn! watch-id
-                                {:watch/status       "failed"
-                                 :watch/completed-at (envelope/now-iso)})]
-          (snapshot watch-id))))))
+  (with-terminal-lock
+   watch-id
+   (fn []
+     (p/let [meta   (actor/actor-meta watch-id)
+             events (when meta (actor/mailbox watch-id))]
+       (cond
+         (nil? meta)
+         nil
+
+         (terminal-event events)
+         (reconcile-terminal! watch-id meta (terminal-event events))
+
+         (not= "pending" (:watch/status meta))
+         nil
+
+         :else
+         (let [payload {:watch/id (:watch/id meta)
+                        :actor/id (:watch/target meta)
+                        :message  (or (.-message error) (str error))}
+               {:keys [envelope]}
+               (terminal-envelope meta "watch.failed" payload)]
+           (p/let [_ (actor/send! watch-id watch-id envelope)
+                   _ (actor/spawn! watch-id
+                                   {:watch/status       "failed"
+                                    :watch/completed-at (envelope/now-iso)})]
+             (snapshot watch-id))))))))
 
 (defn evaluate!
-  "Evaluate one pending watch against the current target mailbox. Fulfillment
-   is appended to the watch ledger exactly once."
+  "Evaluate one pending watch against the current target mailbox. Terminal
+   writes are serialized per watch-id and re-check the durable ledger before
+   appending, preserving the exactly-once terminal-event invariant."
   [watch-id]
-  (p/let [meta (actor/actor-meta watch-id)]
-    (when-not meta
-      (throw (ex-info "Watch not found" {:watch-id watch-id})))
-    (if (domain/terminal? (:watch/status meta))
-      (snapshot watch-id)
-      (p/let [events (actor/mailbox (->actor-id (:watch/target meta)))]
-        (let [result (domain/evaluate (:watch/condition meta)
-                                     (:watch/cursor meta)
+  (p/let [state (snapshot watch-id)]
+    (if (domain/terminal? (:status state))
+      state
+      (p/let [events (actor/mailbox (:actor-id state))]
+        (let [result (domain/evaluate (:condition state)
+                                     (:cursor state)
                                      events)]
           (if (= "met" (:status result))
             (fulfill! watch-id result)
-            (snapshot watch-id)))))))
+            state))))))
 
 (defn- run-loop!
   [watch-id]
@@ -203,19 +279,26 @@
   "Append watch cancellation. Background evaluation observes the terminal
    registry projection and stops without fulfilling the watch."
   [watch-id]
-  (p/let [meta (actor/actor-meta watch-id)]
-    (when-not meta
-      (throw (ex-info "Watch not found" {:watch-id watch-id})))
-    (if (domain/terminal? (:watch/status meta))
-      (snapshot watch-id)
-      (let [payload {:watch/id (:watch/id meta)
-                     :actor/id (:watch/target meta)}
-            {:keys [envelope]} (terminal-envelope meta "watch.cancelled" payload)]
-        (p/let [_ (actor/send! watch-id watch-id envelope)
-                _ (actor/spawn! watch-id
-                                {:watch/status       "cancelled"
-                                 :watch/completed-at (envelope/now-iso)})]
-          (snapshot watch-id))))))
+  (with-terminal-lock
+   watch-id
+   (fn []
+     (p/let [meta   (actor/actor-meta watch-id)
+             events (actor/mailbox watch-id)]
+       (when-not meta
+         (throw (ex-info "Watch not found" {:watch-id watch-id})))
+       (if-let [terminal (terminal-event events)]
+         (reconcile-terminal! watch-id meta terminal)
+         (if (domain/terminal? (:watch/status meta))
+           (snapshot watch-id)
+           (let [payload {:watch/id (:watch/id meta)
+                          :actor/id (:watch/target meta)}
+                 {:keys [envelope]}
+                 (terminal-envelope meta "watch.cancelled" payload)]
+             (p/let [_ (actor/send! watch-id watch-id envelope)
+                     _ (actor/spawn! watch-id
+                                     {:watch/status       "cancelled"
+                                      :watch/completed-at (envelope/now-iso)})]
+               (snapshot watch-id)))))))))
 
 (defn resume-pending!
   "Restart background evaluation for durable pending watches."
