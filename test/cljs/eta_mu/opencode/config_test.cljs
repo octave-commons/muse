@@ -7,6 +7,7 @@
             [eta-mu.dsl.normalize :as dsl.normalize]
             [eta-mu.dsl.profile :as dsl.profile]
             [eta-mu.opencode.config :as config]
+            [plugins.actor-watch :as actor-watch]
             [plugins.actors :as actors]
             [plugins.apifany :as apifany]
             [plugins.edn-ledger :as edn-ledger]
@@ -18,7 +19,8 @@
 (def loaded (config/load-config ".ημ/config/opencode/root.edn"))
 
 (def resource-table
-  {'plugins.actors/plugin           actors/plugin
+  {'plugins.actor-watch/plugin       actor-watch/plugin
+   'plugins.actors/plugin           actors/plugin
    'plugins.apifany/plugin          apifany/plugin
    'plugins.edn-ledger/plugin       edn-ledger/plugin
    'plugins.kanban-gate/plugin      kanban-gate/plugin
@@ -41,6 +43,7 @@
           'plugins.edn-ledger/plugin
           'plugins.websearch/plugin
           'plugins.actors/plugin
+          'plugins.actor-watch/plugin
           'plugins.apifany/plugin
           'plugins.kanban-gate/plugin]
          (config/resources loaded))))
@@ -48,14 +51,18 @@
 (deftest exposure-linking
   (let [registry (config/apply-exposure loaded resource-table)]
     (testing "all exposed tools have real function handlers"
-      (is (= 34 (count (:tools registry))))
+      (is (= 36 (count (:tools registry))))
       (is (every? fn? (map :handler (:tools registry)))))
     (testing "plugin init carried into the registry"
-      (is (= [actors/init! apifany/init!] (:inits registry))))
+      (is (= [actors/init! actor-watch/init! apifany/init!] (:inits registry))))
     (testing "default names follow the namespace_name convention"
       (let [names (set (map :name (:tools registry)))]
         (is (contains? names "muse_spawn"))
         (is (contains? names "phase_list_active"))
+        (is (contains? names "actor_watch"))
+        (is (contains? names "actor_watch_status"))
+        (is (contains? names "actor_watch_cancel"))
+        (is (not (contains? names "actor_monitor")))
         (is (contains? names "apifany_read_mailbox"))
         (is (contains? names "receipt_river"))
         (is (contains? names "edn_ledger"))
@@ -91,9 +98,9 @@
                      (dsl.profile/apply-profile (config/active-profile loaded))
                      dsl.normalize/validate-registry!
                      dsl.compile/compile-adapter)]
-    (is (= 34 (count (:tools adapter))))
+    (is (= 36 (count (:tools adapter))))
     (is (every? string? (map :name (:tools adapter))))
-    (is (= 2 (count (:inits adapter))))))
+    (is (= 3 (count (:inits adapter))))))
 
 (deftest ci-profile-restricts
   (let [registry (->> (config/apply-exposure loaded resource-table)
