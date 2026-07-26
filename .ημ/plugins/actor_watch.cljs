@@ -55,13 +55,14 @@
 
 (deftool actor-watch-status
   {:id          :actor/watch_status
-   :description "Read and re-evaluate a durable actor watch without blocking.
-                 Returns pending, met, cancelled, or failed."
+   :description "Read a durable actor watch without blocking or competing with
+                 its background evaluator. Returns pending, met, cancelled, or
+                 failed."
    :args        [:map [:watch_id :string]]
    :tags        #{:actor :actors}}
   [{:keys [watch_id]} _ctx]
   (p/let [_     (backend/ensure!)
-          state (watch/evaluate! (keyword watch_id))]
+          state (watch/snapshot (keyword watch_id))]
     (watch-view state)))
 
 (deftool actor-watch-cancel
