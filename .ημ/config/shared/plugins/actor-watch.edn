@@ -1,0 +1,2 @@
+{:resource plugins.actor-watch/plugin
+ :expose   [:actor/watch :actor/watch_status :actor/watch_cancel]}
