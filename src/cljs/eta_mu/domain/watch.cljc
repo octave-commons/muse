@@ -18,8 +18,8 @@
    include-existing=true intentionally starts at the beginning."
   [events include-existing]
   (let [events (vec (or events []))]
-    {:after-id        (when-not include-existing (:event/id (peek events)))
-     :baseline-count (if include-existing 0 (count events))
+    {:after-id         (when-not include-existing (:event/id (peek events)))
+     :baseline-count   (if include-existing 0 (count events))
      :include-existing (boolean include-existing)}))
 
 (defn- event-index
@@ -60,7 +60,8 @@
         visible        (events-after events watch-cursor)
         event-required (or (mailbox/event-condition? condition)
                            (nil? (:min-count condition)))
-        event-hit      (first (filter (mailbox/event-pred condition) visible))
+        event-hit      (when event-required
+                         (first (filter (mailbox/event-pred condition) visible)))
         count-met      (or (nil? (:min-count condition))
                            (>= (count events) (:min-count condition)))
         met            (and count-met
