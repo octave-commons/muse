@@ -1,6 +1,7 @@
+;; SPDX-License-Identifier: LGPL-3.0-or-later
 (ns eta-mu.dsl.normalize
-  "Converts hiccup-style DSL forms into the canonical registry shape and
-   merges fragments into a registry. Pure functions, host-agnostic."
+  "Normalizes DSL forms, merges resources, and links separated descriptors
+   into the legacy flat tool projection. Pure and host-agnostic."
   (:require [eta-mu.dsl :as dsl]))
 
 ;; ---------------------------------------------------------------------------
@@ -44,44 +45,8 @@
   (normalize-entry form))
 
 ;; ---------------------------------------------------------------------------
-;; Registry operations
+;; Descriptor linking
 ;; ---------------------------------------------------------------------------
-
-(def empty-registry
-  {:tools [] :hooks [] :inits [] :plugins []})
-
-(defn merge-fragments
-  "Merge plugin/tool/hook fragments into a single registry.
-   Collections are concatenated, not merged-by-key. Plugin :init fns are
-   gathered into :inits."
-  [& fragments]
-  (reduce
-   (fn [out fragment]
-     (let [plugin?  (= :plugin (:ημ/kind fragment))
-           entries  (cond
-                      (vector? fragment) fragment
-                      plugin? (concat (:entries fragment)
-                                      (:tools fragment)
-                                      (:hooks fragment))
-                      :else [fragment])
-           out      (cond-> out
-                      plugin? (update :plugins conj fragment)
-                      (and plugin? (:init fragment))
-                      (update :inits conj (:init fragment)))]
-       (reduce
-        (fn [acc entry]
-          (case (:ημ/kind entry)
-            :tool   (update acc :tools conj entry)
-            :hook   (update acc :hooks conj entry)
-            :plugin (-> acc
-                        (update :tools into (:tools entry))
-                        (update :hooks into (:hooks entry))
-                        (update :plugins conj entry))
-            acc))
-        out
-        entries)))
-   empty-registry
-   fragments))
 
 (defn duplicate-ids
   "Return a sorted sequence of IDs that appear more than once."
@@ -92,11 +57,123 @@
        (keep (fn [[id n]] (when (< 1 n) id)))
        sort))
 
+(defn- index-definitions!
+  [kind definitions]
+  (let [duplicates (vec (duplicate-ids definitions))]
+    (when (seq duplicates)
+      (throw (ex-info "Duplicate DSL descriptor IDs"
+                      {:kind kind
+                       :duplicates duplicates})))
+    (into {} (map (juxt :id identity)) definitions)))
+
+(defn- referenced!
+  [kind reference definitions exposure]
+  (or (get definitions reference)
+      (throw (ex-info "Exposure references an unknown descriptor"
+                      {:kind kind
+                       :reference reference
+                       :exposure (:id exposure)
+                       :known (sort (keys definitions))}))))
+
+(defn link-descriptors
+  "Link registry exposures into legacy flat tools while retaining the source
+   descriptor collections. Idempotent: generated tools carry an internal
+   exposure provenance key and are not emitted twice."
+  [registry]
+  (let [capabilities   (vec (or (:capabilities registry) []))
+        implementations (vec (or (:implementations registry) []))
+        exposures      (vec (or (:exposures registry) []))]
+    (if (empty? exposures)
+      registry
+      (let [capability-index    (index-definitions! :capability capabilities)
+            implementation-index (index-definitions! :implementation implementations)
+            linked-exposures    (into #{} (keep :ημ/exposure-id) (:tools registry))
+            linked-tools
+            (into []
+                  (comp
+                   (remove #(contains? linked-exposures (:id %)))
+                   (map (fn [exposure]
+                          (let [capability-definition
+                                (referenced! :capability
+                                             (:capability exposure)
+                                             capability-index
+                                             exposure)
+                                implementation-definition
+                                (referenced! :implementation
+                                             (:implementation exposure)
+                                             implementation-index
+                                             exposure)]
+                            (assoc (dsl/link-tool capability-definition
+                                                  implementation-definition
+                                                  exposure)
+                                   :ημ/exposure-id (:id exposure))))))
+                  exposures)]
+        (update registry :tools (fnil into []) linked-tools)))))
+
+;; ---------------------------------------------------------------------------
+;; Registry operations
+;; ---------------------------------------------------------------------------
+
+(def empty-registry
+  {:tools [] :hooks [] :inits [] :plugins []})
+
+(defn- plugin-entries
+  [plugin]
+  (concat (:entries plugin)
+          (:tools plugin)
+          (:hooks plugin)
+          (:capabilities plugin)
+          (:implementations plugin)
+          (:exposures plugin)))
+
+(defn- add-entry
+  [registry entry]
+  (case (:ημ/kind entry)
+    :tool          (update registry :tools conj entry)
+    :hook          (update registry :hooks conj entry)
+    :capability    (update registry :capabilities (fnil conj []) entry)
+    :implementation (update registry :implementations (fnil conj []) entry)
+    :exposure      (update registry :exposures (fnil conj []) entry)
+    :plugin        (-> registry
+                       (update :tools into (:tools entry))
+                       (update :hooks into (:hooks entry))
+                       (update :capabilities (fnil into []) (:capabilities entry))
+                       (update :implementations (fnil into []) (:implementations entry))
+                       (update :exposures (fnil into []) (:exposures entry))
+                       (update :plugins conj entry))
+    registry))
+
+(defn merge-fragments
+  "Merge plugin/tool/hook/descriptor fragments into one registry and link any
+   complete capability → implementation → exposure triples into flat tools."
+  [& fragments]
+  (->
+   (reduce
+    (fn [out fragment]
+      (let [plugin? (= :plugin (:ημ/kind fragment))
+            entries (cond
+                      (vector? fragment) fragment
+                      plugin? (plugin-entries fragment)
+                      :else [fragment])
+            out (cond-> out
+                  plugin? (update :plugins conj fragment)
+                  (and plugin? (:init fragment))
+                  (update :inits conj (:init fragment)))]
+        (reduce add-entry out entries)))
+    empty-registry
+    fragments)
+   link-descriptors))
+
 (defn validate-registry!
-  "Validate a merged registry. Throws on duplicate IDs."
-  [{:keys [tools hooks] :as registry}]
-  (let [duplicates (vec (concat (duplicate-ids tools)
-                                (duplicate-ids hooks)))]
+  "Link descriptors and reject duplicate IDs within each definition kind."
+  [registry]
+  (let [{:keys [tools hooks capabilities implementations exposures] :as registry}
+        (link-descriptors registry)
+        duplicates (vec (concat (duplicate-ids tools)
+                                (duplicate-ids hooks)
+                                (duplicate-ids capabilities)
+                                (duplicate-ids implementations)
+                                (duplicate-ids exposures)))]
     (when (seq duplicates)
       (throw (ex-info "Duplicate DSL IDs in registry"
                       {:duplicates duplicates})))
@@ -115,8 +192,13 @@
                            :known-handlers (sort (keys handlers))}))))
 
 (defn link-registry
-  "Resolve all symbolic handlers in a registry against a handler table."
+  "Resolve symbolic handlers in implementations, linked tools, and hooks."
   [handlers registry]
-  (-> registry
-      (update :tools #(mapv (partial link-handler handlers) %))
-      (update :hooks #(mapv (partial link-handler handlers) %))))
+  (let [registry (cond-> registry
+                   (:implementations registry)
+                   (update :implementations
+                           #(mapv (partial link-handler handlers) %)))]
+    (-> registry
+        link-descriptors
+        (update :tools #(mapv (partial link-handler handlers) %))
+        (update :hooks #(mapv (partial link-handler handlers) %)))))
