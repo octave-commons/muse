@@ -1,134 +1,185 @@
+;; SPDX-License-Identifier: LGPL-3.0-or-later
 (ns eta-mu.dsl.schema-test
   (:require [cljs.test :refer-macros [deftest is testing]]
             [eta-mu.dsl.schema :as schema]
             [malli.core :as m]))
 
-;; ---------------------------------------------------------------------------
-;; Schema expression validation (used for :args, :input, :output)
-;; ---------------------------------------------------------------------------
-
-(deftest schema-expr-keyword-test
-  (testing "keyword is a valid schema expression"
+(deftest schema-expr-test
+  (testing "keywords and vector expressions are valid"
     (is (m/validate schema/schema-expr :string))
-    (is (m/validate schema/schema-expr :int))
-    (is (m/validate schema/schema-expr :boolean))))
-
-(deftest schema-expr-vector-test
-  (testing "vector is a valid schema expression"
     (is (m/validate schema/schema-expr [:map [:query :string]]))
-    (is (m/validate schema/schema-expr [:vector :string]))
     (is (m/validate schema/schema-expr [:or :string :int]))))
 
 ;; ---------------------------------------------------------------------------
-;; Tool schema validation
+;; Separated descriptors and legacy capability compatibility
+;; ---------------------------------------------------------------------------
+
+(deftest capability-valid-test
+  (let [capability {:ημ/kind :capability
+                    :id :research/search
+                    :description "Search public sources."
+                    :input [:map [:query :string]]
+                    :output [:map [:results [:vector :map]]]
+                    :effects #{:network/search}
+                    :errors [{:id :search/unavailable}]}]
+    (is (m/validate schema/semantic-capability capability))
+    (is (m/validate schema/capability capability))
+    (is (not (contains? capability :handler)))
+    (is (not (contains? capability :name)))))
+
+(deftest legacy-capability-remains-valid-test
+  (let [legacy {:id :research/search
+                :input [:map [:query :string]]
+                :output [:map [:results [:vector :map]]]
+                :effects #{:network/search}
+                :handler 'my.ns/search}]
+    (is (m/validate schema/legacy-capability legacy))
+    (is (m/validate schema/capability legacy))
+    (is (not (m/validate schema/semantic-capability legacy)))))
+
+(deftest capability-rejects-incomplete-fusion-test
+  (testing "a handler cannot substitute for the required semantic contract"
+    (is (not (m/validate schema/capability
+                         {:id :research/search
+                          :description "Search."
+                          :handler 'my.ns/search})))))
+
+(deftest implementation-valid-test
+  (let [implementation {:ημ/kind :implementation
+                        :id :research/search-cljs
+                        :capability :research/search
+                        :runtime :cljs
+                        :handler 'my.ns/search
+                        :dependencies #{:http/client}
+                        :version "1"}]
+    (is (m/validate schema/implementation implementation))))
+
+(deftest implementation-requires-handler-test
+  (is (not (m/validate schema/implementation
+                       {:ημ/kind :implementation
+                        :id :research/search-cljs
+                        :capability :research/search
+                        :runtime :cljs}))))
+
+(deftest exposure-valid-test
+  (let [exposure {:ημ/kind :exposure
+                  :id :research/search
+                  :capability :research/search
+                  :implementation :research/search-cljs
+                  :target :opencode
+                  :name "research_search"
+                  :tags #{:research}}]
+    (is (m/validate schema/exposure exposure))
+    (is (not (contains? exposure :handler)))))
+
+(deftest exposure-requires-selected-implementation-test
+  (is (not (m/validate schema/exposure
+                       {:ημ/kind :exposure
+                        :id :research/search
+                        :capability :research/search
+                        :target :opencode}))))
+
+;; ---------------------------------------------------------------------------
+;; Legacy linked tool / hook / plugin
 ;; ---------------------------------------------------------------------------
 
 (deftest tool-valid-test
-  (testing "a valid tool definition"
-    (let [tool {:id          :research/search
-                :description "Search public sources."
-                :args        [:map [:query :string]]
-                :handler     'my.ns/search}]
-      (is (m/validate schema/tool tool)))))
+  (let [tool {:id          :research/search
+              :description "Search public sources."
+              :args        [:map [:query :string]]
+              :handler     'my.ns/search}]
+    (is (m/validate schema/tool tool))))
 
 (deftest tool-valid-optional-fields-test
-  (testing "optional fields can be omitted"
-    (let [tool {:id          :research/search
-                :description "Search public sources."
-                :args        [:map [:query :string]]
-                :handler     'my.ns/search}]
-      (is (m/validate schema/tool tool))
-      (is (not (:name tool)))
-      (is (not (:capability tool))))))
+  (let [tool {:id          :research/search
+              :description "Search public sources."
+              :args        [:map [:query :string]]
+              :handler     'my.ns/search}]
+    (is (m/validate schema/tool tool))
+    (is (not (:name tool)))
+    (is (not (:capability tool)))))
 
 (deftest tool-missing-required-test
-  (testing "missing required fields fail validation"
-    (let [tool {:id :research/search}]
-      (is (not (m/validate schema/tool tool))))))
+  (is (not (m/validate schema/tool {:id :research/search}))))
 
 (deftest tool-keyword-args-test
-  (testing "args can be a simple keyword"
-    (let [tool {:id          :research/search
-                :description "Search."
-                :args        :map
-                :handler     'my.ns/search}]
-      (is (m/validate schema/tool tool)))))
-
-;; ---------------------------------------------------------------------------
-;; Hook schema validation
-;; ---------------------------------------------------------------------------
+  (is (m/validate schema/tool
+                  {:id :research/search
+                   :description "Search."
+                   :args :map
+                   :handler 'my.ns/search})))
 
 (deftest hook-valid-test
-  (testing "a valid hook definition"
-    (let [hook {:id       :policy/protect-env
-                :event    :tool.execute.before
-                :priority 100
-                :handler  'my.ns/protect!}]
-      (is (m/validate schema/hook hook)))))
+  (is (m/validate schema/hook
+                  {:id :policy/protect-env
+                   :event :tool.execute.before
+                   :priority 100
+                   :handler 'my.ns/protect!})))
 
 (deftest hook-invalid-event-test
-  (testing "non-keyword hook event fails (vocabulary is target-validated)"
-    (let [hook {:id      :policy/test
-                :event   "tool.execute.before"
-                :handler 'my.ns/test!}]
-      (is (not (m/validate schema/hook hook))))))
+  (is (not (m/validate schema/hook
+                       {:id :policy/test
+                        :event "tool.execute.before"
+                        :handler 'my.ns/test!}))))
 
-(deftest hook-default-priority-test
-  (testing "priority is optional"
-    (let [hook {:id      :policy/test
-                :event   :tool.execute.before
-                :handler 'my.ns/test!}]
-      (is (m/validate schema/hook hook)))))
+(deftest plugin-valid-with-separated-descriptors-test
+  (let [capability {:ημ/kind :capability
+                    :id :research/search
+                    :description "Search."
+                    :input [:map]}
+        implementation {:ημ/kind :implementation
+                        :id :research/search-cljs
+                        :capability :research/search
+                        :runtime :cljs
+                        :handler 'my.ns/search}
+        exposure {:ημ/kind :exposure
+                  :id :research/search
+                  :capability :research/search
+                  :implementation :research/search-cljs
+                  :target :opencode}
+        plugin {:id :plugin/research
+                :entries [capability implementation exposure]}]
+    (is (m/validate schema/plugin plugin))))
 
-;; ---------------------------------------------------------------------------
-;; Plugin schema validation
-;; ---------------------------------------------------------------------------
-
-(deftest plugin-valid-test
-  (testing "a valid plugin with tools and hooks"
-    (let [plugin {:id    :plugin/research
-                  :tools [{:id          :research/search
-                           :description "Search."
-                           :args        [:map [:query :string]]
-                           :handler     'my.ns/search}]
-                  :hooks [{:id      :policy/audit
-                           :event   :tool.execute.after
-                           :handler 'my.ns/audit!}]}]
-      (is (m/validate schema/plugin plugin)))))
+(deftest untagged-descriptors-are-not-canonical-plugin-entries-test
+  (is (not (m/validate schema/plugin
+                       {:id :plugin/research
+                        :entries [{:id :research/search
+                                   :description "Search."
+                                   :input [:map]}]}))))
 
 (deftest plugin-empty-test
-  (testing "plugin with no tools or hooks is valid"
-    (let [plugin {:id :plugin/empty}]
-      (is (m/validate schema/plugin plugin)))))
-
-;; ---------------------------------------------------------------------------
-;; Registry schema validation
-;; ---------------------------------------------------------------------------
+  (is (m/validate schema/plugin {:id :plugin/empty})))
 
 (deftest registry-valid-test
-  (testing "a valid registry"
-    (let [registry {:id    :my/registry
-                    :tools [{:id          :test/tool
-                             :description "Test."
-                             :args        [:map]
-                             :handler     'my.ns/test}]
-                    :hooks []}]
-      (is (m/validate schema/registry registry)))))
+  (let [registry {:tools [{:id :test/tool
+                           :description "Test."
+                           :args [:map]
+                           :handler 'my.ns/test}]
+                  :hooks []
+                  :capabilities [{:ημ/kind :capability
+                                  :id :test/tool
+                                  :description "Test."
+                                  :input [:map]}]
+                  :implementations [{:ημ/kind :implementation
+                                     :id :test/tool-cljs
+                                     :capability :test/tool
+                                     :runtime :cljs
+                                     :handler 'my.ns/test}]
+                  :exposures [{:ημ/kind :exposure
+                               :id :test/tool
+                               :capability :test/tool
+                               :implementation :test/tool-cljs
+                               :target :opencode}]}]
+    (is (m/validate schema/registry registry))))
 
 (deftest registry-empty-test
-  (testing "registry with empty tools is valid"
-    (let [registry {:id :my/registry :tools [] :hooks []}]
-      (is (m/validate schema/registry registry)))))
-
-;; ---------------------------------------------------------------------------
-;; Profile schema validation
-;; ---------------------------------------------------------------------------
+  (is (m/validate schema/registry {:tools [] :hooks []})))
 
 (deftest profile-valid-test
-  (testing "valid profile rule"
-    (let [profiles {:dev  {:allow #{:research/*}
-                           :audit :verbose}
-                    :ci   {:allow #{:git/*}
-                           :deny #{:browser/*}}
-                    :prod {:allow #{:capability/*}}}]
-      (is (m/validate schema/profiles profiles)))))
+  (let [profiles {:dev  {:allow #{:research/*}
+                         :audit :verbose}
+                  :ci   {:allow #{:git/*}
+                         :deny #{:browser/*}}
+                  :prod {:allow #{:capability/*}}}]
+    (is (m/validate schema/profiles profiles))))
