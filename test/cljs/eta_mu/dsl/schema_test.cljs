@@ -11,7 +11,7 @@
     (is (m/validate schema/schema-expr [:or :string :int]))))
 
 ;; ---------------------------------------------------------------------------
-;; Separated descriptors
+;; Separated descriptors and legacy capability compatibility
 ;; ---------------------------------------------------------------------------
 
 (deftest capability-valid-test
@@ -22,12 +22,23 @@
                     :output [:map [:results [:vector :map]]]
                     :effects #{:network/search}
                     :errors [{:id :search/unavailable}]}]
+    (is (m/validate schema/semantic-capability capability))
     (is (m/validate schema/capability capability))
     (is (not (contains? capability :handler)))
     (is (not (contains? capability :name)))))
 
-(deftest capability-rejects-executable-fusion-test
-  (testing "handler cannot substitute for the required semantic input"
+(deftest legacy-capability-remains-valid-test
+  (let [legacy {:id :research/search
+                :input [:map [:query :string]]
+                :output [:map [:results [:vector :map]]]
+                :effects #{:network/search}
+                :handler 'my.ns/search}]
+    (is (m/validate schema/legacy-capability legacy))
+    (is (m/validate schema/capability legacy))
+    (is (not (m/validate schema/semantic-capability legacy)))))
+
+(deftest capability-rejects-incomplete-fusion-test
+  (testing "a handler cannot substitute for the required semantic contract"
     (is (not (m/validate schema/capability
                          {:id :research/search
                           :description "Search."
