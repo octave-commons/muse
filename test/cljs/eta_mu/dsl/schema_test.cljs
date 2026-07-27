@@ -56,7 +56,8 @@
 
 (deftest implementation-requires-handler-test
   (is (not (m/validate schema/implementation
-                       {:id :research/search-cljs
+                       {:ημ/kind :implementation
+                        :id :research/search-cljs
                         :capability :research/search
                         :runtime :cljs}))))
 
@@ -73,7 +74,8 @@
 
 (deftest exposure-requires-selected-implementation-test
   (is (not (m/validate schema/exposure
-                       {:id :research/search
+                       {:ημ/kind :exposure
+                        :id :research/search
                         :capability :research/search
                         :target :opencode}))))
 
@@ -121,20 +123,30 @@
                         :handler 'my.ns/test!}))))
 
 (deftest plugin-valid-with-separated-descriptors-test
-  (let [capability {:id :research/search
+  (let [capability {:ημ/kind :capability
+                    :id :research/search
                     :description "Search."
                     :input [:map]}
-        implementation {:id :research/search-cljs
+        implementation {:ημ/kind :implementation
+                        :id :research/search-cljs
                         :capability :research/search
                         :runtime :cljs
                         :handler 'my.ns/search}
-        exposure {:id :research/search
+        exposure {:ημ/kind :exposure
+                  :id :research/search
                   :capability :research/search
                   :implementation :research/search-cljs
                   :target :opencode}
         plugin {:id :plugin/research
                 :entries [capability implementation exposure]}]
     (is (m/validate schema/plugin plugin))))
+
+(deftest untagged-descriptors-are-not-canonical-plugin-entries-test
+  (is (not (m/validate schema/plugin
+                       {:id :plugin/research
+                        :entries [{:id :research/search
+                                   :description "Search."
+                                   :input [:map]}]}))))
 
 (deftest plugin-empty-test
   (is (m/validate schema/plugin {:id :plugin/empty})))
@@ -145,14 +157,17 @@
                            :args [:map]
                            :handler 'my.ns/test}]
                   :hooks []
-                  :capabilities [{:id :test/tool
+                  :capabilities [{:ημ/kind :capability
+                                  :id :test/tool
                                   :description "Test."
                                   :input [:map]}]
-                  :implementations [{:id :test/tool-cljs
+                  :implementations [{:ημ/kind :implementation
+                                     :id :test/tool-cljs
                                      :capability :test/tool
                                      :runtime :cljs
                                      :handler 'my.ns/test}]
-                  :exposures [{:id :test/tool
+                  :exposures [{:ημ/kind :exposure
+                               :id :test/tool
                                :capability :test/tool
                                :implementation :test/tool-cljs
                                :target :opencode}]}]
