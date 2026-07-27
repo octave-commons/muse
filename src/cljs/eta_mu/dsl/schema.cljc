@@ -2,9 +2,9 @@
 (ns eta-mu.dsl.schema
   "Malli schemas for Muse's host-agnostic descriptor and adapter shapes.
 
-   Capability, implementation, and exposure are separate records. The legacy
-   flat tool schema remains because current target adapters consume the linked
-   projection produced by eta-mu.dsl/link-tool."
+   New descriptor registries use semantic-capability, implementation, and
+   exposure as separate records. `capability` remains a compatibility union so
+   callers validating the historical fused capability shape do not break."
   (:require [malli.core :as m]
             [malli.error :as me]))
 
@@ -27,10 +27,10 @@
    [:column :int]])
 
 ;; ---------------------------------------------------------------------------
-;; Separated descriptors
+;; Capability compatibility and separated descriptors
 ;; ---------------------------------------------------------------------------
 
-(def capability
+(def semantic-capability
   "Semantic meaning and contract. Never carries an executable handler or a
    host-facing name."
   [:map
@@ -47,8 +47,28 @@
      [:description {:optional true} :string]]]
    [:source {:optional true} source-location]])
 
+(def legacy-capability
+  "Historical fused capability schema retained only for validation
+   compatibility during migration. New code should use semantic-capability plus
+   implementation and exposure."
+  [:map
+   [:id :keyword]
+   [:input schema-expr]
+   [:output schema-expr]
+   [:effects {:optional true} [:set :keyword]]
+   [:handler handler]
+   [:docs {:optional true}
+    [:map
+     [:summary :string]
+     [:description {:optional true} :string]]]])
+
+(def capability
+  "Compatibility union accepting both the new separated semantic descriptor
+   and the historical fused capability map."
+  [:or semantic-capability legacy-capability])
+
 (def implementation
-  "Executable binding for one capability."
+  "Executable binding for one semantic capability."
   [:map
    [:ημ/kind {:optional true} [:= :implementation]]
    [:id :keyword]
