@@ -1,44 +1,24 @@
+;; SPDX-License-Identifier: LGPL-3.0-or-later
 (ns eta-mu.dsl.schema
-  "Malli schemas for the eta-mu DSL's canonical data shapes.
-   Host-agnostic: hook events are open keywords here — each target adapter
-   validates against the event vocabulary its host actually supports."
+  "Malli schemas for Muse's host-agnostic descriptor and adapter shapes.
+
+   Capability, implementation, and exposure are separate records. The legacy
+   flat tool schema remains because current target adapters consume the linked
+   projection produced by eta-mu.dsl/link-tool."
   (:require [malli.core :as m]
             [malli.error :as me]))
 
 ;; ---------------------------------------------------------------------------
-;; Schema expressions (used for :args, :input, :output)
+;; Schema expressions and handlers
 ;; ---------------------------------------------------------------------------
 
 (def schema-expr
-  "A Malli schema expression: keyword or vector.
-   Validates the *shape* of a schema reference, not the schema itself."
+  "A Malli schema expression: keyword or vector."
   [:or :keyword [:vector :any]])
 
 (def handler
-  "A handler: an actual function, or a qualified symbol naming one
-   (resolved by a link step against a handler table)."
+  "An executable function or a qualified symbol resolved during linking."
   [:or fn? :qualified-symbol])
-
-;; ---------------------------------------------------------------------------
-;; Capability schema (host-agnostic contract)
-;; ---------------------------------------------------------------------------
-
-(def capability
-  "A host-agnostic capability definition."
-  [:map
-   [:id :keyword]
-   [:input schema-expr]
-   [:output schema-expr]
-   [:effects {:optional true} [:set :keyword]]
-   [:handler handler]
-   [:docs {:optional true}
-    [:map
-     [:summary :string]
-     [:description {:optional true} :string]]]])
-
-;; ---------------------------------------------------------------------------
-;; Tool / hook / plugin
-;; ---------------------------------------------------------------------------
 
 (def source-location
   [:map
@@ -46,8 +26,60 @@
    [:line :int]
    [:column :int]])
 
+;; ---------------------------------------------------------------------------
+;; Separated descriptors
+;; ---------------------------------------------------------------------------
+
+(def capability
+  "Semantic meaning and contract. Never carries an executable handler or a
+   host-facing name."
+  [:map
+   [:ημ/kind {:optional true} [:= :capability]]
+   [:id :keyword]
+   [:description :string]
+   [:input schema-expr]
+   [:output {:optional true} schema-expr]
+   [:effects {:optional true} [:set :keyword]]
+   [:errors {:optional true} [:vector :any]]
+   [:docs {:optional true}
+    [:map
+     [:summary :string]
+     [:description {:optional true} :string]]]
+   [:source {:optional true} source-location]])
+
+(def implementation
+  "Executable binding for one capability."
+  [:map
+   [:ημ/kind {:optional true} [:= :implementation]]
+   [:id :keyword]
+   [:capability :keyword]
+   [:runtime :keyword]
+   [:handler handler]
+   [:dependencies {:optional true} [:set :keyword]]
+   [:version {:optional true} :string]
+   [:source {:optional true} source-location]])
+
+(def exposure
+  "Target-facing presentation selecting one implementation of one capability."
+  [:map
+   [:ημ/kind {:optional true} [:= :exposure]]
+   [:id :keyword]
+   [:capability :keyword]
+   [:implementation :keyword]
+   [:target :keyword]
+   [:name {:optional true} :string]
+   [:description {:optional true} :string]
+   [:args {:optional true} schema-expr]
+   [:tags {:optional true} [:set :keyword]]
+   [:presentation {:optional true} [:map-of :keyword :any]]
+   [:source {:optional true} source-location]])
+
+;; ---------------------------------------------------------------------------
+;; Linked tool / hook / plugin
+;; ---------------------------------------------------------------------------
+
 (def tool
-  "A tool definition. May reference a capability or carry its own contract."
+  "Legacy flat tool projection consumed by current target adapters."
   [:map
    [:id :keyword]
    [:name {:optional true} :string]
@@ -72,7 +104,7 @@
    [:source {:optional true} source-location]])
 
 (def plugin-entry
-  [:or tool hook])
+  [:or tool hook capability implementation exposure])
 
 (def plugin
   "A plugin: the loadable unit of registration."
@@ -82,10 +114,13 @@
    [:init {:optional true} fn?]
    [:tools {:optional true} [:vector tool]]
    [:hooks {:optional true} [:vector hook]]
+   [:capabilities {:optional true} [:vector capability]]
+   [:implementations {:optional true} [:vector implementation]]
+   [:exposures {:optional true} [:vector exposure]]
    [:entries {:optional true} [:vector plugin-entry]]])
 
 ;; ---------------------------------------------------------------------------
-;; Profiles
+;; Profiles and registry
 ;; ---------------------------------------------------------------------------
 
 (def profile-rule
@@ -98,17 +133,15 @@
 (def profiles
   [:map-of :keyword profile-rule])
 
-;; ---------------------------------------------------------------------------
-;; Registry (the fully merged, validated intermediate representation)
-;; ---------------------------------------------------------------------------
-
 (def registry
   [:map
    [:tools [:vector tool]]
    [:hooks [:vector hook]]
    [:inits {:optional true} [:vector fn?]]
    [:plugins {:optional true} [:vector plugin]]
-   [:capabilities {:optional true} [:vector capability]]])
+   [:capabilities {:optional true} [:vector capability]]
+   [:implementations {:optional true} [:vector implementation]]
+   [:exposures {:optional true} [:vector exposure]]])
 
 ;; ---------------------------------------------------------------------------
 ;; Adapter (post-compilation, still host-agnostic data)
@@ -135,15 +168,12 @@
 ;; ---------------------------------------------------------------------------
 
 (def hiccup-tool
-  "Hiccup form: [:tool {attrs} handler-fn]"
   [:vector [:= :tool] [:map-of :keyword :any] :any])
 
 (def hiccup-hook
-  "Hiccup form: [:hook {attrs} handler-fn]"
   [:vector [:= :hook] [:map-of :keyword :any] :any])
 
 (def hiccup-plugin
-  "Hiccup form: [:plugin {attrs} ...entries]"
   [:vector
    [:= :plugin]
    [:map-of :keyword :any]
@@ -154,7 +184,7 @@
 ;; ---------------------------------------------------------------------------
 
 (defn validate
-  "Returns nil on success, malli explanation map on failure."
+  "Returns nil on success, a Malli explanation map on failure."
   [schema value]
   (when-not (m/validate schema value)
     (m/explain schema value)))
