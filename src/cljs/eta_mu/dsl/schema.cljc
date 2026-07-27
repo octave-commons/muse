@@ -2,15 +2,12 @@
 (ns eta-mu.dsl.schema
   "Malli schemas for Muse's host-agnostic descriptor and adapter shapes.
 
-   New descriptor registries use semantic-capability, implementation, and
-   exposure as separate records. `capability` remains a compatibility union so
-   callers validating the historical fused capability shape do not break."
+   Canonical descriptor registries use tagged semantic-capability,
+   implementation, and exposure records. `capability` remains a standalone
+   compatibility union so callers validating the historical fused shape do not
+   break; legacy fused maps are not canonical registry entries."
   (:require [malli.core :as m]
             [malli.error :as me]))
-
-;; ---------------------------------------------------------------------------
-;; Schema expressions and handlers
-;; ---------------------------------------------------------------------------
 
 (def schema-expr
   "A Malli schema expression: keyword or vector."
@@ -31,10 +28,10 @@
 ;; ---------------------------------------------------------------------------
 
 (def semantic-capability
-  "Semantic meaning and contract. Never carries an executable handler or a
-   host-facing name."
+  "Tagged semantic meaning and contract. Never carries an executable handler or
+   a host-facing name."
   [:map
-   [:ημ/kind {:optional true} [:= :capability]]
+   [:ημ/kind [:= :capability]]
    [:id :keyword]
    [:description :string]
    [:input schema-expr]
@@ -48,9 +45,8 @@
    [:source {:optional true} source-location]])
 
 (def legacy-capability
-  "Historical fused capability schema retained only for validation
-   compatibility during migration. New code should use semantic-capability plus
-   implementation and exposure."
+  "Historical fused capability schema retained only for standalone validation
+   compatibility during migration."
   [:map
    [:id :keyword]
    [:input schema-expr]
@@ -63,14 +59,14 @@
      [:description {:optional true} :string]]]])
 
 (def capability
-  "Compatibility union accepting both the new separated semantic descriptor
-   and the historical fused capability map."
+  "Compatibility union accepting the canonical semantic descriptor or the
+   historical fused capability map."
   [:or semantic-capability legacy-capability])
 
 (def implementation
-  "Executable binding for one semantic capability."
+  "Tagged executable binding for one semantic capability."
   [:map
-   [:ημ/kind {:optional true} [:= :implementation]]
+   [:ημ/kind [:= :implementation]]
    [:id :keyword]
    [:capability :keyword]
    [:runtime :keyword]
@@ -80,9 +76,9 @@
    [:source {:optional true} source-location]])
 
 (def exposure
-  "Target-facing presentation selecting one implementation of one capability."
+  "Tagged target-facing presentation selecting one implementation."
   [:map
-   [:ημ/kind {:optional true} [:= :exposure]]
+   [:ημ/kind [:= :exposure]]
    [:id :keyword]
    [:capability :keyword]
    [:implementation :keyword]
@@ -124,7 +120,7 @@
    [:source {:optional true} source-location]])
 
 (def plugin-entry
-  [:or tool hook capability implementation exposure])
+  [:or tool hook semantic-capability implementation exposure])
 
 (def plugin
   "A plugin: the loadable unit of registration."
@@ -134,14 +130,10 @@
    [:init {:optional true} fn?]
    [:tools {:optional true} [:vector tool]]
    [:hooks {:optional true} [:vector hook]]
-   [:capabilities {:optional true} [:vector capability]]
+   [:capabilities {:optional true} [:vector semantic-capability]]
    [:implementations {:optional true} [:vector implementation]]
    [:exposures {:optional true} [:vector exposure]]
    [:entries {:optional true} [:vector plugin-entry]]])
-
-;; ---------------------------------------------------------------------------
-;; Profiles and registry
-;; ---------------------------------------------------------------------------
 
 (def profile-rule
   [:map
@@ -159,12 +151,12 @@
    [:hooks [:vector hook]]
    [:inits {:optional true} [:vector fn?]]
    [:plugins {:optional true} [:vector plugin]]
-   [:capabilities {:optional true} [:vector capability]]
+   [:capabilities {:optional true} [:vector semantic-capability]]
    [:implementations {:optional true} [:vector implementation]]
    [:exposures {:optional true} [:vector exposure]]])
 
 ;; ---------------------------------------------------------------------------
-;; Adapter (post-compilation, still host-agnostic data)
+;; Adapter
 ;; ---------------------------------------------------------------------------
 
 (def adapter-tool
@@ -183,10 +175,6 @@
    [:inits {:optional true} [:vector fn?]]
    [:permissions {:optional true} [:set :keyword]]])
 
-;; ---------------------------------------------------------------------------
-;; Hiccup DSL forms
-;; ---------------------------------------------------------------------------
-
 (def hiccup-tool
   [:vector [:= :tool] [:map-of :keyword :any] :any])
 
@@ -198,10 +186,6 @@
    [:= :plugin]
    [:map-of :keyword :any]
    [:* [:or hiccup-tool hiccup-plugin]]])
-
-;; ---------------------------------------------------------------------------
-;; Validation helpers
-;; ---------------------------------------------------------------------------
 
 (defn validate
   "Returns nil on success, a Malli explanation map on failure."
