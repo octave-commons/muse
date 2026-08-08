@@ -1,0 +1,3 @@
+{:repo "octave-commons/muse"
+ :lesson "Chronology can separate naming drift from conceptual drift: preserve the date when a term first names a responsibility, the date its implementation changes semantics, and the date repository ownership is reassigned. Repository names and entity types are different axes even when they share a Proper Noun."
+ :receipt/refs ["c881bbc21220ef5b2ce3db2c08565f07b98f2ded"]}
