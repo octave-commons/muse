@@ -1,0 +1,3 @@
+{:repo "octave-commons/muse"
+ :lesson "Interoperability does not require every endpoint to implement the whole shared language. Let each target declare the Katamorph fragment it consumes and produces, normalize boundary values back into lawful shared shapes, and distinguish semantic loss from context the target never promised to preserve. Grammar should crystallize from repeated multi-space implementation pressure, not from one host's vocabulary."
+ :receipt/refs ["3c8e2656a28b29a227d55a94bdd5e4cd4160be76"]}
