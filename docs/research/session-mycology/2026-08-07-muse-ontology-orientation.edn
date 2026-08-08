@@ -1,0 +1,3 @@
+{:repo "octave-commons/muse"
+ :lesson "When a Proper Noun spans entity, role, and projection layers, preserve each historical lineage and separate the concerns before proposing a rename; semantic continuity is evidence, not authority."
+ :receipt/refs ["f5adfe524a88cf4db69ae5e5d314df908faf3275"]}
