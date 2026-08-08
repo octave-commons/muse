@@ -1,0 +1,3 @@
+{:repo "octave-commons/muse"
+ :lesson "When a portable agent system is represented as data, keep four layers distinct: authoring syntax, canonical contract data, implementation binding, and target interpretation. A host-specific noun or repository name that spans those layers will recreate the coupling the data language was meant to remove."
+ :receipt/refs ["5488e4e29554ea09f61752f32b038aedad8b0856"]}
