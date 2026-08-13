@@ -1,71 +1,41 @@
 # Π Last Handoff
 
-**Date:** 2026-07-25
+**Date:** 2026-08-13
 **Branch:** main
-**Head:** b073836
+**Head:** 1057389
 
-## Changes
+## Commits (oldest → newest)
 
-### Modified
-- `.opencode/opencode.json`
-- `.ημ/PRINCIPLE.edn`
-- `.ημ/config/mcp/root.edn`
-- `.ημ/config/opencode/root.edn`
-- `.ημ/plugins/actors.cljs`
-- `AGENTS.md`
-- `receipts.edn`
-- `shadow-cljs.edn`
-- `src/cljs/eta_mu/actor/envelope.cljc`
-- `src/cljs/eta_mu/boundaries/node/proc.cljs`
-- `src/cljs/eta_mu/boundaries/opencode.cljs`
-- `src/cljs/eta_mu/daemon/core.cljs`
-- `src/cljs/eta_mu/domain/daemon.cljc`
-- `src/cljs/eta_mu/dsl/compile.cljc`
-- `test/cljs/eta_mu/opencode/config_test.cljs`
+- `e563fc9` lint: register defcapability/defimplementation/defexposure with clj-kondo
+- `899ea71` feat: deep-merge concatenates sequential values in layer order
+- `fc58f52` feat: merge :settings fragments into the emitted project opencode.json
+- `6cee5fa` config: reconfigure built-in plan/build agents via a settings fragment
+- `166367f` test: cover every feature on the opencode agents docs page
+- `7ec09a1` docs: layered settings-merge worked example
+- `1057389` chore: ignore generated .opencode/package.json
 
-### Deleted (owned cleanup)
-- `.ημ/config/mcp/permissions/default.edn`
-- `.ημ/config/mcp/plugins/receipt-river.edn`
-- `.ημ/config/mcp/profiles.edn`
-- `.ημ/config/opencode/permissions/default.edn`
-- `.ημ/config/opencode/plugins/actors.edn`
-- `.ημ/config/opencode/plugins/apifany.edn`
-- `.ημ/config/opencode/plugins/receipt-river.edn`
-- `.ημ/config/opencode/plugins/session-mycology.edn`
-- `.ημ/config/opencode/plugins/websearch.edn`
-- `.ημ/config/opencode/profiles.edn`
+## What this session did
 
-### New (untracked → staged)
-- `.claude/` — Claude integration config
-- `.ημ/config/claude/` — Claude target config tree
-- `.ημ/config/shared/` — shared config fragments
-- `.ημ/plugins/edn_ledger.cljs` — EDN ledger plugin
-- `.ημ/plugins/kanban_gate.cljs` — Kanban gate plugin
-- `docs/agile/` — agile process docs
-- `docs/inbox/2026.07.13.03.08.38.md`
-- `scripts/build-claude-target.sh`
-- `src/clj/eta_mu/claude/` — Claude target build
-- `src/cljs/eta_mu/actor/monitor.cljs`
-- `src/cljs/eta_mu/actor/task.cljs`
-- `src/cljs/eta_mu/boundaries/claude.cljs`
-- `src/cljs/eta_mu/domain/agent.cljc`
-- `src/cljs/eta_mu/domain/edn_ledger.cljc`
-- `src/cljs/eta_mu/domain/mailbox.cljc`
-- `src/cljs/eta_mu/domain/task.cljc`
-- `src/cljs/eta_mu/dsl/events.cljc`
-- `test/cljs/eta_mu/actor/monitor_test.cljs`
-- `test/cljs/eta_mu/actor/task_test.cljs`
-- `test/cljs/eta_mu/domain/agent_test.cljs`
-- `test/cljs/eta_mu/domain/mailbox_test.cljs`
-- `test/cljs/eta_mu/domain/task_test.cljs`
-
-### Lint fixes (this session)
-- `test/cljs/eta_mu/domain/websearch_test.cljs` — removed unused `testing` refer
-- `test/cljs/eta_mu/dsl/normalize_test.cljs` — removed unused `schema` and `malli.core` requires
+Reconfiguring OpenCode's built-in agents through the config file was only
+possible via the daemon's `:emit` path; the build flush wrote `$schema` +
+permissions only. Now `emit-host-config` deep-merges every `:settings`
+fragment over the base, so `.opencode/opencode.json` carries `:agent`
+config from `.ημ/config/opencode/settings/agents.edn` (plan: deny
+edit/bash; build: `git push *` → ask). `deep-merge` learned to concatenate
+sequential values in layer order so accumulation fields (`instructions`,
+`skills.paths`) stop silently replacing across fragments. Tests cover every
+feature/example on opencode.ai/docs/agents, round-tripped through
+JSON.parse.
 
 ## Verification
-- clj-kondo: 0 errors, 0 warnings
-- shadow-cljs test: 143 tests, 354 assertions, 0 failures
+- clj-kondo (full src+test): 0 errors, 0 warnings
+- shadow-cljs test: 184 tests, 470 assertions, 0 failures, 0 warnings
+- shadow-cljs release opencode-plugin: 0 warnings
 
 ## Concurrent Dirt
-- None detected (solo workspace)
+- None. All modified/untracked paths were owned by this session and committed.
+- Generated leftovers intentionally untracked/ignored: `.opencode/package.json` (now gitignored), `target/`, `.opencode/dist/` (already ignored).
+
+## Anomalies
+- Kanban board empty (`eta-mu kanban count` → 0); worked off-board, noted in receipts.
+- `.opencode/opencode.json` is tracked despite its own .gitignore entry (grandfathered); kept the tracked copy truthful by committing the regenerated artifact.
