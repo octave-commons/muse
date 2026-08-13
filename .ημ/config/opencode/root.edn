@@ -13,6 +13,7 @@
   "../shared/plugins/apifany.edn"
   "../shared/plugins/kanban-gate.edn"
   ;; target-specific overrides below
+  "settings/agents.edn"
   ;; "plugins/custom.edn"
   ]
 

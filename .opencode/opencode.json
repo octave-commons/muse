@@ -10,5 +10,22 @@
     "session_mycology": "allow",
     "task_*": "allow",
     "websearch_openhax": "allow"
+  },
+  "agent": {
+    "build": {
+      "mode": "primary",
+      "permission": {
+        "bash": {
+          "git push *": "ask"
+        }
+      }
+    },
+    "plan": {
+      "mode": "primary",
+      "permission": {
+        "bash": "deny",
+        "edit": "deny"
+      }
+    }
   }
 }

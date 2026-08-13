@@ -1,0 +1,7 @@
+{:settings
+ {:agent
+  {:plan  {:mode :primary
+           :permission {:edit :deny
+                        :bash :deny}}
+   :build {:mode :primary
+           :permission {:bash {"git push *" :ask}}}}}}
