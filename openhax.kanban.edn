@@ -1,0 +1,2 @@
+{:tasks-dir "./docs/agile/kanban"
+ :fsm :promethean}
