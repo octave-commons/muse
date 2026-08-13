@@ -17,11 +17,13 @@
 ;; ---------------------------------------------------------------------------
 
 (defn deep-merge
-  "Recursive merge where maps merge and anything else replaces."
+  "Recursive merge: maps merge, sequential values concatenate in layer
+   order, anything else is replaced by the later layer."
   [a b]
-  (if (and (map? a) (map? b))
-    (merge-with deep-merge a b)
-    b))
+  (cond
+    (and (map? a) (map? b))               (merge-with deep-merge a b)
+    (and (sequential? a) (sequential? b)) (into (vec a) b)
+    :else                                 b))
 
 (defn merged
   "Deep merge of settings fragments in order (later wins)."

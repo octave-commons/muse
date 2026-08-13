@@ -2,12 +2,20 @@
   (:require [cljs.test :refer [deftest is testing]]
             [eta-mu.opencode.settings :as settings]))
 
-(deftest deep-merge-maps-merge-values-replace
-  (is (= {:a {:b 1 :c 2}}
-         (settings/deep-merge {:a {:b 1}} {:a {:c 2}})))
-  (is (= {:a [3]}
-         (settings/deep-merge {:a [1 2]} {:a [3]})))
-  (is (= {:a 2} (settings/deep-merge {:a {:b 1}} {:a 2}))))
+(deftest deep-merge-semantics
+  (testing "maps merge recursively"
+    (is (= {:a {:b 1 :c 2}}
+           (settings/deep-merge {:a {:b 1}} {:a {:c 2}}))))
+  (testing "vectors concatenate in layer order"
+    (is (= {:a [1 2 3]}
+           (settings/deep-merge {:a [1 2]} {:a [3]})))
+    (is (= [1 2 3 4]
+           (settings/deep-merge [1 2] [3 4]))))
+  (testing "scalars replace"
+    (is (= {:a 2} (settings/deep-merge {:a {:b 1}} {:a 2}))))
+  (testing "type conflicts replace"
+    (is (= {:a [1]} (settings/deep-merge {:a {:b 1}} {:a [1]})))
+    (is (= {:a {:b 1}} (settings/deep-merge {:a [1 2]} {:a {:b 1}})))))
 
 (deftest merged-applies-in-order
   (is (= {:model "b" :lsp true}
