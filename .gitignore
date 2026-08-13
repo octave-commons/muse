@@ -15,6 +15,7 @@ dist-daemon/
 # OpenCode plugins and agents (generated)
 .opencode/plugins/
 .opencode/agents/
+.opencode/package.json
 
 # OS files
 .DS_Store
