@@ -1,0 +1,15 @@
+{:settings
+ {;; Additive as it looks: vectors concatenate in layer order, so the
+  ;; global AGENTS.md entry survives — output instructions is
+  ;; ["~/.config/opencode/AGENTS.md" "docs/CONVENTIONS.md"].
+  :instructions ["docs/CONVENTIONS.md"]
+
+  ;; Maps merge: result is {:edit :ask, :bash :deny} — both keys survive.
+  :permission {:bash :deny}
+
+  ;; Nested agent maps merge too: plan keeps mode+permission from the
+  ;; global layer and gains temperature here.
+  :agent {:plan             {:temperature 0.1}
+          :security-auditor {:description "Performs security audits and identifies vulnerabilities"
+                             :mode        :subagent
+                             :permission  {:edit :deny}}}}}

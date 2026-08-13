@@ -1,0 +1,8 @@
+{:settings
+ {:$schema      "https://opencode.ai/config.json"
+  :instructions ["~/.config/opencode/AGENTS.md"]
+  :permission   {:edit :ask}
+  :agent        {:plan  {:mode :primary
+                         :permission {:edit :deny
+                                      :bash :deny}}
+                 :build {:mode :primary}}}}
