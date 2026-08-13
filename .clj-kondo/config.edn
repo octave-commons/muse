@@ -1,3 +1,6 @@
-{:lint-as {eta-mu.dsl/deftool   clj-kondo.lint-as/def-catch-all
-           eta-mu.dsl/defhook   clj-kondo.lint-as/def-catch-all
-           eta-mu.dsl/defplugin clj-kondo.lint-as/def-catch-all}}
+{:lint-as {eta-mu.dsl/deftool           clj-kondo.lint-as/def-catch-all
+           eta-mu.dsl/defhook           clj-kondo.lint-as/def-catch-all
+           eta-mu.dsl/defplugin         clj-kondo.lint-as/def-catch-all
+           eta-mu.dsl/defcapability     clj-kondo.lint-as/def-catch-all
+           eta-mu.dsl/defimplementation clj-kondo.lint-as/def-catch-all
+           eta-mu.dsl/defexposure       clj-kondo.lint-as/def-catch-all}}
