@@ -15,7 +15,8 @@
                projected from permissions/*.edn, and package.json."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
-            [eta-mu.opencode.config :as config])
+            [eta-mu.opencode.config :as config]
+            [eta-mu.opencode.settings :as settings])
   (:import [java.nio.file Paths]))
 
 (def ^:private root-path ".ημ/config/opencode/root.edn")
@@ -169,6 +170,16 @@
       (when global-dir
         (copy-file! (str global-dir "/" (.getName f)) content)))))
 
+(defn- host-config-source
+  "The project opencode.json: $schema + DSL-owned permissions as the base,
+   deep-merged with every :settings fragment (model, agent, provider, …).
+   Settings fragments win on conflicts, matching the daemon's render path."
+  [cfg]
+  (settings/render-value
+   (settings/deep-merge {:$schema    "https://opencode.ai/config.json"
+                         :permission (permission-map cfg)}
+                        (settings/merged (config/settings-fragments cfg)))))
+
 (defn emit-host-config
   "Build hook (:flush stage)."
   {:shadow.build/stage :flush}
@@ -186,10 +197,7 @@
                (shim-source (.getAbsolutePath (io/file module-file))
                             export-names))))
     (emit-agents! cfg)
-    (emit! ".opencode/opencode.json"
-           (json-obj {"$schema"    "https://opencode.ai/config.json"
-                      "permission" (permission-map cfg)}
-                     0))
+    (emit! ".opencode/opencode.json" (host-config-source cfg))
     (emit! ".opencode/package.json"
            (json-obj {"type" "module"
                       "dependencies" {"@opencode-ai/plugin" "1.17.18"
