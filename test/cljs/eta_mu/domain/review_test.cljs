@@ -153,3 +153,20 @@
         result (review/submission session "summary")]
     (is (false? (:ok? result)))
     (is (re-find #"confidence threshold" (:error result)))))
+
+(deftest submission-rejects-duplicate-confirmed-locations
+  ;; Observed live: two confirmed findings on one line passed submission and
+  ;; were then rejected by the publisher's defensive validation. The law
+  ;; belongs at submit time so the reviewer gets actionable feedback.
+  (let [session (through-stage (begun) :generate-candidates)
+        propose (fn [s id]
+                  (:session (review/propose-finding s {:id id :severity "medium" :category "contract"
+                                                       :claim "c" :path "src/example.js" :line 11
+                                                       :body "b" :confidence 0.9 :blocking false})))
+        session (-> session (propose "f1") (propose "f2"))
+        session (through-stage session :publish)
+        classify (fn [s id] (:session (review/classify-finding s id "confirmed" "verified")))
+        session (-> session (classify "f1") (classify "f2"))
+        result (review/submission session "summary")]
+    (is (false? (:ok? result)))
+    (is (re-find #"share a location" (:error result)))))
