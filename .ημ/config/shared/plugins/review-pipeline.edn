@@ -1,0 +1,2 @@
+{:resource plugins.review-pipeline/plugin
+ :expose   [:review/*]}
