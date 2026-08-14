@@ -178,11 +178,14 @@
                     (update :candidate-order conj id))})))
 
 (defn classify-finding
-  "Classify a pending candidate as confirmed, rejected, or needs-human."
+  "Classify a pending candidate as confirmed, rejected, or needs-human.
+   Legal from :adversarial-validate onward (but before submission): a reviewer
+   may record its stage evidence before finishing every classification."
   [session id status rationale]
   (cond
-    (not= (:stage session) :adversarial-validate)
-    (err (str "Classification happens at the :adversarial-validate stage; review is at " (name (:stage session)) "."))
+    (not (contains? #{:adversarial-validate :publish} (:stage session)))
+    (err (str "Classification requires the :adversarial-validate stage or later; review is at "
+              (name (:stage session)) "."))
 
     (not (contains? classifications status))
     (err "Status must be confirmed, rejected, or needs-human.")
