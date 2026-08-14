@@ -90,6 +90,21 @@
       (is (:ok? ok))
       (is (= :rejected (get-in ok [:session :candidates "f1" :status]))))))
 
+(deftest classify-finding-remains-legal-at-publish-stage
+  ;; Regression: recording the :adversarial-validate evidence before classifying
+  ;; advances the stage to :publish; classification must still be legal there or
+  ;; the machine deadlocks with unclassified candidates that submit rejects.
+  (let [session (through-stage (begun) :generate-candidates)
+        {:keys [session]} (review/propose-finding session {:id "f1" :severity "high" :category "security"
+                                                           :claim "c" :path "src/example.js" :line 11
+                                                           :body "b" :confidence 0.9 :blocking true})
+        session (through-stage session :publish)
+        {:keys [session] :as classified} (review/classify-finding session "f1" "confirmed" "trace verified")]
+    (is (:ok? classified))
+    (let [result (review/submission session "summary")]
+      (is (:ok? result))
+      (is (= "REQUEST_CHANGES" (get-in result [:envelope :event]))))))
+
 (deftest submission-requires-publish-stage-and-classified-candidates
   (let [session (through-stage (begun) :generate-candidates)
         {:keys [session]} (review/propose-finding session {:id "f1" :severity "high" :category "security"

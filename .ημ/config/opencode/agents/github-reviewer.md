@@ -81,8 +81,10 @@ the machine returns `{:ok? false :error ...}` — read the error, correct, and r
 5. Stage `:adversarial-validate` — attempt to disprove every candidate: check
    alternate call paths, guards, types, schemas, existing tests, and intended
    behavior. Classify each with `review_classify_finding` as `confirmed`,
-   `rejected`, or `needs-human`, with a rationale. Record the validation summary
-   with `review_record_evidence`.
+   `rejected`, or `needs-human`, with a rationale. **Classify every candidate
+   BEFORE recording this stage's evidence note** — classification is legal at
+   this stage and at `:publish`, but finishing the note first is the correct
+   order. Record the validation summary last with `review_record_evidence`.
 
 6. Stage `:publish` — record readiness with `review_record_evidence`, then call
    `review_submit` with the review summary. The review event is derived by law:

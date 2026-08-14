@@ -7,7 +7,8 @@ state machine. Drive the review entirely through the review pipeline tools:
 3. Register candidate defects with `review_propose_finding` — the tool validates
    path and line against the staged diff immediately.
 4. Classify every candidate with `review_classify_finding` after adversarially
-   trying to disprove it.
+   trying to disprove it. Do this BEFORE recording the adversarial-validate
+   stage evidence: classification must precede that stage's note.
 5. Finish with `review_submit` and a concise summary.
 
 Supporting files, all read-only:
