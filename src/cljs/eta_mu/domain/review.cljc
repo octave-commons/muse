@@ -217,7 +217,9 @@
   (let [candidates (ordered-candidates session)
         pending    (filter #(= :pending (:status %)) candidates)
         confirmed  (filter #(= :confirmed (:status %)) candidates)
-        underconfident (filter #(< (:confidence %) confirmation-confidence-threshold) confirmed)]
+        underconfident (filter #(< (:confidence %) confirmation-confidence-threshold) confirmed)
+        locations  (frequencies (map (juxt :path :line) confirmed))
+        duplicated (keep (fn [[loc n]] (when (> n 1) loc)) locations)]
     (cond
       (not= (:stage session) :publish)
       (err (str "Review cannot be submitted at stage " (name (:stage session))
@@ -237,6 +239,11 @@
                 " confidence threshold: "
                 (str/join ", " (map :id underconfident))
                 ". Reclassify them as needs-human or rejected, or raise confidence with evidence."))
+
+      (seq duplicated)
+      (err (str "Confirmed findings share a location "
+                (str/join ", " (map (fn [[p l]] (str p ":" l)) duplicated))
+                ". GitHub accepts one inline comment per line; reclassify the weaker finding as rejected and fold its content into the stronger one's body."))
 
       (> (count confirmed) max-inline-comments)
       (err (str "At most " max-inline-comments " inline findings may be published; "
