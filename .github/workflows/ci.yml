@@ -108,6 +108,28 @@ jobs:
           if (changed === source) throw new Error("MCP destination fixture did not change config");
           writeFileSync(path, changed);
           NODE
+
+          configured_lock="$configured_registry.muse-host-targets.lock"
+          mkdir "$configured_lock"
+          printf '%s\n' "$$" > "$configured_lock/owner"
+          set +e
+          scripts/build-host-targets.sh mcp-server \
+            > "$manifest_dir/configured-lock-build.log" 2>&1
+          configured_lock_status="$?"
+          set -e
+          test "$configured_lock_status" -eq 64
+          grep -Fq "another MCP-producing build is active (pid $$)" \
+            "$manifest_dir/configured-lock-build.log"
+          if grep -Fq '[muse host build] generating' \
+            "$manifest_dir/configured-lock-build.log"; then
+            cat "$manifest_dir/configured-lock-build.log" >&2
+            exit 1
+          fi
+          test "$(cat "$configured_lock/owner")" = "$$"
+          unlink "$configured_lock/owner"
+          rmdir "$configured_lock"
+          cat "$manifest_dir/configured-lock-build.log" >> host-build.log
+
           scripts/build-host-targets.sh mcp-server 2>&1 | tee -a host-build.log
           node --input-type=module - "$configured_registry" "$configured_owners" <<'NODE'
           import {readFileSync} from "node:fs";
@@ -140,6 +162,38 @@ jobs:
           cp .muse-host-targets-owners.json "$linked_owners"
           chmod 0640 "$linked_registry"
           chmod 0660 "$linked_owners"
+          python3 - "$linked_registry" "$linked_owners" \
+            "$manifest_dir/linked-registry.acl" \
+            "$manifest_dir/linked-owners.acl" <<'PY'
+          import ctypes
+          import os
+          import sys
+
+          registry, owners, registry_acl, owners_acl = sys.argv[1:]
+          acl = ctypes.CDLL("libacl.so.1", use_errno=True)
+          acl.acl_from_text.argtypes = [ctypes.c_char_p]
+          acl.acl_from_text.restype = ctypes.c_void_p
+          acl.acl_set_file.argtypes = [ctypes.c_char_p, ctypes.c_int, ctypes.c_void_p]
+          acl.acl_set_file.restype = ctypes.c_int
+          acl.acl_free.argtypes = [ctypes.c_void_p]
+
+          fixtures = (
+              (registry, registry_acl, b"u::rw-,u:nobody:r--,g::r--,m::r--,o::---"),
+              (owners, owners_acl, b"u::rw-,u:nobody:r--,g::rw-,m::rw-,o::---"),
+          )
+          for path, snapshot, text in fixtures:
+              value = acl.acl_from_text(text)
+              if not value:
+                  raise RuntimeError("could not allocate the POSIX ACL fixture")
+              try:
+                  if acl.acl_set_file(path.encode(), 0x8000, value) != 0:
+                      error = ctypes.get_errno()
+                      raise OSError(error, os.strerror(error), path)
+              finally:
+                  acl.acl_free(value)
+              with open(snapshot, "wb") as output:
+                  output.write(os.getxattr(path, "system.posix_acl_access"))
+          PY
           unlink .mcp.json
           unlink .muse-host-targets-owners.json
           ln -s "$linked_registry" .mcp.json
@@ -157,6 +211,18 @@ jobs:
           test "$(stat -c %i "$linked_owners")" != "$linked_owners_inode"
           test "$(stat -c %a "$linked_registry")" = 640
           test "$(stat -c %a "$linked_owners")" = 660
+          python3 - "$linked_registry" "$linked_owners" \
+            "$manifest_dir/linked-registry.acl" \
+            "$manifest_dir/linked-owners.acl" <<'PY'
+          import os
+          import sys
+
+          registry, owners, registry_acl, owners_acl = sys.argv[1:]
+          for path, snapshot in ((registry, registry_acl), (owners, owners_acl)):
+              with open(snapshot, "rb") as expected:
+                  if os.getxattr(path, "system.posix_acl_access") != expected.read():
+                      raise RuntimeError(f"POSIX ACL changed during atomic replacement: {path}")
+          PY
 
           unlink .mcp.json
           unlink .muse-host-targets-owners.json

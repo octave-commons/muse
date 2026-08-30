@@ -74,8 +74,8 @@ mcp_original_ownership_present=0
 mcp_state_restore_ready=0
 mcp_public_registry=""
 mcp_ownership_file=""
-mcp_lock_dir="$repo_root/.muse-host-targets.lock"
-mcp_lock_owner="$mcp_lock_dir/owner"
+mcp_lock_dir=""
+mcp_lock_owner=""
 mcp_lock_acquired=0
 
 atomic_publish() {
@@ -98,27 +98,33 @@ atomic_publish() {
     rm -f -- "$staged"
     return 1
   fi
-  if ! node --input-type=module - "$staged" "$publish_destination" <<'NODE'
-import {chmodSync, chownSync, existsSync, statSync} from "node:fs";
+  if [[ -e "$publish_destination" ]]; then
+    if ! node --input-type=module - "$publish_destination" <<'NODE'
+import {statSync} from "node:fs";
 
-const [staged, destination] = process.argv.slice(2);
-if (existsSync(destination)) {
-  const current = statSync(staged);
-  const existing = statSync(destination);
-  const uid = process.getuid();
-  if (existing.uid !== uid) {
-    throw new Error(`${destination} changed to cross-user ownership after preflight`);
-  }
-  if (current.gid !== existing.gid) {
-    if (!process.getgroups().includes(existing.gid)) {
-      throw new Error(`${destination} changed to an unavailable group after preflight`);
-    }
-    chownSync(staged, uid, existing.gid);
-  }
-  chmodSync(staged, existing.mode & 0o7777);
-} else {
-  chmodSync(staged, 0o666 & ~process.umask());
+const [destination] = process.argv.slice(2);
+const existing = statSync(destination);
+const uid = process.getuid();
+if (existing.uid !== uid) {
+  throw new Error(`${destination} changed to cross-user ownership after preflight`);
 }
+if (existing.gid !== process.getgid() && !process.getgroups().includes(existing.gid)) {
+  throw new Error(`${destination} changed to an unavailable group after preflight`);
+}
+NODE
+    then
+      rm -f -- "$staged"
+      return 1
+    fi
+    if ! cp --attributes-only --preserve=all -- "$publish_destination" "$staged"; then
+      rm -f -- "$staged"
+      return 1
+    fi
+  elif ! node --input-type=module - "$staged" <<'NODE'
+import {chmodSync} from "node:fs";
+
+const [staged] = process.argv.slice(2);
+chmodSync(staged, 0o666 & ~process.umask());
 NODE
   then
     rm -f -- "$staged"
@@ -132,6 +138,7 @@ NODE
 
 resolve_mcp_public_registry() {
   local configured
+  local resolved_registry
   local resolver
   local target
 
@@ -164,6 +171,28 @@ resolve_mcp_public_registry() {
   else
     mcp_ownership_file="$mcp_public_registry.muse-host-targets-owners.json"
   fi
+
+  mkdir -p -- "$(dirname "$mcp_public_registry")"
+  resolved_registry="$(node --input-type=module - "$mcp_public_registry" <<'NODE'
+import {lstatSync, realpathSync} from "node:fs";
+import {basename, dirname, join, resolve} from "node:path";
+
+const [configured] = process.argv.slice(2);
+const absolute = resolve(configured);
+const existing = lstatSync(absolute, {throwIfNoEntry: false});
+if (existing) {
+  process.stdout.write(realpathSync(absolute));
+} else {
+  process.stdout.write(join(realpathSync(dirname(absolute)), basename(absolute)));
+}
+NODE
+  )"
+  if [[ "$resolved_registry" == "$repo_root/.mcp.json" ]]; then
+    mcp_lock_dir="$repo_root/.muse-host-targets.lock"
+  else
+    mcp_lock_dir="$resolved_registry.muse-host-targets.lock"
+  fi
+  mcp_lock_owner="$mcp_lock_dir/owner"
 }
 
 preflight_publish_destination() {
@@ -201,6 +230,7 @@ NODE
 }
 
 acquire_mcp_build_lock() {
+  local attempt
   local owner
 
   if mkdir -- "$mcp_lock_dir" 2>/dev/null; then
@@ -212,8 +242,13 @@ acquire_mcp_build_lock() {
     return
   fi
 
+  [[ -d "$mcp_lock_dir" ]] || fail "could not create the MCP build lock: $mcp_lock_dir"
   owner=""
-  IFS= read -r owner < "$mcp_lock_owner" 2>/dev/null || true
+  for ((attempt = 1; attempt <= 5; attempt++)); do
+    IFS= read -r owner < "$mcp_lock_owner" 2>/dev/null || true
+    [[ -n "$owner" ]] && break
+    sleep 0.05
+  done
   if [[ "$owner" =~ ^[0-9]+$ ]] && kill -0 "$owner" 2>/dev/null; then
     fail "another MCP-producing build is active (pid $owner)"
   fi
@@ -286,9 +321,9 @@ cleanup_mcp_registry() {
 }
 
 if ((mcp_target_count > 0)); then
+  resolve_mcp_public_registry
   trap cleanup_mcp_registry EXIT
   acquire_mcp_build_lock
-  resolve_mcp_public_registry
   preflight_publish_destination "$mcp_public_registry" \
     || fail "configured MCP destination failed ownership/write preflight: $mcp_public_registry"
   preflight_publish_destination "$mcp_ownership_file" \
