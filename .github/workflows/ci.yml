@@ -172,6 +172,322 @@ jobs:
 
           assert_mcp_state
 
+          swap_fixture="$manifest_dir/name-swap"
+          mkdir -p \
+            "$swap_fixture/bin" \
+            "$swap_fixture/scripts" \
+            "$swap_fixture/node_modules/.bin" \
+            "$swap_fixture/.claude/dist"
+          cp scripts/build-host-targets.sh "$swap_fixture/scripts/"
+          printf '%s\n' "$MUSE_TEST_MCP_PRODUCER_ID" \
+            > "$swap_fixture/.muse-host-targets-producer-id"
+          chmod 0600 "$swap_fixture/.muse-host-targets-producer-id"
+          cat > "$swap_fixture/bin/clojure" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          arguments="$*"
+          if [[ "$arguments" == *"mcp-config-path"* ]]; then
+            printf '%s' '.mcp.json'
+            exit 0
+          fi
+          if [[ "$arguments" == *"mcp.build/generate-entrypoint"* ]]; then
+            if [[ "${MUSE_TEST_SWAP_RECOVERY_CHECK-}" == 1 ]]; then
+              test ! -e .muse-host-targets-transaction.json
+              cmp -s .mcp.json initial-registry.json
+              cmp -s .muse-host-targets-owners.json initial-owners.json
+              : > swap-crash-recovery-observed
+              exit 75
+            fi
+            mkdir -p src/gen/eta_mu/gen
+            printf '%s\n' '(ns eta-mu.gen.mcp-server)' \
+              > src/gen/eta_mu/gen/mcp_server.cljs
+            exit 0
+          fi
+          if [[ "$arguments" == *"claude.build/generate-entrypoint"* ]]; then
+            if [[ "${MUSE_TEST_SWAP_CRASH_CLAUDE-}" == 1 ]]; then
+              test -f .muse-host-targets-transaction.json
+              kill -KILL "$PPID"
+              exit 137
+            fi
+            if [[ "${MUSE_TEST_SWAP_FAIL_CLAUDE-}" == 1 ]]; then
+              exit 76
+            fi
+            mkdir -p src/gen/eta_mu/gen
+            printf '%s\n' '(ns eta-mu.gen.claude-server)' \
+              > src/gen/eta_mu/gen/claude_server.cljs
+            exit 0
+          fi
+          if [[ "$arguments" == *"opencode.build/generate-entrypoint"* ]]; then
+            mkdir -p src/gen/eta_mu/gen
+            printf '%s\n' '(ns eta-mu.gen.opencode-plugin)' \
+              > src/gen/eta_mu/gen/opencode_plugin.cljs
+            exit 0
+          fi
+          printf 'unexpected clojure invocation: %s\n' "$arguments" >&2
+          exit 99
+          SH
+          chmod +x "$swap_fixture/bin/clojure"
+          cat > "$swap_fixture/node_modules/.bin/shadow-cljs" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          case "${2-}" in
+            opencode-plugin) exit 0 ;;
+            mcp-server)
+              registration_name=current
+              entrypoint=current.js
+              ;;
+            claude-server)
+              registration_name=claude
+              entrypoint=claude.js
+              ;;
+            *) exit 98 ;;
+          esac
+          if [[ "${MUSE_TEST_SWAP_DUPLICATE-}" == 1 \
+              && "${2-}" == claude-server ]]; then
+            registration_name=current
+            entrypoint=current.js
+          fi
+          node --input-type=module - \
+            "$MUSE_MCP_CONFIG_OUTPUT" \
+            "$registration_name" \
+            "$entrypoint" <<'NODE'
+          import {writeFileSync} from "node:fs";
+          const [path, name, entrypoint] = process.argv.slice(2);
+          writeFileSync(
+            path,
+            `${JSON.stringify({mcpServers: {[name]: {command: "node", args: [entrypoint]}}})}\n`,
+          );
+          NODE
+          SH
+          chmod +x "$swap_fixture/node_modules/.bin/shadow-cljs"
+          cat > "$swap_fixture/.claude/dist/claude-server.js" <<'NODE'
+          process.exit(0);
+          NODE
+          node --input-type=module - \
+            "$swap_fixture" \
+            "$MUSE_TEST_MCP_PRODUCER_ID" <<'NODE'
+          import {writeFileSync} from "node:fs";
+          import {resolve} from "node:path";
+          const [root, producerId] = process.argv.slice(2);
+          writeFileSync(
+            resolve(root, "initial-registry.json"),
+            `${JSON.stringify({mcpServers: {
+              current: {command: "node", args: [resolve(root, "current.js")]},
+              claude: {command: "node", args: [resolve(root, "claude.js")]},
+            }}, null, 2)}\n`,
+          );
+          writeFileSync(
+            resolve(root, "initial-owners.json"),
+            `${JSON.stringify({version: 2, targets: {
+              [`${producerId}:mcp-server`]: "claude",
+              [`${producerId}:claude-server`]: "current",
+            }}, null, 2)}\n`,
+          );
+          NODE
+          cp "$swap_fixture/initial-registry.json" "$swap_fixture/.mcp.json"
+          cp "$swap_fixture/initial-owners.json" \
+            "$swap_fixture/.muse-host-targets-owners.json"
+
+          (
+            cd "$swap_fixture"
+            PATH="$swap_fixture/bin:$PATH" \
+              scripts/build-host-targets.sh all \
+                > swap-success.log 2>&1
+            node --input-type=module - \
+              "$swap_fixture" \
+              "$MUSE_TEST_MCP_PRODUCER_ID" <<'NODE'
+          import {readFileSync} from "node:fs";
+          import {resolve} from "node:path";
+          const [root, producerId] = process.argv.slice(2);
+          const registry = JSON.parse(readFileSync(".mcp.json", "utf8"));
+          const expectedRegistry = {mcpServers: {
+            claude: {command: "node", args: [resolve(root, "claude.js")]},
+            current: {command: "node", args: [resolve(root, "current.js")]},
+          }};
+          if (JSON.stringify(registry) !== JSON.stringify(expectedRegistry)) {
+            throw new Error(`coordinated swap wrote an incorrect registry: ${JSON.stringify(registry)}`);
+          }
+          const ownership = JSON.parse(
+            readFileSync(".muse-host-targets-owners.json", "utf8"),
+          );
+          const expectedOwnership = {version: 2, targets: {
+            [`${producerId}:claude-server`]: "claude",
+            [`${producerId}:mcp-server`]: "current",
+          }};
+          if (JSON.stringify(ownership) !== JSON.stringify(expectedOwnership)) {
+            throw new Error(`coordinated swap wrote incorrect ownership: ${JSON.stringify(ownership)}`);
+          }
+          NODE
+            test ! -e .muse-host-targets-transaction.json
+            test ! -e .muse-host-targets.lock
+
+            cp initial-registry.json .mcp.json
+            cp initial-owners.json .muse-host-targets-owners.json
+            sha256sum .mcp.json .muse-host-targets-owners.json \
+              > swap-crash-before.sha256
+            set +e
+            MUSE_TEST_SWAP_CRASH_CLAUDE=1 \
+              PATH="$swap_fixture/bin:$PATH" \
+              scripts/build-host-targets.sh all \
+                > swap-crash.log 2>&1
+            swap_crash_status="$?"
+            set -e
+            test "$swap_crash_status" -eq 137
+            test -f .muse-host-targets-transaction.json
+            test ! -L .muse-host-targets-transaction.json
+            test "$(stat -c '%a' .muse-host-targets-transaction.json)" = 600
+            test -f .muse-host-targets.lock/owner
+            swap_crash_pid="$(< .muse-host-targets.lock/owner)"
+            [[ "$swap_crash_pid" =~ ^[0-9]+$ ]]
+            ! kill -0 "$swap_crash_pid" 2>/dev/null
+            node --input-type=module - \
+              "$MUSE_TEST_MCP_PRODUCER_ID" <<'NODE'
+          import {readFileSync} from "node:fs";
+          import {resolve} from "node:path";
+          const [producerId] = process.argv.slice(2);
+          const registry = JSON.parse(readFileSync(".mcp.json", "utf8"));
+          const expectedRegistry = {mcpServers: {
+            current: {command: "node", args: [resolve("current.js")]},
+          }};
+          if (JSON.stringify(registry) !== JSON.stringify(expectedRegistry)) {
+            throw new Error(`crash did not preserve the expected intermediate registry: ${JSON.stringify(registry)}`);
+          }
+          const ownership = JSON.parse(
+            readFileSync(".muse-host-targets-owners.json", "utf8"),
+          );
+          const expectedOwnership = {version: 2, targets: {
+            [`${producerId}:mcp-server`]: "current",
+          }};
+          if (JSON.stringify(ownership) !== JSON.stringify(expectedOwnership)) {
+            throw new Error(`crash did not preserve the expected intermediate ownership: ${JSON.stringify(ownership)}`);
+          }
+          NODE
+            rm -f -- .muse-host-targets.lock/owner
+            rmdir -- .muse-host-targets.lock
+            set +e
+            MUSE_TEST_SWAP_RECOVERY_CHECK=1 \
+              PATH="$swap_fixture/bin:$PATH" \
+              scripts/build-host-targets.sh mcp-server \
+                > swap-crash-recovery.log 2>&1
+            swap_crash_recovery_status="$?"
+            set -e
+            test "$swap_crash_recovery_status" -eq 75
+            grep -Fq 'recovering interrupted MCP state transaction' \
+              swap-crash-recovery.log
+            test -e swap-crash-recovery-observed
+            sha256sum .mcp.json .muse-host-targets-owners.json \
+              > swap-crash-after.sha256
+            diff -u swap-crash-before.sha256 swap-crash-after.sha256
+            test ! -e .muse-host-targets-transaction.json
+            test ! -e .muse-host-targets.lock
+
+            cp initial-registry.json .mcp.json
+            cp initial-owners.json .muse-host-targets-owners.json
+            sha256sum .mcp.json .muse-host-targets-owners.json \
+              > swap-rollback-before.sha256
+            set +e
+            MUSE_TEST_SWAP_FAIL_CLAUDE=1 \
+              PATH="$swap_fixture/bin:$PATH" \
+              scripts/build-host-targets.sh all \
+                > swap-rollback.log 2>&1
+            swap_rollback_status="$?"
+            set -e
+            test "$swap_rollback_status" -eq 76
+            sha256sum .mcp.json .muse-host-targets-owners.json \
+              > swap-rollback-after.sha256
+            diff -u swap-rollback-before.sha256 swap-rollback-after.sha256
+            test ! -e .muse-host-targets-transaction.json
+            test ! -e .muse-host-targets.lock
+
+            cp initial-registry.json .mcp.json
+            cp initial-owners.json .muse-host-targets-owners.json
+            sha256sum .mcp.json .muse-host-targets-owners.json \
+              > swap-duplicate-before.sha256
+            set +e
+            MUSE_TEST_SWAP_DUPLICATE=1 \
+              PATH="$swap_fixture/bin:$PATH" \
+              scripts/build-host-targets.sh all \
+                > swap-duplicate.log 2>&1
+            swap_duplicate_status="$?"
+            set -e
+            test "$swap_duplicate_status" -ne 0
+            grep -Fq 'conflicting MCP registration: current' \
+              swap-duplicate.log
+            sha256sum .mcp.json .muse-host-targets-owners.json \
+              > swap-duplicate-after.sha256
+            diff -u swap-duplicate-before.sha256 swap-duplicate-after.sha256
+            test ! -e .muse-host-targets-transaction.json
+            test ! -e .muse-host-targets.lock
+
+            cp initial-registry.json .mcp.json
+            cp initial-owners.json .muse-host-targets-owners.json
+            sha256sum .mcp.json .muse-host-targets-owners.json \
+              > swap-unrequested-before.sha256
+            stat -c '%n:%d:%i:%y' \
+              .mcp.json .muse-host-targets-owners.json \
+              > swap-unrequested-before.stat
+            set +e
+            PATH="$swap_fixture/bin:$PATH" \
+              scripts/build-host-targets.sh mcp-server \
+                > swap-unrequested.log 2>&1
+            swap_unrequested_status="$?"
+            set -e
+            test "$swap_unrequested_status" -ne 0
+            grep -Fq 'MCP registration current is already owned by producer target' \
+              swap-unrequested.log
+            sha256sum .mcp.json .muse-host-targets-owners.json \
+              > swap-unrequested-after.sha256
+            stat -c '%n:%d:%i:%y' \
+              .mcp.json .muse-host-targets-owners.json \
+              > swap-unrequested-after.stat
+            diff -u \
+              swap-unrequested-before.sha256 \
+              swap-unrequested-after.sha256
+            diff -u swap-unrequested-before.stat swap-unrequested-after.stat
+            test ! -e .muse-host-targets-transaction.json
+            test ! -e .muse-host-targets.lock
+
+            node --input-type=module - \
+              initial-owners.json \
+              .muse-host-targets-owners.json <<'NODE'
+          import {readFileSync, writeFileSync} from "node:fs";
+          const [source, destination] = process.argv.slice(2);
+          const ownership = JSON.parse(readFileSync(source, "utf8"));
+          const currentOwner = Object.keys(ownership.targets).find(
+            (key) => key.endsWith(":claude-server"),
+          );
+          const name = ownership.targets[currentOwner];
+          delete ownership.targets[currentOwner];
+          ownership.targets[`${"f".repeat(64)}:claude-server`] = name;
+          writeFileSync(destination, `${JSON.stringify(ownership, null, 2)}\n`);
+          NODE
+            cp initial-registry.json .mcp.json
+            sha256sum .mcp.json .muse-host-targets-owners.json \
+              > swap-foreign-before.sha256
+            stat -c '%n:%d:%i:%y' \
+              .mcp.json .muse-host-targets-owners.json \
+              > swap-foreign-before.stat
+            set +e
+            PATH="$swap_fixture/bin:$PATH" \
+              scripts/build-host-targets.sh all \
+                > swap-foreign.log 2>&1
+            swap_foreign_status="$?"
+            set -e
+            test "$swap_foreign_status" -ne 0
+            grep -Fq \
+              "already owned by producer target $(printf 'f%.0s' {1..64}):claude-server" \
+              swap-foreign.log
+            sha256sum .mcp.json .muse-host-targets-owners.json \
+              > swap-foreign-after.sha256
+            stat -c '%n:%d:%i:%y' \
+              .mcp.json .muse-host-targets-owners.json \
+              > swap-foreign-after.stat
+            diff -u swap-foreign-before.sha256 swap-foreign-after.sha256
+            diff -u swap-foreign-before.stat swap-foreign-after.stat
+            test ! -e .muse-host-targets-transaction.json
+            test ! -e .muse-host-targets.lock
+          )
+
           release_real_rm="$(command -v rm)"
           release_real_rmdir="$(command -v rmdir)"
           release_lock="$PWD/.muse-host-targets.lock"

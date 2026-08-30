@@ -56,10 +56,12 @@ shadow="$repo_root/node_modules/.bin/shadow-cljs"
 # producer-and-target ownership map so a rebuilt target can retire only its
 # own checkout's old registration in a registry shared by several checkouts.
 mcp_target_count=0
+mcp_requested_targets=()
 for target in "${targets[@]}"; do
   case "$target" in
     mcp-server|claude-server)
       mcp_target_count=$((mcp_target_count + 1))
+      mcp_requested_targets+=("$target")
       ;;
   esac
 done
@@ -74,6 +76,7 @@ mcp_original_registry_present=0
 mcp_original_ownership_present=0
 mcp_state_restore_ready=0
 mcp_state_publication_started=0
+mcp_request_transaction_active=0
 mcp_public_registry=""
 mcp_resolved_destination=""
 mcp_registry_dir=""
@@ -560,9 +563,11 @@ NODE
 }
 
 # Registry bytes are visible to MCP clients, while ownership is private writer
-# state. Persist and fsync the complete intended pair before changing either;
-# an interrupted writer leaves the marker for idempotent replay under the same
-# destination-wide lock. Rollback replaces that intent before restoring bytes.
+# state. Persist and fsync the complete recovery pair before changing either.
+# Single-target publication records its intended pair. A multi-target request
+# instead retains the exact pre-command pair until every target and post-build
+# hook succeeds, so interruption between targets rolls the whole request back.
+# Failure rollback likewise replaces the marker before restoring exact bytes.
 prepare_mcp_transaction() {
   local registry_source="$1"
   local registry_present="$2"
@@ -838,13 +843,25 @@ NODE
 
 publish_mcp_state() {
   verify_mcp_public_registry
-  prepare_mcp_transaction "$mcp_registry" 1 "$mcp_ownership" 1 \
-    || fail "could not prepare MCP state transaction"
+  if ((mcp_target_count > 1)); then
+    prepare_mcp_transaction \
+      "$mcp_original_registry" \
+      "$mcp_original_registry_present" \
+      "$mcp_original_ownership" \
+      "$mcp_original_ownership_present" \
+      || fail "could not prepare MCP request rollback transaction"
+    mcp_request_transaction_active=1
+  else
+    prepare_mcp_transaction "$mcp_registry" 1 "$mcp_ownership" 1 \
+      || fail "could not prepare MCP state transaction"
+  fi
   mcp_state_publication_started=1
   apply_mcp_transaction "$mcp_registry" 1 "$mcp_ownership" 1 registry-first \
     || fail "could not publish MCP state transaction"
-  clear_mcp_transaction \
-    || fail "could not clear completed MCP transaction marker: $mcp_transaction_file"
+  if ((mcp_target_count == 1)); then
+    clear_mcp_transaction \
+      || fail "could not clear completed MCP transaction marker: $mcp_transaction_file"
+  fi
 }
 
 initialize_mcp_lock_owner() {
@@ -1260,7 +1277,8 @@ merge_mcp_registration() {
     "$target" \
     "$mcp_producer_id" \
     "$repo_root" \
-    "$mcp_legacy_relative_migration" <<'NODE'
+    "$mcp_legacy_relative_migration" \
+    "${mcp_requested_targets[@]}" <<'NODE'
 import {readFileSync, writeFileSync} from "node:fs";
 import {isAbsolute, resolve} from "node:path";
 import {isDeepStrictEqual} from "node:util";
@@ -1274,6 +1292,7 @@ const [
   producerId,
   producerRoot,
   allowLegacyRelativeMigration,
+  ...requestedTargets
 ] = process.argv.slice(2);
 const legacyProducerId = "0".repeat(64);
 
@@ -1326,6 +1345,17 @@ if (!isAbsolute(producerRoot) || resolve(producerRoot) !== producerRoot) {
 if (allowLegacyRelativeMigration !== "0" && allowLegacyRelativeMigration !== "1") {
   throw new Error("invalid legacy relative-registration migration policy");
 }
+if (requestedTargets.length === 0
+    || !requestedTargets.includes(target)
+    || requestedTargets.some(
+      (requestedTarget) => requestedTarget !== "mcp-server"
+        && requestedTarget !== "claude-server",
+    )) {
+  throw new Error("invalid requested MCP producer target set");
+}
+const requestedOwnershipKeys = new Set(
+  requestedTargets.map((requestedTarget) => `${producerId}:${requestedTarget}`),
+);
 
 function bindRegistrationToProducer(registration) {
   if (!registration
@@ -1370,11 +1400,22 @@ for (const [name, generatedRegistration] of generatedEntries) {
   const ownershipKey = `${producerId}:${target}`;
   const legacyOwnershipKey = `${legacyProducerId}:${target}`;
   let legacyNameTransferred = false;
+  let requestedNameTransferred = false;
   for (const [ownedTarget, ownedName] of Object.entries(ownership)) {
     if (ownedTarget !== ownershipKey && ownedName === name) {
       if (ownedTarget === legacyOwnershipKey) {
         delete ownership[ownedTarget];
         legacyNameTransferred = true;
+      } else if (requestedOwnershipKeys.has(ownedTarget)) {
+        if (Object.hasOwn(generatedThisRequest, name)) {
+          throw new Error(`conflicting MCP registration: ${name}`);
+        }
+        // A multi-target request may coordinate a name swap. Relinquish only
+        // another target owned by this producer and named in this request;
+        // a later build failure rolls the complete request back to its exact
+        // pre-command registry and ownership snapshots.
+        delete ownership[ownedTarget];
+        requestedNameTransferred = true;
       } else {
         throw new Error(`MCP registration ${name} is already owned by producer target ${ownedTarget}`);
       }
@@ -1389,6 +1430,7 @@ for (const [name, generatedRegistration] of generatedEntries) {
   if (Object.hasOwn(merged, name)
       && !currentNameOwned
       && !legacyNameTransferred
+      && !requestedNameTransferred
       && !exactLegacyRelativeMatch
       && !isDeepStrictEqual(merged[name], registration)) {
     throw new Error(`unowned MCP registration ${name} conflicts with generated output`);
@@ -1477,3 +1519,9 @@ build_target() {
 for target in "${targets[@]}"; do
   build_target "$target"
 done
+
+if ((mcp_request_transaction_active)); then
+  clear_mcp_transaction \
+    || fail "could not clear completed MCP request rollback marker: $mcp_transaction_file"
+  mcp_request_transaction_active=0
+fi
