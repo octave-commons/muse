@@ -52,6 +52,23 @@ jobs:
             exit 1
           fi
 
+          test ! -e .muse-host-targets-owners.json
+          node --input-type=module <<'NODE'
+          import {writeFileSync} from "node:fs";
+          const legacyRegistry = {
+            mcpServers: {
+              "eta-mu-claude": {
+                command: "node",
+                args: [".claude/dist/claude-server.js"],
+              },
+              "eta-mu-receipt-river": {
+                command: "node",
+                args: [".mcp/dist/receipt-river.js"],
+              },
+            },
+          };
+          writeFileSync(".mcp.json", `${JSON.stringify(legacyRegistry, null, 2)}\n`);
+          NODE
           scripts/build-host-targets.sh all 2>&1 | tee host-build.log
           test -f .muse-host-targets-producer-id
           test ! -L .muse-host-targets-producer-id
@@ -104,6 +121,160 @@ jobs:
 
           assert_mcp_state
 
+          lock_real_node="$(command -v node)"
+          mkdir "$manifest_dir/lock-init-bin"
+          cat > "$manifest_dir/lock-init-bin/node" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          if (($# == 3)) \
+              && [[ -n "${MUSE_TEST_LOCK_BIND_SUBSTITUTE-}" ]] \
+              && [[ ! -e "$MUSE_TEST_LOCK_BIND_SUBSTITUTE" ]]; then
+            case "$3" in
+              *.muse-host-targets.lock)
+                mv -- "$3" "$3.bound-original"
+                mkdir -m 0777 -- "$3"
+                : > "$MUSE_TEST_LOCK_BIND_SUBSTITUTE"
+                ;;
+            esac
+          fi
+
+          lock_directory=""
+          if (($# == 7)); then
+            for argument in "$@"; do
+              case "$argument" in
+                *.muse-host-targets.lock) lock_directory="$argument" ;;
+              esac
+            done
+          fi
+          if [[ -z "$lock_directory" ]]; then
+            exec "$MUSE_TEST_REAL_NODE" "$@"
+          fi
+
+          if [[ -n "${MUSE_TEST_LOCK_PRE_READY-}" ]]; then
+            : > "$MUSE_TEST_LOCK_PRE_READY"
+            for ((attempt = 0; attempt < 3000; attempt++)); do
+              [[ -e "$MUSE_TEST_LOCK_PRE_GO" ]] && break
+              sleep 0.01
+            done
+            [[ -e "$MUSE_TEST_LOCK_PRE_GO" ]] || exit 97
+          fi
+
+          set +e
+          "$MUSE_TEST_REAL_NODE" "$@"
+          node_status="$?"
+          set -e
+          if ((node_status != 0)) \
+              && [[ -n "${MUSE_TEST_LOCK_SUBSTITUTION_MARKER-}" ]]; then
+            shopt -s nullglob
+            staged_owners=("$lock_directory"/.owner.*)
+            if ((${#staged_owners[@]} > 0)); then
+              unlink -- "${staged_owners[0]}"
+              : > "${staged_owners[0]}"
+              chmod 600 "${staged_owners[0]}"
+              : > "$MUSE_TEST_LOCK_SUBSTITUTION_MARKER"
+            fi
+          fi
+
+          if ((node_status == 0)) \
+              && [[ -n "${MUSE_TEST_LOCK_POST_READY-}" ]]; then
+            : > "$MUSE_TEST_LOCK_POST_READY"
+            for ((attempt = 0; attempt < 3000; attempt++)); do
+              [[ -e "$MUSE_TEST_LOCK_POST_GO" ]] && break
+              sleep 0.01
+            done
+            [[ -e "$MUSE_TEST_LOCK_POST_GO" ]] || exit 98
+          fi
+          exit "$node_status"
+          SH
+          chmod +x "$manifest_dir/lock-init-bin/node"
+          cat > "$manifest_dir/lock-init-bin/mktemp" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ "${MUSE_TEST_FAIL_MKTEMP-}" == 1 ]]; then
+            exit 73
+          fi
+          exec /usr/bin/mktemp "$@"
+          SH
+          chmod +x "$manifest_dir/lock-init-bin/mktemp"
+
+          sha256sum .mcp.json .muse-host-targets-owners.json \
+            > "$manifest_dir/before-private-lock-substitution.sha256"
+          lock_bind_substitution_marker="$manifest_dir/lock-bind-substitution-observed"
+          set +e
+          MUSE_TEST_REAL_NODE="$lock_real_node" \
+            MUSE_TEST_FAIL_MKTEMP=1 \
+            MUSE_TEST_LOCK_BIND_SUBSTITUTE="$lock_bind_substitution_marker" \
+            PATH="$manifest_dir/lock-init-bin:$PATH" \
+            scripts/build-host-targets.sh mcp-server 2>&1 | tee -a host-build.log
+          lock_bind_substitution_status="${PIPESTATUS[0]}"
+          set -e
+          test "$lock_bind_substitution_status" -eq 64
+          test -e "$lock_bind_substitution_marker"
+          grep -Fq 'MCP lock directory is not the bound private lock' host-build.log
+          test -d .muse-host-targets.lock
+          test -d .muse-host-targets.lock.bound-original
+          test "$(stat -c %a .muse-host-targets.lock)" = 777
+          test "$(stat -c %u .muse-host-targets.lock)" = "$(id -u)"
+          test "$(stat -c %a .muse-host-targets.lock.bound-original)" = 700
+          test "$(stat -c %u .muse-host-targets.lock.bound-original)" = "$(id -u)"
+          test "$(find .muse-host-targets.lock -mindepth 1 -maxdepth 1 | wc -l)" -eq 0
+          test "$(find .muse-host-targets.lock.bound-original -mindepth 1 -maxdepth 1 | wc -l)" -eq 0
+          sha256sum .mcp.json .muse-host-targets-owners.json \
+            > "$manifest_dir/after-private-lock-substitution.sha256"
+          diff -u "$manifest_dir/before-private-lock-substitution.sha256" \
+            "$manifest_dir/after-private-lock-substitution.sha256"
+          rmdir -- .muse-host-targets.lock .muse-host-targets.lock.bound-original
+          test ! -e .muse-host-targets.lock
+          test ! -e .muse-host-targets.lock.bound-original
+          assert_mcp_state
+
+          sha256sum .mcp.json .muse-host-targets-owners.json \
+            > "$manifest_dir/before-owner-write-failure.sha256"
+          owner_pre_ready="$manifest_dir/owner-pre.ready"
+          owner_pre_go="$manifest_dir/owner-pre.go"
+          owner_write_status_file="$manifest_dir/owner-write.status"
+          owner_substitution_marker="$manifest_dir/owner-substitution-observed"
+          (
+            set +e
+            (
+              umask 000
+              ulimit -c 0
+              ulimit -f 0
+              MUSE_TEST_REAL_NODE="$lock_real_node" \
+                MUSE_TEST_LOCK_PRE_READY="$owner_pre_ready" \
+                MUSE_TEST_LOCK_PRE_GO="$owner_pre_go" \
+                MUSE_TEST_LOCK_SUBSTITUTION_MARKER="$owner_substitution_marker" \
+                PATH="$manifest_dir/lock-init-bin:$PATH" \
+                scripts/build-host-targets.sh mcp-server
+            )
+            printf '%s\n' "$?" > "$owner_write_status_file"
+            exit 0
+          ) 2>&1 | tee -a host-build.log &
+          owner_write_job="$!"
+          for ((attempt = 0; attempt < 3000; attempt++)); do
+            [[ -e "$owner_pre_ready" ]] && break
+            sleep 0.01
+          done
+          owner_lock_mode="$(stat -c %a .muse-host-targets.lock 2>/dev/null || true)"
+          owner_preexisting_state=0
+          [[ ! -e .muse-host-targets.lock/owner ]] || owner_preexisting_state=1
+          : > "$owner_pre_go"
+          wait "$owner_write_job"
+          test -e "$owner_write_status_file"
+          owner_write_failure_status="$(cat "$owner_write_status_file")"
+          test "$owner_lock_mode" = 700
+          test "$owner_preexisting_state" -eq 0
+          test "$owner_write_failure_status" -eq 64
+          grep -Fq 'could not record ownership of the MCP build lock' host-build.log
+          test ! -e "$owner_substitution_marker"
+          test ! -e .muse-host-targets.lock
+          sha256sum .mcp.json .muse-host-targets-owners.json \
+            > "$manifest_dir/after-owner-write-failure.sha256"
+          diff -u "$manifest_dir/before-owner-write-failure.sha256" \
+            "$manifest_dir/after-owner-write-failure.sha256"
+          assert_mcp_state
+
           node --input-type=module <<'NODE'
           import {writeFileSync} from "node:fs";
           writeFileSync(
@@ -111,6 +282,47 @@ jobs:
             `${JSON.stringify({version: 1, targets: {}}, null, 2)}\n`,
           );
           NODE
+          owner_post_ready="$manifest_dir/owner-post.ready"
+          owner_post_go="$manifest_dir/owner-post.go"
+          owner_success_status_file="$manifest_dir/owner-success.status"
+          sha256sum .mcp.json .muse-host-targets-owners.json \
+            > "$manifest_dir/before-private-owner.sha256"
+          (
+            set +e
+            (
+              umask 0777
+              MUSE_TEST_REAL_NODE="$lock_real_node" \
+                MUSE_TEST_FAIL_MKTEMP=1 \
+                MUSE_TEST_LOCK_POST_READY="$owner_post_ready" \
+                MUSE_TEST_LOCK_POST_GO="$owner_post_go" \
+                PATH="$manifest_dir/lock-init-bin:$PATH" \
+                scripts/build-host-targets.sh mcp-server
+            )
+            printf '%s\n' "$?" > "$owner_success_status_file"
+            exit 0
+          ) 2>&1 | tee -a host-build.log &
+          owner_success_job="$!"
+          for ((attempt = 0; attempt < 3000; attempt++)); do
+            [[ -e "$owner_post_ready" ]] && break
+            sleep 0.01
+          done
+          private_lock_mode="$(stat -c %a .muse-host-targets.lock 2>/dev/null || true)"
+          private_owner_mode="$(stat -c %a .muse-host-targets.lock/owner 2>/dev/null || true)"
+          private_owner_uid="$(stat -c %u .muse-host-targets.lock/owner 2>/dev/null || true)"
+          staged_owner_count="$(find .muse-host-targets.lock -maxdepth 1 -name '.owner.*' 2>/dev/null | wc -l)"
+          : > "$owner_post_go"
+          wait "$owner_success_job"
+          test -e "$owner_success_status_file"
+          test "$(cat "$owner_success_status_file")" -eq 73
+          test "$private_lock_mode" = 700
+          test "$private_owner_mode" = 600
+          test "$private_owner_uid" = "$(id -u)"
+          test "$staged_owner_count" -eq 0
+          test ! -e .muse-host-targets.lock
+          sha256sum .mcp.json .muse-host-targets-owners.json \
+            > "$manifest_dir/after-private-owner.sha256"
+          diff -u "$manifest_dir/before-private-owner.sha256" \
+            "$manifest_dir/after-private-owner.sha256"
           scripts/build-host-targets.sh mcp-server 2>&1 | tee -a host-build.log
           node --input-type=module <<'NODE'
           import {readFileSync} from "node:fs";
@@ -176,6 +388,46 @@ jobs:
             "$manifest_dir/after-unowned-conflict.stat"
           diff -u "$manifest_dir/before-unowned-conflict-owners.stat" \
             "$manifest_dir/after-unowned-conflict-owners.stat"
+          test ! -e .muse-host-targets-transaction.json
+          cp "$manifest_dir/first-mcp.json" .mcp.json
+          cp "$manifest_dir/first-mcp-owners.json" .muse-host-targets-owners.json
+          assert_mcp_state
+
+          node --input-type=module <<'NODE'
+          import {readFileSync, writeFileSync} from "node:fs";
+          const registry = JSON.parse(readFileSync(".mcp.json", "utf8"));
+          registry.mcpServers["eta-mu-receipt-river"].args = [
+            ".mcp/dist/receipt-river.js",
+          ];
+          writeFileSync(".mcp.json", `${JSON.stringify(registry, null, 2)}\n`);
+          const ownership = JSON.parse(
+            readFileSync(".muse-host-targets-owners.json", "utf8"),
+          );
+          delete ownership.targets[`${process.env.MUSE_TEST_MCP_PRODUCER_ID}:mcp-server`];
+          writeFileSync(
+            ".muse-host-targets-owners.json",
+            `${JSON.stringify(ownership, null, 2)}\n`,
+          );
+          NODE
+          sha256sum .mcp.json .muse-host-targets-owners.json \
+            > "$manifest_dir/before-v2-relative-conflict.sha256"
+          stat -c '%n:%d:%i:%y' .mcp.json .muse-host-targets-owners.json \
+            > "$manifest_dir/before-v2-relative-conflict.stat"
+          set +e
+          scripts/build-host-targets.sh mcp-server 2>&1 | tee -a host-build.log
+          v2_relative_conflict_status="${PIPESTATUS[0]}"
+          set -e
+          test "$v2_relative_conflict_status" -ne 0
+          grep -Fq 'unowned MCP registration eta-mu-receipt-river conflicts with generated output' \
+            host-build.log
+          sha256sum .mcp.json .muse-host-targets-owners.json \
+            > "$manifest_dir/after-v2-relative-conflict.sha256"
+          stat -c '%n:%d:%i:%y' .mcp.json .muse-host-targets-owners.json \
+            > "$manifest_dir/after-v2-relative-conflict.stat"
+          diff -u "$manifest_dir/before-v2-relative-conflict.sha256" \
+            "$manifest_dir/after-v2-relative-conflict.sha256"
+          diff -u "$manifest_dir/before-v2-relative-conflict.stat" \
+            "$manifest_dir/after-v2-relative-conflict.stat"
           test ! -e .muse-host-targets-transaction.json
           cp "$manifest_dir/first-mcp.json" .mcp.json
           cp "$manifest_dir/first-mcp-owners.json" .muse-host-targets-owners.json
@@ -1169,8 +1421,12 @@ jobs:
           writeFileSync(ownershipPath, `${JSON.stringify(ownership, null, 2)}\n`);
           NODE
 
-          registry_inode_before="$(stat -c %i .mcp.json)"
-          owners_inode_before="$(stat -c %i .muse-host-targets-owners.json)"
+          exec {registry_inode_fd}< .mcp.json
+          exec {owners_inode_fd}< .muse-host-targets-owners.json
+          registry_identity_before="$(stat -c '%d:%i' .mcp.json)"
+          owners_identity_before="$(
+            stat -c '%d:%i' .muse-host-targets-owners.json
+          )"
           real_clojure="$(command -v clojure)"
           real_mv="$(command -v mv)"
           real_node="$(command -v node)"
@@ -1266,8 +1522,11 @@ jobs:
           test ! -e .muse-host-targets-transaction.json
           test ! -e .muse-host-targets.lock
           assert_mcp_state
-          test "$(stat -c %i .mcp.json)" != "$registry_inode_before"
-          test "$(stat -c %i .muse-host-targets-owners.json)" != "$owners_inode_before"
+          test "$(stat -c '%d:%i' .mcp.json)" != "$registry_identity_before"
+          test "$(stat -c '%d:%i' .muse-host-targets-owners.json)" \
+            != "$owners_identity_before"
+          exec {registry_inode_fd}<&-
+          exec {owners_inode_fd}<&-
           sha256sum .mcp.json > "$manifest_dir/after-mcp.sha256"
           sha256sum .muse-host-targets-owners.json \
             > "$manifest_dir/after-mcp-owners.sha256"

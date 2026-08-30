@@ -88,6 +88,7 @@ mcp_lock_dir=""
 mcp_lock_owner=""
 mcp_lock_acquired=0
 mcp_lock_identity=""
+mcp_legacy_relative_migration=0
 mcp_transaction_file=""
 mcp_transaction_alias=""
 mcp_transaction_record=""
@@ -843,18 +844,224 @@ publish_mcp_state() {
     || fail "could not clear completed MCP transaction marker: $mcp_transaction_file"
 }
 
+initialize_mcp_lock_owner() {
+  node --input-type=module - \
+    "$mcp_registry_dir" \
+    "$mcp_registry_dir_identity" \
+    "$mcp_lock_dir" \
+    "$mcp_lock_identity" \
+    "$$" <<'NODE'
+import {randomBytes} from "node:crypto";
+import {
+  closeSync,
+  constants,
+  fchmodSync,
+  fstatSync,
+  fsyncSync,
+  linkSync,
+  lstatSync,
+  openSync,
+  readdirSync,
+  rmdirSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import {basename, dirname} from "node:path";
+
+const [
+  registryDirectory,
+  expectedRegistryIdentity,
+  lockDirectory,
+  expectedLockIdentity,
+  ownerPid,
+] = process.argv.slice(2);
+const effectiveUid = BigInt(process.geteuid());
+
+function existing(path) {
+  return lstatSync(path, {bigint: true, throwIfNoEntry: false});
+}
+
+function identity(state) {
+  return `${state.dev}:${state.ino}`;
+}
+
+function assertDirectory(path, expectedIdentity, label) {
+  const state = existing(path);
+  if (!state || !state.isDirectory() || state.isSymbolicLink()) {
+    throw new Error(`${path} is not the bound ${label} directory`);
+  }
+  if (identity(state) !== expectedIdentity) {
+    throw new Error(`${label} directory changed during owner initialization`);
+  }
+  return state;
+}
+
+function sameIdentity(left, right) {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+
+if (!/^[0-9]+$/.test(ownerPid)) {
+  throw new Error("invalid MCP lock owner pid");
+}
+if (dirname(lockDirectory) !== registryDirectory) {
+  throw new Error("MCP lock directory is outside the bound registry directory");
+}
+
+let registryDescriptor;
+let lockDescriptor;
+let ownerDescriptor;
+let createdOwner;
+let boundLockDirectory;
+let stagedOwner;
+let ownerPath;
+let initializationError;
+
+try {
+  assertDirectory(
+    registryDirectory,
+    expectedRegistryIdentity,
+    "MCP registry",
+  );
+  registryDescriptor = openSync(
+    registryDirectory,
+    constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+  );
+  const registryState = fstatSync(registryDescriptor, {bigint: true});
+  if (!registryState.isDirectory()
+      || identity(registryState) !== expectedRegistryIdentity) {
+    throw new Error("MCP registry directory changed while pinning it");
+  }
+
+  const boundRegistryDirectory = `/proc/self/fd/${registryDescriptor}`;
+  boundLockDirectory = `${boundRegistryDirectory}/${basename(lockDirectory)}`;
+  assertDirectory(
+    boundLockDirectory,
+    expectedLockIdentity,
+    "MCP lock",
+  );
+  lockDescriptor = openSync(
+    boundLockDirectory,
+    constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+  );
+  const lockState = fstatSync(lockDescriptor, {bigint: true});
+  if (!lockState.isDirectory()
+      || identity(lockState) !== expectedLockIdentity
+      || lockState.uid !== effectiveUid
+      || (lockState.mode & 0o777n) !== 0o700n) {
+    throw new Error("MCP lock directory is not the bound private lock");
+  }
+
+  const boundLock = `/proc/self/fd/${lockDescriptor}`;
+  stagedOwner = `${boundLock}/.owner.${ownerPid}.${randomBytes(16).toString("hex")}`;
+  ownerPath = `${boundLock}/owner`;
+  ownerDescriptor = openSync(
+    stagedOwner,
+    constants.O_WRONLY
+      | constants.O_CREAT
+      | constants.O_EXCL
+      | constants.O_NOFOLLOW,
+    0o600,
+  );
+  createdOwner = fstatSync(ownerDescriptor, {bigint: true});
+  if (!createdOwner.isFile() || createdOwner.isSymbolicLink()) {
+    throw new Error("staged MCP lock owner is not a regular file");
+  }
+  fchmodSync(ownerDescriptor, 0o600);
+  const privateOwner = fstatSync(ownerDescriptor, {bigint: true});
+  if (!sameIdentity(createdOwner, privateOwner)
+      || privateOwner.uid !== effectiveUid
+      || (privateOwner.mode & 0o777n) !== 0o600n) {
+    throw new Error("staged MCP lock owner did not retain private ownership");
+  }
+  writeFileSync(ownerDescriptor, `${ownerPid}\n`, "utf8");
+  fsyncSync(ownerDescriptor);
+
+  assertDirectory(
+    boundLockDirectory,
+    expectedLockIdentity,
+    "MCP lock",
+  );
+  linkSync(stagedOwner, ownerPath);
+  const linkedOwner = existing(ownerPath);
+  const stagedState = existing(stagedOwner);
+  if (!linkedOwner
+      || !stagedState
+      || !sameIdentity(linkedOwner, createdOwner)
+      || !sameIdentity(stagedState, createdOwner)) {
+    throw new Error("MCP lock owner publication changed inode identity");
+  }
+  unlinkSync(stagedOwner);
+  fsyncSync(lockDescriptor);
+  fsyncSync(registryDescriptor);
+} catch (error) {
+  initializationError = error;
+}
+
+if (initializationError) {
+  let cleanupError;
+  try {
+    // A failure before this invocation created and fstat-bound a staged inode
+    // has no deletion authority. Leave every pre-existing path for verified
+    // operator handling instead of guessing which process owns it.
+    if (createdOwner && lockDescriptor !== undefined) {
+      const currentOwner = existing(ownerPath);
+      const currentStage = existing(stagedOwner);
+      if (currentOwner && !sameIdentity(currentOwner, createdOwner)) {
+        throw new Error("refused to remove a substituted MCP lock owner");
+      }
+      if (currentStage && !sameIdentity(currentStage, createdOwner)) {
+        throw new Error("refused to remove a substituted staged MCP lock owner");
+      }
+      if (currentOwner) unlinkSync(ownerPath);
+      if (currentStage) unlinkSync(stagedOwner);
+      fsyncSync(lockDescriptor);
+      if (readdirSync(`/proc/self/fd/${lockDescriptor}`).length !== 0) {
+        throw new Error("refused to remove a nonempty MCP lock directory");
+      }
+
+      closeSync(lockDescriptor);
+      lockDescriptor = undefined;
+      assertDirectory(
+        boundLockDirectory,
+        expectedLockIdentity,
+        "MCP lock",
+      );
+      rmdirSync(boundLockDirectory);
+      fsyncSync(registryDescriptor);
+    }
+  } catch (error) {
+    cleanupError = error;
+  }
+
+  if (ownerDescriptor !== undefined) closeSync(ownerDescriptor);
+  if (lockDescriptor !== undefined) closeSync(lockDescriptor);
+  if (registryDescriptor !== undefined) closeSync(registryDescriptor);
+  if (cleanupError) {
+    throw new AggregateError(
+      [initializationError, cleanupError],
+      "refused unsafe cleanup of failed MCP lock initialization",
+    );
+  }
+  throw initializationError;
+}
+
+closeSync(ownerDescriptor);
+closeSync(lockDescriptor);
+closeSync(registryDescriptor);
+NODE
+}
+
 acquire_mcp_build_lock() {
   local attempt
   local owner
 
-  if mkdir -- "$mcp_lock_dir" 2>/dev/null; then
-    if ! printf '%s\n' "$$" > "$mcp_lock_owner"; then
-      rmdir -- "$mcp_lock_dir" 2>/dev/null || true
+  if (umask 077 && mkdir -- "$mcp_lock_dir") 2>/dev/null; then
+    mcp_lock_identity="$(directory_identity "$mcp_lock_dir")" \
+      || fail "could not bind the new MCP build lock identity"
+    if ! initialize_mcp_lock_owner; then
       fail "could not record ownership of the MCP build lock: $mcp_lock_dir"
     fi
     mcp_lock_acquired=1
-    mcp_lock_identity="$(directory_identity "$mcp_lock_dir")" \
-      || fail "could not bind the acquired MCP build lock identity"
     mcp_namespace_bindings_match \
       || fail "MCP publication namespace changed while acquiring the build lock"
     return
@@ -1011,6 +1218,16 @@ if ((mcp_target_count > 0)); then
   else
     printf '%s\n' '{"version":1,"targets":{}}' > "$mcp_ownership"
   fi
+  if node --input-type=module - "$mcp_ownership" <<'NODE'
+import {readFileSync} from "node:fs";
+
+const [ownershipPath] = process.argv.slice(2);
+const ownership = JSON.parse(readFileSync(ownershipPath, "utf8"));
+if (ownership?.version !== 1) process.exit(1);
+NODE
+  then
+    mcp_legacy_relative_migration=1
+  fi
   mcp_state_restore_ready=1
   printf '%s\n' '{"mcpServers":{}}' > "$generated_mcp_registry"
 fi
@@ -1027,7 +1244,8 @@ merge_mcp_registration() {
     "$mcp_ownership" \
     "$target" \
     "$mcp_producer_id" \
-    "$repo_root" <<'NODE'
+    "$repo_root" \
+    "$mcp_legacy_relative_migration" <<'NODE'
 import {readFileSync, writeFileSync} from "node:fs";
 import {isAbsolute, resolve} from "node:path";
 import {isDeepStrictEqual} from "node:util";
@@ -1040,6 +1258,7 @@ const [
   target,
   producerId,
   producerRoot,
+  allowLegacyRelativeMigration,
 ] = process.argv.slice(2);
 const legacyProducerId = "0".repeat(64);
 
@@ -1088,6 +1307,9 @@ if (!/^[0-9a-f]{64}$/.test(producerId) || producerId === legacyProducerId) {
 }
 if (!isAbsolute(producerRoot) || resolve(producerRoot) !== producerRoot) {
   throw new Error(`invalid MCP producer root: ${producerRoot}`);
+}
+if (allowLegacyRelativeMigration !== "0" && allowLegacyRelativeMigration !== "1") {
+  throw new Error("invalid legacy relative-registration migration policy");
 }
 
 function bindRegistrationToProducer(registration) {
@@ -1146,9 +1368,13 @@ for (const [name, generatedRegistration] of generatedEntries) {
 
   const previousName = ownership[ownershipKey];
   const currentNameOwned = previousName === name;
+  const exactLegacyRelativeMatch = allowLegacyRelativeMigration === "1"
+    && Object.hasOwn(merged, name)
+    && isDeepStrictEqual(merged[name], generatedRegistration);
   if (Object.hasOwn(merged, name)
       && !currentNameOwned
       && !legacyNameTransferred
+      && !exactLegacyRelativeMatch
       && !isDeepStrictEqual(merged[name], registration)) {
     throw new Error(`unowned MCP registration ${name} conflicts with generated output`);
   }
