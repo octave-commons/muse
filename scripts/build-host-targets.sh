@@ -317,7 +317,10 @@ resolve_mcp_target_destination() {
       fail "cannot resolve an MCP destination for target: $target"
       ;;
   esac
-  configured="$(clojure -M -e "(print ((requiring-resolve '$resolver)))")"
+  if ! configured="$(clojure -M -e \
+    "(let [configured ((requiring-resolve '$resolver))] (if (string? configured) (print configured) (System/exit 64)))")"; then
+    fail "$target does not configure :publish :mcp-config"
+  fi
   [[ -n "$configured" ]] || fail "$target does not configure :publish :mcp-config"
   [[ "$configured" != *$'\n'* ]] \
     || fail "$target configured an invalid multiline MCP destination"
@@ -1182,12 +1185,14 @@ cleanup_mcp_registry() {
 }
 
 if ((mcp_target_count > 0)); then
+  # Reject an absent or invalid publication contract before creating any
+  # producer identity, lock, generated source, or destination-side state.
+  resolve_mcp_public_registry
   # One private, durable token follows the checkout when its root moves.
   # Physical path aliases read the same file, while separate checkouts create
   # distinct ownership keys even when they publish to one shared registry.
   mcp_producer_id="$(resolve_mcp_producer_identity)" \
     || fail "could not resolve the stable MCP producer identity"
-  resolve_mcp_public_registry
   trap cleanup_mcp_registry EXIT
   acquire_mcp_build_lock
   preflight_publish_destination "$mcp_public_registry" \

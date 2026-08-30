@@ -52,6 +52,57 @@ jobs:
             exit 1
           fi
 
+          cp .ημ/config/mcp/root.edn "$manifest_dir/mcp-root.edn"
+          node --input-type=module <<'NODE'
+          import {readFileSync, writeFileSync} from "node:fs";
+          const path = ".ημ/config/mcp/root.edn";
+          const original = readFileSync(path, "utf8");
+          const changed = original.replace(
+            ':publish {:mcp-config ".mcp.json"}',
+            ":publish {}",
+          );
+          if (changed === original || changed.includes(":mcp-config")) {
+            throw new Error("could not remove the MCP publication destination");
+          }
+          writeFileSync(path, changed);
+          NODE
+          real_clojure="$(command -v clojure)"
+          mkdir "$manifest_dir/missing-config-bin"
+          cat > "$manifest_dir/missing-config-bin/clojure" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ "$*" == *"generate-entrypoint"* ]]; then
+            : > "$MUSE_TEST_GENERATOR_MARKER"
+            exit 73
+          fi
+          exec "$MUSE_TEST_REAL_CLOJURE" "$@"
+          SH
+          chmod +x "$manifest_dir/missing-config-bin/clojure"
+          set +e
+          MUSE_TEST_REAL_CLOJURE="$real_clojure" \
+            MUSE_TEST_GENERATOR_MARKER="$manifest_dir/missing-config-generated" \
+            PATH="$manifest_dir/missing-config-bin:$PATH" \
+            scripts/build-host-targets.sh mcp-server \
+            > "$manifest_dir/missing-config.log" 2>&1
+          missing_config_status="$?"
+          set -e
+          cp "$manifest_dir/mcp-root.edn" .ημ/config/mcp/root.edn
+          test "$missing_config_status" -eq 64
+          grep -Fq 'mcp-server does not configure :publish :mcp-config' \
+            "$manifest_dir/missing-config.log"
+          cmp -s "$manifest_dir/mcp-root.edn" .ημ/config/mcp/root.edn
+          test ! -e "$manifest_dir/missing-config-generated"
+          test ! -e src/gen
+          test ! -e .muse-host-targets-producer-id
+          test ! -e .mcp.json
+          test ! -e .muse-host-targets-owners.json
+          test ! -e .muse-host-targets-transaction.json
+          test ! -e .muse-host-targets.lock
+          test ! -e nil
+          test ! -e nil.muse-host-targets-owners.json
+          test ! -e nil.muse-host-targets-transaction.json
+          test ! -e nil.muse-host-targets.lock
+
           test ! -e .muse-host-targets-owners.json
           node --input-type=module <<'NODE'
           import {writeFileSync} from "node:fs";
