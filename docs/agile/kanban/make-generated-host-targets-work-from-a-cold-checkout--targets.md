@@ -2,7 +2,7 @@
 category: "kanban"
 labels: "build, host-targets, recovery"
 type: "task"
-write-id: "1788050389062-0.992bnjdpnumkwr69ckh"
+write-id: "1788050987050-0.i3gsuxrsv799hnf9tjc"
 points: "3"
 title: "Make generated host targets work from a cold checkout"
 priority: "P1"
@@ -67,4 +67,8 @@ Review disposition (PR #14): exact head 3fbcb6c passed CI including the cold gen
 Review bounce (PR #14): Codex found two exact-head defects after the documentation correction: multi-target builds allowed the Claude target to overwrite the generic MCP registration in .mcp.json, and CI matched WARNING: but not Shadow numbered WARNING #N banners. Both findings are accepted; return to implementation to merge MCP registrations deterministically and exercise both warning forms.
 
 Corrective implementation evidence: multi-target requests now accumulate each generated MCP document, reject conflicting duplicate registrations, sort server keys, and publish their union after all builds. CI asserts exactly eta-mu-claude and eta-mu-receipt-river with their expected compiled paths, hashes .mcp.json across both builds, and self-tests a warning regex covering WARNING: plus Shadow WARNING #N banners. bash -n, shellcheck, actionlint, regex positive/negative fixtures, and git diff --check pass locally; exact-head hosted cold-build CI remains required.
+
+Exact-head review finding accepted (PR #14): after an all-target build, either supported single-target MCP rebuild rewrote .mcp.json with its own one-server document and dropped the other integration. Keep the card in testing. The correction must preserve unbuilt registrations, let a rebuilt target refresh its own registration, reject conflicting duplicate output within one request, and prove all -> mcp-server -> claude-server -> all behavior in hosted CI.
+
+Corrective implementation evidence: every MCP-producing request now seeds a temporary registry from the current .mcp.json (or an empty registry on a cold checkout), merges target-generated registrations with generated output authoritative for rebuilt names, tracks same-request output separately for conflict rejection, sorts keys, and publishes the union. CI now asserts the exact two expected registrations after all, mcp-server, claude-server, and a second all build, including byte-identical registry hashes. bash -n, shellcheck, actionlint, git diff --check, and isolated preserve/refresh/conflict merge fixtures pass locally; the full local build remains blocked before source compilation by the unavailable Maven proxy, so exact-head hosted CI remains required.
 ---

@@ -54,7 +54,8 @@ jobs:
             > "$manifest_dir/first.sha256"
           sha256sum .mcp.json > "$manifest_dir/first-mcp.sha256"
 
-          node --input-type=module <<'NODE'
+          assert_mcp_registry() {
+            node --input-type=module <<'NODE'
           import {readFileSync} from "node:fs";
           const config = JSON.parse(readFileSync(".mcp.json", "utf8"));
           const actual = config.mcpServers ?? {};
@@ -71,6 +72,19 @@ jobs:
             }
           }
           NODE
+          }
+
+          assert_mcp_registry
+
+          scripts/build-host-targets.sh mcp-server 2>&1 | tee -a host-build.log
+          assert_mcp_registry
+          sha256sum .mcp.json > "$manifest_dir/after-mcp.sha256"
+          diff -u "$manifest_dir/first-mcp.sha256" "$manifest_dir/after-mcp.sha256"
+
+          scripts/build-host-targets.sh claude-server 2>&1 | tee -a host-build.log
+          assert_mcp_registry
+          sha256sum .mcp.json > "$manifest_dir/after-claude.sha256"
+          diff -u "$manifest_dir/first-mcp.sha256" "$manifest_dir/after-claude.sha256"
 
           scripts/build-host-targets.sh all 2>&1 | tee -a host-build.log
           find src/gen -type f -print0 | sort -z | xargs -0 sha256sum \
