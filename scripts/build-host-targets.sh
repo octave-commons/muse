@@ -1088,6 +1088,7 @@ acquire_mcp_build_lock() {
 
 cleanup_mcp_registry() {
   local exit_status=$?
+  local lock_release_failed=0
   local registry_restored=0
   local rollback_prepared=0
   local ownership_restored=0
@@ -1172,13 +1173,22 @@ cleanup_mcp_registry() {
 
   if ((mcp_lock_acquired)); then
     if mcp_state_bindings_match; then
-      rm -f -- "$mcp_lock_owner" \
-        || printf '[muse host build] failed to remove lock owner %s\n' "$mcp_lock_owner" >&2
-      rmdir -- "$mcp_lock_dir" \
-        || printf '[muse host build] failed to release %s\n' "$mcp_lock_dir" >&2
+      if ! rm -f -- "$mcp_lock_owner"; then
+        printf '[muse host build] failed to remove lock owner %s\n' "$mcp_lock_owner" >&2
+        lock_release_failed=1
+      fi
+      if ! rmdir -- "$mcp_lock_dir"; then
+        printf '[muse host build] failed to release %s\n' "$mcp_lock_dir" >&2
+        lock_release_failed=1
+      fi
     else
       printf '[muse host build] refused to release the MCP build lock because its namespace binding changed\n' >&2
+      lock_release_failed=1
     fi
+  fi
+
+  if ((lock_release_failed && exit_status == 0)); then
+    exit_status=64
   fi
 
   exit "$exit_status"

@@ -172,6 +172,79 @@ jobs:
 
           assert_mcp_state
 
+          release_real_rm="$(command -v rm)"
+          release_real_rmdir="$(command -v rmdir)"
+          release_lock="$PWD/.muse-host-targets.lock"
+          mkdir "$manifest_dir/release-bin"
+          cat > "$manifest_dir/release-bin/rm" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          for argument in "$@"; do
+            if [[ "${MUSE_TEST_FAIL_RELEASE_OWNER-}" == 1 \
+                && "$argument" == "$MUSE_TEST_RELEASE_LOCK/owner" ]]; then
+              exit 73
+            fi
+          done
+          exec "$MUSE_TEST_REAL_RM" "$@"
+          SH
+          chmod +x "$manifest_dir/release-bin/rm"
+          cat > "$manifest_dir/release-bin/rmdir" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          for argument in "$@"; do
+            if [[ "${MUSE_TEST_FAIL_RELEASE_DIRECTORY-}" == 1 \
+                && "$argument" == "$MUSE_TEST_RELEASE_LOCK" ]]; then
+              exit 74
+            fi
+          done
+          exec "$MUSE_TEST_REAL_RMDIR" "$@"
+          SH
+          chmod +x "$manifest_dir/release-bin/rmdir"
+
+          set +e
+          MUSE_TEST_FAIL_RELEASE_OWNER=1 \
+            MUSE_TEST_RELEASE_LOCK="$release_lock" \
+            MUSE_TEST_REAL_RM="$release_real_rm" \
+            MUSE_TEST_REAL_RMDIR="$release_real_rmdir" \
+            PATH="$manifest_dir/release-bin:$PATH" \
+            scripts/build-host-targets.sh mcp-server \
+              > "$manifest_dir/release-owner.log" 2>&1
+          release_owner_status="$?"
+          set -e
+          test "$release_owner_status" -eq 64
+          grep -Fq 'failed to remove lock owner' \
+            "$manifest_dir/release-owner.log"
+          grep -Fq 'failed to release' "$manifest_dir/release-owner.log"
+          test -f "$release_lock/owner"
+          test ! -e .muse-host-targets-transaction.json
+          assert_mcp_state
+          IFS= read -r release_owner_pid < "$release_lock/owner"
+          if kill -0 "$release_owner_pid" 2>/dev/null; then
+            echo "release-owner fixture build is still active: $release_owner_pid" >&2
+            exit 1
+          fi
+          "$release_real_rm" -f -- "$release_lock/owner"
+          "$release_real_rmdir" -- "$release_lock"
+
+          set +e
+          MUSE_TEST_FAIL_RELEASE_DIRECTORY=1 \
+            MUSE_TEST_RELEASE_LOCK="$release_lock" \
+            MUSE_TEST_REAL_RM="$release_real_rm" \
+            MUSE_TEST_REAL_RMDIR="$release_real_rmdir" \
+            PATH="$manifest_dir/release-bin:$PATH" \
+            scripts/build-host-targets.sh mcp-server \
+              > "$manifest_dir/release-directory.log" 2>&1
+          release_directory_status="$?"
+          set -e
+          test "$release_directory_status" -eq 64
+          grep -Fq 'failed to release' "$manifest_dir/release-directory.log"
+          test ! -e "$release_lock/owner"
+          test -d "$release_lock"
+          test "$(find "$release_lock" -mindepth 1 -maxdepth 1 | wc -l)" -eq 0
+          test ! -e .muse-host-targets-transaction.json
+          assert_mcp_state
+          "$release_real_rmdir" -- "$release_lock"
+
           lock_real_node="$(command -v node)"
           mkdir "$manifest_dir/lock-init-bin"
           cat > "$manifest_dir/lock-init-bin/node" <<'SH'
