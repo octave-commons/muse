@@ -136,9 +136,28 @@ NODE
   fi
 }
 
+canonicalize_mcp_destination() {
+  local configured="$1"
+
+  mkdir -p -- "$(dirname "$configured")"
+  node --input-type=module - "$configured" <<'NODE'
+import {lstatSync, realpathSync} from "node:fs";
+import {basename, dirname, join, resolve} from "node:path";
+
+const [configured] = process.argv.slice(2);
+const absolute = resolve(configured);
+const existing = lstatSync(absolute, {throwIfNoEntry: false});
+if (existing) {
+  process.stdout.write(realpathSync(absolute));
+} else {
+  process.stdout.write(join(realpathSync(dirname(absolute)), basename(absolute)));
+}
+NODE
+}
+
 resolve_mcp_public_registry() {
   local configured
-  local resolved_registry
+  local resolved
   local resolver
   local target
 
@@ -158,39 +177,21 @@ resolve_mcp_public_registry() {
     configured="$(clojure -M -e "(print ((requiring-resolve '$resolver)))")"
     [[ -n "$configured" ]] || fail "$target does not configure :publish :mcp-config"
     [[ "$configured" != *$'\n'* ]] || fail "$target configured an invalid multiline MCP destination"
+    resolved="$(canonicalize_mcp_destination "$configured")"
     if [[ -z "$mcp_public_registry" ]]; then
-      mcp_public_registry="$configured"
-    elif [[ "$configured" != "$mcp_public_registry" ]]; then
-      fail "MCP-producing targets configure different destinations: $mcp_public_registry and $configured"
+      mcp_public_registry="$resolved"
+    elif [[ "$resolved" != "$mcp_public_registry" ]]; then
+      fail "MCP-producing targets configure different canonical destinations: $mcp_public_registry and $resolved"
     fi
   done
 
   [[ -n "$mcp_public_registry" ]] || fail "could not resolve the configured MCP destination"
-  if [[ "$mcp_public_registry" == .mcp.json ]]; then
+  if [[ "$mcp_public_registry" == "$repo_root/.mcp.json" ]]; then
     mcp_ownership_file="$repo_root/.muse-host-targets-owners.json"
-  else
-    mcp_ownership_file="$mcp_public_registry.muse-host-targets-owners.json"
-  fi
-
-  mkdir -p -- "$(dirname "$mcp_public_registry")"
-  resolved_registry="$(node --input-type=module - "$mcp_public_registry" <<'NODE'
-import {lstatSync, realpathSync} from "node:fs";
-import {basename, dirname, join, resolve} from "node:path";
-
-const [configured] = process.argv.slice(2);
-const absolute = resolve(configured);
-const existing = lstatSync(absolute, {throwIfNoEntry: false});
-if (existing) {
-  process.stdout.write(realpathSync(absolute));
-} else {
-  process.stdout.write(join(realpathSync(dirname(absolute)), basename(absolute)));
-}
-NODE
-  )"
-  if [[ "$resolved_registry" == "$repo_root/.mcp.json" ]]; then
     mcp_lock_dir="$repo_root/.muse-host-targets.lock"
   else
-    mcp_lock_dir="$resolved_registry.muse-host-targets.lock"
+    mcp_ownership_file="$mcp_public_registry.muse-host-targets-owners.json"
+    mcp_lock_dir="$mcp_public_registry.muse-host-targets.lock"
   fi
   mcp_lock_owner="$mcp_lock_dir/owner"
 }

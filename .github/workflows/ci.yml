@@ -157,7 +157,7 @@ jobs:
           cp "$manifest_dir/mcp-root.edn" .ημ/config/mcp/root.edn
 
           linked_registry="$manifest_dir/linked-mcp.json"
-          linked_owners="$manifest_dir/linked-mcp-owners.json"
+          linked_owners="$linked_registry.muse-host-targets-owners.json"
           cp .mcp.json "$linked_registry"
           cp .muse-host-targets-owners.json "$linked_owners"
           chmod 0640 "$linked_registry"
@@ -229,10 +229,23 @@ jobs:
           cp "$linked_registry" .mcp.json
           cp "$linked_owners" .muse-host-targets-owners.json
 
+          cp .ημ/config/mcp/root.edn "$manifest_dir/relative-mcp-root.edn"
+          node --input-type=module - "$PWD/.mcp.json" <<'NODE'
+          import {readFileSync, writeFileSync} from "node:fs";
+          const [destination] = process.argv.slice(2);
+          const path = ".ημ/config/mcp/root.edn";
+          const source = readFileSync(path, "utf8");
+          const changed = source.replace(
+            ':mcp-config ".mcp.json"',
+            `:mcp-config "${destination}"`,
+          );
+          if (changed === source) throw new Error("absolute MCP alias fixture did not change config");
+          writeFileSync(path, changed);
+          NODE
           mkdir .muse-host-targets.lock
           printf '%s\n' "$$" > .muse-host-targets.lock/owner
           set +e
-          scripts/build-host-targets.sh mcp-server \
+          scripts/build-host-targets.sh all \
             > "$manifest_dir/lock-build.log" 2>&1
           lock_status="$?"
           set -e
@@ -247,6 +260,7 @@ jobs:
           rm .muse-host-targets.lock/owner
           rmdir .muse-host-targets.lock
           cat "$manifest_dir/lock-build.log" >> host-build.log
+          cp "$manifest_dir/relative-mcp-root.edn" .ημ/config/mcp/root.edn
 
           mkdir .muse-host-targets.lock
           printf '%s\n' '99999999' > .muse-host-targets.lock/owner
