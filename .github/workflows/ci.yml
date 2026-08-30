@@ -53,12 +53,21 @@ jobs:
           fi
 
           scripts/build-host-targets.sh all 2>&1 | tee host-build.log
+          test -f .muse-host-targets-producer-id
+          test ! -L .muse-host-targets-producer-id
+          test "$(stat -c %a .muse-host-targets-producer-id)" = 600
+          IFS= read -r MUSE_TEST_MCP_PRODUCER_ID < .muse-host-targets-producer-id
+          [[ "$MUSE_TEST_MCP_PRODUCER_ID" =~ ^[0-9a-f]{64}$ ]]
+          test "$MUSE_TEST_MCP_PRODUCER_ID" != "$(printf '0%.0s' {1..64})"
+          export MUSE_TEST_MCP_PRODUCER_ID
           test "$(find src/gen -type f | wc -l)" -eq 3
           find src/gen -type f -print0 | sort -z | xargs -0 sha256sum \
             > "$manifest_dir/first.sha256"
           sha256sum .mcp.json > "$manifest_dir/first-mcp.sha256"
           sha256sum .muse-host-targets-owners.json \
             > "$manifest_dir/first-mcp-owners.sha256"
+          cp .mcp.json "$manifest_dir/first-mcp.json"
+          cp .muse-host-targets-owners.json "$manifest_dir/first-mcp-owners.json"
 
           assert_mcp_state() {
             node --input-type=module <<'NODE'
@@ -81,16 +90,99 @@ jobs:
             readFileSync(".muse-host-targets-owners.json", "utf8"),
           );
           const expectedOwnership = {
-            "claude-server": "eta-mu-claude",
-            "mcp-server": "eta-mu-receipt-river",
+            [`${process.env.MUSE_TEST_MCP_PRODUCER_ID}:claude-server`]: "eta-mu-claude",
+            [`${process.env.MUSE_TEST_MCP_PRODUCER_ID}:mcp-server`]: "eta-mu-receipt-river",
           };
-          if (ownership.version !== 1
+          if (ownership.version !== 2
               || JSON.stringify(ownership.targets) !== JSON.stringify(expectedOwnership)) {
             throw new Error(`unexpected MCP target ownership: ${JSON.stringify(ownership)}`);
           }
           NODE
           }
 
+          assert_mcp_state
+
+          checkout_b="$manifest_dir/checkout-b"
+          git worktree add --detach "$checkout_b" HEAD
+          ln -s "$PWD/node_modules" "$checkout_b/node_modules"
+          node --input-type=module - "$checkout_b/.ημ/config/mcp/root.edn" "$PWD/.mcp.json" <<'NODE'
+          import {readFileSync, writeFileSync} from "node:fs";
+          const [configPath, destination] = process.argv.slice(2);
+          const source = readFileSync(configPath, "utf8");
+          const changed = source
+            .replace(":id                 :eta-mu/claude-receipt-river", ":id                 :eta-mu/checkout-b")
+            .replace(':info {:name "eta-mu-receipt-river"', ':info {:name "eta-mu-checkout-b"')
+            .replace(':mcp-config ".mcp.json"', `:mcp-config "${destination}"`);
+          if (changed === source
+              || !changed.includes("eta-mu-checkout-b")
+              || !changed.includes(`:mcp-config "${destination}"`)) {
+            throw new Error("checkout-B MCP fixture did not change config");
+          }
+          writeFileSync(configPath, changed);
+          NODE
+          node --input-type=module <<'NODE'
+          import {readFileSync, writeFileSync} from "node:fs";
+          const registry = JSON.parse(readFileSync(".mcp.json", "utf8"));
+          registry.mcpServers["eta-mu-unowned-copy"] =
+            registry.mcpServers["eta-mu-receipt-river"];
+          writeFileSync(".mcp.json", `${JSON.stringify(registry, null, 2)}\n`);
+          const legacyOwnership = {
+            version: 1,
+            targets: {
+              "claude-server": "eta-mu-claude",
+              "mcp-server": "eta-mu-receipt-river",
+            },
+          };
+          writeFileSync(
+            ".muse-host-targets-owners.json",
+            `${JSON.stringify(legacyOwnership, null, 2)}\n`,
+          );
+          NODE
+          (
+            cd "$checkout_b"
+            scripts/build-host-targets.sh mcp-server
+          ) 2>&1 | tee -a host-build.log
+          test -f "$checkout_b/.muse-host-targets-producer-id"
+          test ! -L "$checkout_b/.muse-host-targets-producer-id"
+          test "$(stat -c %a "$checkout_b/.muse-host-targets-producer-id")" = 600
+          IFS= read -r checkout_b_producer_id \
+            < "$checkout_b/.muse-host-targets-producer-id"
+          [[ "$checkout_b_producer_id" =~ ^[0-9a-f]{64}$ ]]
+          test "$checkout_b_producer_id" != "$(printf '0%.0s' {1..64})"
+          test "$checkout_b_producer_id" != "$MUSE_TEST_MCP_PRODUCER_ID"
+          scripts/build-host-targets.sh claude-server 2>&1 | tee -a host-build.log
+          scripts/build-host-targets.sh mcp-server 2>&1 | tee -a host-build.log
+          node --input-type=module - "$checkout_b_producer_id" <<'NODE'
+          import {readFileSync} from "node:fs";
+          const [checkoutBProducerId] = process.argv.slice(2);
+          const registry = JSON.parse(readFileSync(".mcp.json", "utf8")).mcpServers ?? {};
+          const expectedRegistry = [
+            "eta-mu-checkout-b",
+            "eta-mu-claude",
+            "eta-mu-receipt-river",
+            "eta-mu-unowned-copy",
+          ];
+          if (JSON.stringify(Object.keys(registry).sort()) !== JSON.stringify(expectedRegistry.sort())) {
+            throw new Error(`shared registry lost a checkout registration: ${JSON.stringify(registry)}`);
+          }
+          const ownership = JSON.parse(
+            readFileSync(".muse-host-targets-owners.json", "utf8"),
+          );
+          const targetEntries = {
+            [`${process.env.MUSE_TEST_MCP_PRODUCER_ID}:claude-server`]: "eta-mu-claude",
+            [`${process.env.MUSE_TEST_MCP_PRODUCER_ID}:mcp-server`]: "eta-mu-receipt-river",
+            [`${checkoutBProducerId}:mcp-server`]: "eta-mu-checkout-b",
+          };
+          const expectedTargets = Object.fromEntries(
+            Object.keys(targetEntries).sort().map((key) => [key, targetEntries[key]]),
+          );
+          if (ownership.version !== 2
+              || JSON.stringify(ownership.targets) !== JSON.stringify(expectedTargets)) {
+            throw new Error(`shared ownership lost a checkout target: ${JSON.stringify(ownership)}`);
+          }
+          NODE
+          cp "$manifest_dir/first-mcp.json" .mcp.json
+          cp "$manifest_dir/first-mcp-owners.json" .muse-host-targets-owners.json
           assert_mcp_state
 
           configured_dir="$manifest_dir/configured"
@@ -147,7 +239,12 @@ jobs:
             throw new Error(`unexpected configured registry: ${JSON.stringify(registry)}`);
           }
           const ownership = JSON.parse(readFileSync(ownershipPath, "utf8"));
-          const expectedOwnership = {version: 1, targets: {"mcp-server": "eta-mu-receipt-river"}};
+          const expectedOwnership = {
+            version: 2,
+            targets: {
+              [`${process.env.MUSE_TEST_MCP_PRODUCER_ID}:mcp-server`]: "eta-mu-receipt-river",
+            },
+          };
           if (JSON.stringify(ownership) !== JSON.stringify(expectedOwnership)) {
             throw new Error(`unexpected configured ownership: ${JSON.stringify(ownership)}`);
           }
@@ -299,7 +396,8 @@ jobs:
 
           const ownershipPath = ".muse-host-targets-owners.json";
           const ownership = JSON.parse(readFileSync(ownershipPath, "utf8"));
-          ownership.targets["mcp-server"] = "eta-mu-retired";
+          ownership.targets[`${process.env.MUSE_TEST_MCP_PRODUCER_ID}:mcp-server`] =
+            "eta-mu-retired";
           writeFileSync(ownershipPath, `${JSON.stringify(ownership, null, 2)}\n`);
           NODE
 
@@ -348,7 +446,8 @@ jobs:
           const ownership = JSON.parse(
             readFileSync(".muse-host-targets-owners.json", "utf8"),
           ).targets ?? {};
-          if (ownership["mcp-server"] !== "eta-mu-retired") {
+          const ownershipKey = `${process.env.MUSE_TEST_MCP_PRODUCER_ID}:mcp-server`;
+          if (ownership[ownershipKey] !== "eta-mu-retired") {
             throw new Error(`crash did not preserve the old ownership state: ${JSON.stringify(ownership)}`);
           }
           NODE
@@ -374,10 +473,10 @@ jobs:
             readFileSync(".muse-host-targets-owners.json", "utf8"),
           );
           const expectedOwnership = {
-            version: 1,
+            version: 2,
             targets: {
-              "claude-server": "eta-mu-claude",
-              "mcp-server": "eta-mu-receipt-river",
+              [process.env.MUSE_TEST_MCP_PRODUCER_ID + ":claude-server"]: "eta-mu-claude",
+              [process.env.MUSE_TEST_MCP_PRODUCER_ID + ":mcp-server"]: "eta-mu-receipt-river",
             },
           };
           if (JSON.stringify(ownership) !== JSON.stringify(expectedOwnership)) {
@@ -474,8 +573,8 @@ jobs:
               if (createHash("sha256").update(bytes).digest("hex") === "$rollback_hash") process.exit(71);
               const targets = JSON.parse(ownershipBytes.toString("utf8")).targets ?? {};
               const expectedTargets = {
-                "claude-server": "eta-mu-claude",
-                "mcp-server": "eta-mu-receipt-river",
+                [process.env.MUSE_TEST_MCP_PRODUCER_ID + ":claude-server"]: "eta-mu-claude",
+                [process.env.MUSE_TEST_MCP_PRODUCER_ID + ":mcp-server"]: "eta-mu-receipt-river",
               };
               if (JSON.stringify(targets) !== JSON.stringify(expectedTargets)) process.exit(70);
               if (createHash("sha256").update(ownershipBytes).digest("hex") === "$rollback_owners_hash") process.exit(69);
@@ -539,7 +638,8 @@ jobs:
 
           const ownershipPath = ".muse-host-targets-owners.json";
           const ownership = JSON.parse(readFileSync(ownershipPath, "utf8"));
-          ownership.targets["claude-server"] = "eta-mu-retired-claude";
+          ownership.targets[`${process.env.MUSE_TEST_MCP_PRODUCER_ID}:claude-server`] =
+            "eta-mu-retired-claude";
           writeFileSync(ownershipPath, `${JSON.stringify(ownership)}\n`);
           NODE
           : > "$manifest_dir/rollback-mv.log"
