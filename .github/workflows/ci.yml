@@ -45,8 +45,12 @@ jobs:
           test ! -e src/gen
           manifest_dir="$(mktemp -d)"
           warning_pattern='(^|[[:space:]])WARNING(:|[[:space:]]+#[0-9]+([[:space:]]*-[[:space:]]*)?)'
-          printf '%s\n' 'WARNING: sample' '------ WARNING #1 - sample' \
-            | grep -Eq "$warning_pattern"
+          printf '%s\n' 'WARNING: sample' | grep -Eq "$warning_pattern"
+          printf '%s\n' '------ WARNING #1 - sample' | grep -Eq "$warning_pattern"
+          if printf '%s\n' 'warning-free build' | grep -Eq "$warning_pattern"; then
+            echo "warning pattern matched benign text" >&2
+            exit 1
+          fi
 
           scripts/build-host-targets.sh all 2>&1 | tee host-build.log
           test "$(find src/gen -type f | wc -l)" -eq 3
