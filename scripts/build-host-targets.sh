@@ -77,10 +77,15 @@ mcp_ownership_file=""
 mcp_lock_dir=""
 mcp_lock_owner=""
 mcp_lock_acquired=0
+mcp_transaction_file=""
+mcp_transaction_record=""
+mcp_recovery_registry=""
+mcp_recovery_ownership=""
 
 atomic_publish() {
   local source="$1"
   local destination="$2"
+  local new_mode="${3-}"
   local publish_destination="$destination"
   local publish_dir
   local staged
@@ -121,13 +126,21 @@ NODE
       rm -f -- "$staged"
       return 1
     fi
-  elif ! node --input-type=module - "$staged" <<'NODE'
+  elif ! node --input-type=module - "$staged" "$new_mode" <<'NODE'
 import {chmodSync} from "node:fs";
 
-const [staged] = process.argv.slice(2);
-chmodSync(staged, 0o666 & ~process.umask());
+const [staged, requestedMode] = process.argv.slice(2);
+const mode = requestedMode.length > 0
+  ? Number.parseInt(requestedMode, 8)
+  : 0o666 & ~process.umask();
+if (!Number.isInteger(mode)) throw new Error(`invalid staged mode: ${requestedMode}`);
+chmodSync(staged, mode);
 NODE
   then
+    rm -f -- "$staged"
+    return 1
+  fi
+  if ! sync -f -- "$staged"; then
     rm -f -- "$staged"
     return 1
   fi
@@ -135,6 +148,7 @@ NODE
     rm -f -- "$staged"
     return 1
   fi
+  sync -f -- "$publish_dir"
 }
 
 canonicalize_mcp_destination() {
@@ -192,9 +206,11 @@ resolve_mcp_public_registry() {
     registry_dir="${mcp_public_registry%/*}"
     mcp_ownership_file="$registry_dir/.muse-host-targets-owners.json"
     mcp_lock_dir="$registry_dir/.muse-host-targets.lock"
+    mcp_transaction_file="$registry_dir/.muse-host-targets-transaction.json"
   else
     mcp_ownership_file="$mcp_public_registry.muse-host-targets-owners.json"
     mcp_lock_dir="$mcp_public_registry.muse-host-targets.lock"
+    mcp_transaction_file="$mcp_public_registry.muse-host-targets-transaction.json"
   fi
   mcp_lock_owner="$mcp_lock_dir/owner"
 }
@@ -233,6 +249,209 @@ if (existing) {
 NODE
 }
 
+# Registry bytes are visible to MCP clients, while ownership is private writer
+# state. Persist and fsync the complete intended pair before changing either;
+# an interrupted writer leaves the marker for idempotent replay under the same
+# destination-wide lock. Rollback replaces that intent before restoring bytes.
+prepare_mcp_transaction() {
+  local registry_source="$1"
+  local registry_present="$2"
+  local ownership_source="$3"
+  local ownership_present="$4"
+
+  if [[ -L "$mcp_transaction_file" \
+        || (-e "$mcp_transaction_file" && ! -f "$mcp_transaction_file") ]]; then
+    return 1
+  fi
+  [[ -z "$mcp_transaction_record" ]] || rm -f -- "$mcp_transaction_record"
+  mcp_transaction_record="$(mktemp)" || return 1
+  if ! node --input-type=module - \
+    "$mcp_transaction_record" \
+    "$registry_source" \
+    "$registry_present" \
+    "$ownership_source" \
+    "$ownership_present" <<'NODE'
+import {createHash} from "node:crypto";
+import {readFileSync, writeFileSync} from "node:fs";
+
+const [output, registryPath, registryPresent, ownershipPath, ownershipPresent] =
+  process.argv.slice(2);
+
+function capture(path, present) {
+  if (present === "0") return {present: false, sha256: null, bytes: null};
+  if (present !== "1") throw new Error(`invalid transaction presence flag: ${present}`);
+  const bytes = readFileSync(path);
+  return {
+    present: true,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+    bytes: bytes.toString("base64"),
+  };
+}
+
+const transaction = {
+  version: 1,
+  registry: capture(registryPath, registryPresent),
+  ownership: capture(ownershipPath, ownershipPresent),
+};
+writeFileSync(output, `${JSON.stringify(transaction)}\n`, {mode: 0o600});
+NODE
+  then
+    return 1
+  fi
+  if ! atomic_publish "$mcp_transaction_record" "$mcp_transaction_file" 600; then
+    return 1
+  fi
+  rm -f -- "$mcp_transaction_record"
+  mcp_transaction_record=""
+}
+
+publish_or_remove() {
+  local source="$1"
+  local present="$2"
+  local destination="$3"
+
+  case "$present" in
+    1)
+      atomic_publish "$source" "$destination"
+      ;;
+    0)
+      rm -f -- "$destination" && sync -f -- "$(dirname "$destination")"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+clear_mcp_transaction() {
+  [[ -e "$mcp_transaction_file" || -L "$mcp_transaction_file" ]] || return 0
+  [[ -f "$mcp_transaction_file" && ! -L "$mcp_transaction_file" ]] || return 1
+  rm -f -- "$mcp_transaction_file" \
+    && sync -f -- "$(dirname "$mcp_transaction_file")"
+}
+
+apply_mcp_transaction() {
+  local registry_source="$1"
+  local registry_present="$2"
+  local ownership_source="$3"
+  local ownership_present="$4"
+  local order="$5"
+
+  case "$order" in
+    registry-first)
+      publish_or_remove "$registry_source" "$registry_present" "$mcp_public_registry" \
+        && publish_or_remove "$ownership_source" "$ownership_present" "$mcp_ownership_file"
+      ;;
+    ownership-first)
+      publish_or_remove "$ownership_source" "$ownership_present" "$mcp_ownership_file" \
+        && publish_or_remove "$registry_source" "$registry_present" "$mcp_public_registry"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+recover_mcp_transaction() {
+  local ownership_present
+  local registry_present
+  local state
+
+  [[ -e "$mcp_transaction_file" || -L "$mcp_transaction_file" ]] || return 0
+  [[ -f "$mcp_transaction_file" && ! -L "$mcp_transaction_file" ]] \
+    || fail "MCP transaction marker is not a regular file: $mcp_transaction_file"
+  mcp_recovery_registry="$(mktemp)" \
+    || fail "could not allocate MCP transaction recovery storage"
+  mcp_recovery_ownership="$(mktemp)" \
+    || fail "could not allocate MCP transaction recovery storage"
+  if ! state="$(node --input-type=module - \
+    "$mcp_transaction_file" \
+    "$mcp_recovery_registry" \
+    "$mcp_recovery_ownership" <<'NODE'
+import {createHash} from "node:crypto";
+import {readFileSync, writeFileSync} from "node:fs";
+
+const [transactionPath, registryOutput, ownershipOutput] = process.argv.slice(2);
+const transaction = JSON.parse(readFileSync(transactionPath, "utf8"));
+if (transaction?.version !== 1) throw new Error("unsupported MCP transaction version");
+
+function objectMap(value) {
+  return value && typeof value === "object" && !Array.isArray(value);
+}
+
+function decode(label, state, output) {
+  if (!objectMap(state) || typeof state.present !== "boolean") {
+    throw new Error(`invalid ${label} transaction state`);
+  }
+  if (!state.present) {
+    if (state.bytes !== null || state.sha256 !== null) {
+      throw new Error(`invalid absent ${label} transaction state`);
+    }
+    return false;
+  }
+  if (typeof state.bytes !== "string" || typeof state.sha256 !== "string") {
+    throw new Error(`invalid present ${label} transaction state`);
+  }
+  const bytes = Buffer.from(state.bytes, "base64");
+  if (bytes.toString("base64") !== state.bytes) {
+    throw new Error(`non-canonical ${label} transaction bytes`);
+  }
+  if (createHash("sha256").update(bytes).digest("hex") !== state.sha256) {
+    throw new Error(`${label} transaction checksum mismatch`);
+  }
+  const value = JSON.parse(bytes.toString("utf8"));
+  if (label === "registry") {
+    if (!objectMap(value?.mcpServers)) {
+      throw new Error("transaction registry must contain an mcpServers object");
+    }
+  } else if (value?.version !== 1
+      || !objectMap(value?.targets)
+      || Object.values(value.targets).some(
+        (name) => typeof name !== "string" || name.length === 0,
+      )) {
+    throw new Error("transaction ownership must contain a version 1 targets object");
+  }
+  writeFileSync(output, bytes, {mode: 0o600});
+  return true;
+}
+
+const registryPresent = decode(
+  "registry",
+  transaction.registry,
+  registryOutput,
+);
+const ownershipPresent = decode(
+  "ownership",
+  transaction.ownership,
+  ownershipOutput,
+);
+process.stdout.write(`${registryPresent ? 1 : 0} ${ownershipPresent ? 1 : 0}`);
+NODE
+  )"; then
+    fail "MCP transaction marker is invalid; preserve it for recovery: $mcp_transaction_file"
+  fi
+  read -r registry_present ownership_present <<< "$state"
+  printf '[muse host build] recovering interrupted MCP state transaction\n'
+  apply_mcp_transaction \
+    "$mcp_recovery_registry" \
+    "$registry_present" \
+    "$mcp_recovery_ownership" \
+    "$ownership_present" \
+    registry-first \
+    || fail "could not recover interrupted MCP state transaction"
+  clear_mcp_transaction \
+    || fail "could not clear recovered MCP transaction marker: $mcp_transaction_file"
+}
+
+publish_mcp_state() {
+  prepare_mcp_transaction "$mcp_registry" 1 "$mcp_ownership" 1 \
+    || fail "could not prepare MCP state transaction"
+  apply_mcp_transaction "$mcp_registry" 1 "$mcp_ownership" 1 registry-first \
+    || fail "could not publish MCP state transaction"
+  clear_mcp_transaction \
+    || fail "could not clear completed MCP transaction marker: $mcp_transaction_file"
+}
+
 acquire_mcp_build_lock() {
   local attempt
   local owner
@@ -265,36 +484,60 @@ acquire_mcp_build_lock() {
 cleanup_mcp_registry() {
   local exit_status=$?
   local owner
+  local registry_restored=0
+  local rollback_prepared=0
   local ownership_restored=0
   local temp
   set +e
   trap - EXIT
 
   if ((exit_status != 0 && mcp_state_restore_ready)); then
-    if ((mcp_original_ownership_present)); then
-      if atomic_publish "$mcp_original_ownership" "$mcp_ownership_file"; then
-        ownership_restored=1
-      else
-        printf '[muse host build] failed to restore %s\n' "$mcp_ownership_file" >&2
-      fi
+    if prepare_mcp_transaction \
+      "$mcp_original_registry" \
+      "$mcp_original_registry_present" \
+      "$mcp_original_ownership" \
+      "$mcp_original_ownership_present"; then
+      rollback_prepared=1
     else
-      if rm -f -- "$mcp_ownership_file"; then
-        ownership_restored=1
-      else
-        printf '[muse host build] failed to remove partial %s\n' "$mcp_ownership_file" >&2
-      fi
+      printf '[muse host build] failed to prepare MCP rollback transaction\n' >&2
     fi
 
-    if ((ownership_restored)); then
-      if ((mcp_original_registry_present)); then
-        atomic_publish "$mcp_original_registry" "$mcp_public_registry" \
-          || printf '[muse host build] failed to restore %s\n' "$mcp_public_registry" >&2
+    if ((rollback_prepared)); then
+      if publish_or_remove \
+        "$mcp_original_ownership" \
+        "$mcp_original_ownership_present" \
+        "$mcp_ownership_file"; then
+        ownership_restored=1
       else
-        rm -f -- "$mcp_public_registry" \
-          || printf '[muse host build] failed to remove partial %s\n' "$mcp_public_registry" >&2
+        if ((mcp_original_ownership_present)); then
+          printf '[muse host build] failed to restore %s\n' "$mcp_ownership_file" >&2
+        else
+          printf '[muse host build] failed to remove partial %s\n' "$mcp_ownership_file" >&2
+        fi
       fi
-    else
-      printf '[muse host build] skipped registry rollback because ownership rollback failed\n' >&2
+
+      if ((ownership_restored)); then
+        if publish_or_remove \
+          "$mcp_original_registry" \
+          "$mcp_original_registry_present" \
+          "$mcp_public_registry"; then
+          registry_restored=1
+        elif ((mcp_original_registry_present)); then
+          printf '[muse host build] failed to restore %s\n' "$mcp_public_registry" >&2
+        else
+          printf '[muse host build] failed to remove partial %s\n' "$mcp_public_registry" >&2
+        fi
+      else
+        printf '[muse host build] skipped registry rollback because ownership rollback failed\n' >&2
+      fi
+
+      if ((ownership_restored && registry_restored)); then
+        clear_mcp_transaction \
+          || printf '[muse host build] failed to clear completed MCP rollback transaction\n' >&2
+      else
+        printf '[muse host build] preserved MCP rollback transaction for recovery: %s\n' \
+          "$mcp_transaction_file" >&2
+      fi
     fi
   fi
 
@@ -304,7 +547,10 @@ cleanup_mcp_registry() {
     "$mcp_generated_output" \
     "$mcp_ownership" \
     "$mcp_original_registry" \
-    "$mcp_original_ownership"; do
+    "$mcp_original_ownership" \
+    "$mcp_transaction_record" \
+    "$mcp_recovery_registry" \
+    "$mcp_recovery_ownership"; do
     [[ -z "$temp" ]] || rm -f -- "$temp"
   done
 
@@ -332,6 +578,9 @@ if ((mcp_target_count > 0)); then
     || fail "configured MCP destination failed ownership/write preflight: $mcp_public_registry"
   preflight_publish_destination "$mcp_ownership_file" \
     || fail "MCP ownership destination failed ownership/write preflight: $mcp_ownership_file"
+  preflight_publish_destination "$mcp_transaction_file" \
+    || fail "MCP transaction destination failed ownership/write preflight: $mcp_transaction_file"
+  recover_mcp_transaction
   mcp_registry="$(mktemp)"
   generated_mcp_registry="$(mktemp)"
   mcp_generated_output="$(mktemp)"
@@ -501,8 +750,7 @@ build_target() {
     case "$target" in
       mcp-server|claude-server)
         merge_mcp_registration "$target"
-        atomic_publish "$mcp_registry" "$mcp_public_registry"
-        atomic_publish "$mcp_ownership" "$mcp_ownership_file"
+        publish_mcp_state
         ;;
     esac
   fi

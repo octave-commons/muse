@@ -305,7 +305,99 @@ jobs:
 
           registry_inode_before="$(stat -c %i .mcp.json)"
           owners_inode_before="$(stat -c %i .muse-host-targets-owners.json)"
-          scripts/build-host-targets.sh mcp-server 2>&1 | tee -a host-build.log
+          real_clojure="$(command -v clojure)"
+          real_mv="$(command -v mv)"
+          real_node="$(command -v node)"
+          mkdir "$manifest_dir/crash-bin"
+          cat > "$manifest_dir/crash-bin/mv" <<SH
+          #!/usr/bin/env bash
+          set -euo pipefail
+          destination="\${!#}"
+          if [[ "\${MUSE_TEST_CRASH_AFTER_REGISTRY-}" == 1 \
+                && "\$destination" == "$PWD/.mcp.json" ]]; then
+            "$real_mv" "\$@"
+            kill -KILL "\$PPID"
+            exit 137
+          fi
+          exec "$real_mv" "\$@"
+          SH
+          chmod +x "$manifest_dir/crash-bin/mv"
+          set +e
+          MUSE_TEST_CRASH_AFTER_REGISTRY=1 \
+            PATH="$manifest_dir/crash-bin:$PATH" \
+            scripts/build-host-targets.sh mcp-server 2>&1 | tee -a host-build.log
+          crash_status="${PIPESTATUS[0]}"
+          set -e
+          test "$crash_status" -eq 137
+          test -f .muse-host-targets-transaction.json
+          test ! -L .muse-host-targets-transaction.json
+          test "$(stat -c %a .muse-host-targets-transaction.json)" = 600
+          test -d .muse-host-targets.lock
+          IFS= read -r crashed_owner < .muse-host-targets.lock/owner
+          if kill -0 "$crashed_owner" 2>/dev/null; then
+            echo "crash-injected MCP build owner is still active: $crashed_owner" >&2
+            exit 1
+          fi
+          node --input-type=module <<'NODE'
+          import {readFileSync} from "node:fs";
+          const registry = JSON.parse(readFileSync(".mcp.json", "utf8")).mcpServers ?? {};
+          const expectedRegistry = ["eta-mu-claude", "eta-mu-receipt-river"];
+          if (JSON.stringify(Object.keys(registry).sort()) !== JSON.stringify(expectedRegistry)) {
+            throw new Error(`crash did not occur after the canonical registry rename: ${JSON.stringify(registry)}`);
+          }
+          const ownership = JSON.parse(
+            readFileSync(".muse-host-targets-owners.json", "utf8"),
+          ).targets ?? {};
+          if (ownership["mcp-server"] !== "eta-mu-retired") {
+            throw new Error(`crash did not preserve the old ownership state: ${JSON.stringify(ownership)}`);
+          }
+          NODE
+          rm .muse-host-targets.lock/owner
+          rmdir .muse-host-targets.lock
+
+          mkdir "$manifest_dir/recovery-bin"
+          cat > "$manifest_dir/recovery-bin/clojure" <<SH
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ " \$* " == *"eta-mu.mcp.build/generate-entrypoint"* ]]; then
+            "$real_node" --input-type=module <<'NODE'
+          import {existsSync, readFileSync} from "node:fs";
+          if (existsSync(".muse-host-targets-transaction.json")) {
+            throw new Error("MCP transaction marker still exists at generator invocation");
+          }
+          const registry = JSON.parse(readFileSync(".mcp.json", "utf8")).mcpServers ?? {};
+          const expectedRegistry = ["eta-mu-claude", "eta-mu-receipt-river"];
+          if (JSON.stringify(Object.keys(registry).sort()) !== JSON.stringify(expectedRegistry)) {
+            throw new Error("MCP registry was not recovered before generation: " + JSON.stringify(registry));
+          }
+          const ownership = JSON.parse(
+            readFileSync(".muse-host-targets-owners.json", "utf8"),
+          );
+          const expectedOwnership = {
+            version: 1,
+            targets: {
+              "claude-server": "eta-mu-claude",
+              "mcp-server": "eta-mu-receipt-river",
+            },
+          };
+          if (JSON.stringify(ownership) !== JSON.stringify(expectedOwnership)) {
+            throw new Error("MCP ownership was not recovered before generation: " + JSON.stringify(ownership));
+          }
+          NODE
+            exit 75
+          fi
+          exec "$real_clojure" "\$@"
+          SH
+          chmod +x "$manifest_dir/recovery-bin/clojure"
+          set +e
+          PATH="$manifest_dir/recovery-bin:$PATH" \
+            scripts/build-host-targets.sh mcp-server 2>&1 | tee -a host-build.log
+          recovery_status="${PIPESTATUS[0]}"
+          set -e
+          test "$recovery_status" -eq 75
+          grep -Fq 'recovering interrupted MCP state transaction' host-build.log
+          test ! -e .muse-host-targets-transaction.json
+          test ! -e .muse-host-targets.lock
           assert_mcp_state
           test "$(stat -c %i .mcp.json)" != "$registry_inode_before"
           test "$(stat -c %i .muse-host-targets-owners.json)" != "$owners_inode_before"
@@ -432,7 +524,7 @@ jobs:
             "$manifest_dir/after-failure-owners.sha256"
           mapfile -t rollback_publications < <(tail -n 2 "$manifest_dir/rollback-mv.log")
           test "${rollback_publications[0]}" = "$PWD/.muse-host-targets-owners.json"
-          test "${rollback_publications[1]}" = .mcp.json
+          test "${rollback_publications[1]}" = "$PWD/.mcp.json"
 
           node --input-type=module <<'NODE'
           import {readFileSync, writeFileSync} from "node:fs";
@@ -462,7 +554,8 @@ jobs:
           grep -Fq 'failed to restore' host-build.log
           grep -Fq 'skipped registry rollback because ownership rollback failed' host-build.log
           test "$(grep -Fxc "$PWD/.muse-host-targets-owners.json" "$manifest_dir/rollback-mv.log")" -eq 2
-          test "$(grep -Fxc '.mcp.json' "$manifest_dir/rollback-mv.log")" -eq 1
+          test "$(grep -Fxc "$PWD/.mcp.json" "$manifest_dir/rollback-mv.log")" -eq 1
+          test -f .muse-host-targets-transaction.json
           assert_mcp_state
           sha256sum .mcp.json > "$manifest_dir/after-ownership-failure.sha256"
           sha256sum .muse-host-targets-owners.json \
@@ -473,6 +566,7 @@ jobs:
             "$manifest_dir/after-ownership-failure-owners.sha256"
 
           scripts/build-host-targets.sh all 2>&1 | tee -a host-build.log
+          test ! -e .muse-host-targets-transaction.json
           find src/gen -type f -print0 | sort -z | xargs -0 sha256sum \
             > "$manifest_dir/second.sha256"
           sha256sum .mcp.json > "$manifest_dir/second-mcp.sha256"
