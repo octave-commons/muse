@@ -25,6 +25,11 @@
        (-> (str gen-ns) (str/replace "-" "_") (str/replace "." "/"))
        ".cljs"))
 
+(defn mcp-config-path
+  "Configured public MCP registry destination for the supported build wrapper."
+  []
+  (get-in (config/read-config root-path) [:root :publish :mcp-config]))
+
 ;; ---------------------------------------------------------------------------
 ;; Entrypoint generation
 ;; ---------------------------------------------------------------------------
@@ -111,7 +116,7 @@
   (let [{:keys [output-dir modules]} (:shadow.build/config build-state)
         cfg (config/read-config root-path)]
     (emit! (str output-dir "/package.json") "{\n  \"type\": \"module\"\n}\n")
-    (when-let [configured-path (get-in cfg [:root :publish :mcp-config])]
+    (when-let [configured-path (mcp-config-path)]
       ;; The supported wrapper stages hook output so live readers see only an
       ;; atomically published merged registry. Raw Shadow keeps the configured path.
       (let [mcp-config-path (or (not-empty (System/getenv "MUSE_MCP_CONFIG_OUTPUT"))

@@ -93,6 +93,47 @@ jobs:
 
           assert_mcp_state
 
+          configured_registry="$manifest_dir/configured-mcp.json"
+          configured_owners="$configured_registry.muse-host-targets-owners.json"
+          cp .ημ/config/mcp/root.edn "$manifest_dir/mcp-root.edn"
+          node --input-type=module - "$configured_registry" <<'NODE'
+          import {readFileSync, writeFileSync} from "node:fs";
+          const [destination] = process.argv.slice(2);
+          const path = ".ημ/config/mcp/root.edn";
+          const source = readFileSync(path, "utf8");
+          const changed = source.replace(
+            ':mcp-config ".mcp.json"',
+            `:mcp-config "${destination}"`,
+          );
+          if (changed === source) throw new Error("MCP destination fixture did not change config");
+          writeFileSync(path, changed);
+          NODE
+          scripts/build-host-targets.sh mcp-server 2>&1 | tee -a host-build.log
+          node --input-type=module - "$configured_registry" "$configured_owners" <<'NODE'
+          import {readFileSync} from "node:fs";
+          const [registryPath, ownershipPath] = process.argv.slice(2);
+          const registry = JSON.parse(readFileSync(registryPath, "utf8")).mcpServers ?? {};
+          const expectedRegistry = {
+            "eta-mu-receipt-river": {
+              command: "node",
+              args: [".mcp/dist/receipt-river.js"],
+            },
+          };
+          if (JSON.stringify(registry) !== JSON.stringify(expectedRegistry)) {
+            throw new Error(`unexpected configured registry: ${JSON.stringify(registry)}`);
+          }
+          const ownership = JSON.parse(readFileSync(ownershipPath, "utf8"));
+          const expectedOwnership = {version: 1, targets: {"mcp-server": "eta-mu-receipt-river"}};
+          if (JSON.stringify(ownership) !== JSON.stringify(expectedOwnership)) {
+            throw new Error(`unexpected configured ownership: ${JSON.stringify(ownership)}`);
+          }
+          NODE
+          assert_mcp_state
+          sha256sum .mcp.json > "$manifest_dir/after-configured-destination.sha256"
+          diff -u "$manifest_dir/first-mcp.sha256" \
+            "$manifest_dir/after-configured-destination.sha256"
+          cp "$manifest_dir/mcp-root.edn" .ημ/config/mcp/root.edn
+
           linked_registry="$manifest_dir/linked-mcp.json"
           linked_owners="$manifest_dir/linked-mcp-owners.json"
           cp .mcp.json "$linked_registry"

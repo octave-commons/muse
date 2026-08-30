@@ -42,4 +42,5 @@ pseudo/
 .mcp.json
 .muse-host-targets.lock*
 .muse-host-targets-owners.json
+*.muse-host-targets-owners.json
 .muse-host-targets.publish.*
