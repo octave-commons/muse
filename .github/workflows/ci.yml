@@ -57,8 +57,10 @@ jobs:
           find src/gen -type f -print0 | sort -z | xargs -0 sha256sum \
             > "$manifest_dir/first.sha256"
           sha256sum .mcp.json > "$manifest_dir/first-mcp.sha256"
+          sha256sum .muse-host-targets-owners.json \
+            > "$manifest_dir/first-mcp-owners.sha256"
 
-          assert_mcp_registry() {
+          assert_mcp_state() {
             node --input-type=module <<'NODE'
           import {readFileSync} from "node:fs";
           const config = JSON.parse(readFileSync(".mcp.json", "utf8"));
@@ -75,12 +77,24 @@ jobs:
               throw new Error(`incorrect MCP registration: ${name}`);
             }
           }
+          const ownership = JSON.parse(
+            readFileSync(".muse-host-targets-owners.json", "utf8"),
+          );
+          const expectedOwnership = {
+            "claude-server": "eta-mu-claude",
+            "mcp-server": "eta-mu-receipt-river",
+          };
+          if (ownership.version !== 1
+              || JSON.stringify(ownership.targets) !== JSON.stringify(expectedOwnership)) {
+            throw new Error(`unexpected MCP target ownership: ${JSON.stringify(ownership)}`);
+          }
           NODE
           }
 
-          assert_mcp_registry
+          assert_mcp_state
 
-          printf '%s\n' "$$" > .muse-host-targets.lock
+          mkdir .muse-host-targets.lock
+          printf '%s\n' "$$" > .muse-host-targets.lock/owner
           set +e
           scripts/build-host-targets.sh mcp-server \
             > "$manifest_dir/lock-build.log" 2>&1
@@ -93,36 +107,78 @@ jobs:
             cat "$manifest_dir/lock-build.log" >&2
             exit 1
           fi
-          test "$(cat .muse-host-targets.lock)" = "$$"
-          rm .muse-host-targets.lock
+          test "$(cat .muse-host-targets.lock/owner)" = "$$"
+          rm .muse-host-targets.lock/owner
+          rmdir .muse-host-targets.lock
           cat "$manifest_dir/lock-build.log" >> host-build.log
+
+          mkdir .muse-host-targets.lock
+          printf '%s\n' '99999999' > .muse-host-targets.lock/owner
+          set +e
+          scripts/build-host-targets.sh mcp-server \
+            > "$manifest_dir/stale-lock-build.log" 2>&1
+          stale_lock_status="$?"
+          set -e
+          test "$stale_lock_status" -eq 64
+          grep -Fq "stale MCP build lock owned by dead pid 99999999" \
+            "$manifest_dir/stale-lock-build.log"
+          if grep -Fq '[muse host build] generating' "$manifest_dir/stale-lock-build.log"; then
+            cat "$manifest_dir/stale-lock-build.log" >&2
+            exit 1
+          fi
+          test "$(cat .muse-host-targets.lock/owner)" = '99999999'
+          rm .muse-host-targets.lock/owner
+          rmdir .muse-host-targets.lock
+          cat "$manifest_dir/stale-lock-build.log" >> host-build.log
 
           node --input-type=module <<'NODE'
           import {readFileSync, writeFileSync} from "node:fs";
-          const path = ".mcp.json";
-          const config = JSON.parse(readFileSync(path, "utf8"));
-          config.mcpServers["eta-mu-retired"] = config.mcpServers["eta-mu-receipt-river"];
+          const configPath = ".mcp.json";
+          const config = JSON.parse(readFileSync(configPath, "utf8"));
+          config.mcpServers["eta-mu-retired"] = {
+            command: "node",
+            args: [".mcp/dist/retired-server.js"],
+          };
           delete config.mcpServers["eta-mu-receipt-river"];
-          writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
+          writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+
+          const ownershipPath = ".muse-host-targets-owners.json";
+          const ownership = JSON.parse(readFileSync(ownershipPath, "utf8"));
+          ownership.targets["mcp-server"] = "eta-mu-retired";
+          writeFileSync(ownershipPath, `${JSON.stringify(ownership, null, 2)}\n`);
           NODE
 
           scripts/build-host-targets.sh mcp-server 2>&1 | tee -a host-build.log
-          assert_mcp_registry
+          assert_mcp_state
           sha256sum .mcp.json > "$manifest_dir/after-mcp.sha256"
+          sha256sum .muse-host-targets-owners.json \
+            > "$manifest_dir/after-mcp-owners.sha256"
           diff -u "$manifest_dir/first-mcp.sha256" "$manifest_dir/after-mcp.sha256"
+          diff -u \
+            "$manifest_dir/first-mcp-owners.sha256" \
+            "$manifest_dir/after-mcp-owners.sha256"
 
           scripts/build-host-targets.sh claude-server 2>&1 | tee -a host-build.log
-          assert_mcp_registry
+          assert_mcp_state
           sha256sum .mcp.json > "$manifest_dir/after-claude.sha256"
+          sha256sum .muse-host-targets-owners.json \
+            > "$manifest_dir/after-claude-owners.sha256"
           diff -u "$manifest_dir/first-mcp.sha256" "$manifest_dir/after-claude.sha256"
+          diff -u \
+            "$manifest_dir/first-mcp-owners.sha256" \
+            "$manifest_dir/after-claude-owners.sha256"
 
           node --input-type=module <<'NODE'
           import {readFileSync, writeFileSync} from "node:fs";
-          const path = ".mcp.json";
-          writeFileSync(path, `${JSON.stringify(JSON.parse(readFileSync(path, "utf8")))}\n`);
+          for (const path of [".mcp.json", ".muse-host-targets-owners.json"]) {
+            writeFileSync(path, `${JSON.stringify(JSON.parse(readFileSync(path, "utf8")))}\n`);
+          }
           NODE
           sha256sum .mcp.json > "$manifest_dir/before-failure.sha256"
+          sha256sum .muse-host-targets-owners.json \
+            > "$manifest_dir/before-failure-owners.sha256"
           rollback_hash="$(cut -d ' ' -f 1 "$manifest_dir/before-failure.sha256")"
+          rollback_owners_hash="$(cut -d ' ' -f 1 "$manifest_dir/before-failure-owners.sha256")"
           real_node="$(command -v node)"
           mkdir "$manifest_dir/failing-bin"
           cat > "$manifest_dir/failing-bin/node" <<SH
@@ -133,10 +189,18 @@ jobs:
               import {createHash} from "node:crypto";
               import {readFileSync} from "node:fs";
               const bytes = readFileSync(".mcp.json");
+              const ownershipBytes = readFileSync(".muse-host-targets-owners.json");
               const servers = JSON.parse(bytes.toString("utf8")).mcpServers ?? {};
               const expected = ["eta-mu-claude", "eta-mu-receipt-river"];
               if (JSON.stringify(Object.keys(servers).sort()) !== JSON.stringify(expected)) process.exit(72);
               if (createHash("sha256").update(bytes).digest("hex") === "$rollback_hash") process.exit(71);
+              const targets = JSON.parse(ownershipBytes.toString("utf8")).targets ?? {};
+              const expectedTargets = {
+                "claude-server": "eta-mu-claude",
+                "mcp-server": "eta-mu-receipt-river",
+              };
+              if (JSON.stringify(targets) !== JSON.stringify(expectedTargets)) process.exit(70);
+              if (createHash("sha256").update(ownershipBytes).digest("hex") === "$rollback_owners_hash") process.exit(69);
             '
             exit 73
           fi
@@ -152,17 +216,27 @@ jobs:
             echo "expected injected Claude hook exit 73; got $failure_status" >&2
             exit 1
           fi
-          assert_mcp_registry
+          assert_mcp_state
           sha256sum .mcp.json > "$manifest_dir/after-failure.sha256"
+          sha256sum .muse-host-targets-owners.json \
+            > "$manifest_dir/after-failure-owners.sha256"
           diff -u "$manifest_dir/before-failure.sha256" "$manifest_dir/after-failure.sha256"
+          diff -u \
+            "$manifest_dir/before-failure-owners.sha256" \
+            "$manifest_dir/after-failure-owners.sha256"
 
           scripts/build-host-targets.sh all 2>&1 | tee -a host-build.log
           find src/gen -type f -print0 | sort -z | xargs -0 sha256sum \
             > "$manifest_dir/second.sha256"
           sha256sum .mcp.json > "$manifest_dir/second-mcp.sha256"
+          sha256sum .muse-host-targets-owners.json \
+            > "$manifest_dir/second-mcp-owners.sha256"
 
           diff -u "$manifest_dir/first.sha256" "$manifest_dir/second.sha256"
           diff -u "$manifest_dir/first-mcp.sha256" "$manifest_dir/second-mcp.sha256"
+          diff -u \
+            "$manifest_dir/first-mcp-owners.sha256" \
+            "$manifest_dir/second-mcp-owners.sha256"
           if grep -Eq "$warning_pattern" host-build.log; then
             grep -E "$warning_pattern" host-build.log >&2
             exit 1
