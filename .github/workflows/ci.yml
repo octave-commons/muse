@@ -148,8 +148,12 @@ jobs:
           writeFileSync(ownershipPath, `${JSON.stringify(ownership, null, 2)}\n`);
           NODE
 
+          registry_inode_before="$(stat -c %i .mcp.json)"
+          owners_inode_before="$(stat -c %i .muse-host-targets-owners.json)"
           scripts/build-host-targets.sh mcp-server 2>&1 | tee -a host-build.log
           assert_mcp_state
+          test "$(stat -c %i .mcp.json)" != "$registry_inode_before"
+          test "$(stat -c %i .muse-host-targets-owners.json)" != "$owners_inode_before"
           sha256sum .mcp.json > "$manifest_dir/after-mcp.sha256"
           sha256sum .muse-host-targets-owners.json \
             > "$manifest_dir/after-mcp-owners.sha256"
@@ -158,8 +162,34 @@ jobs:
             "$manifest_dir/first-mcp-owners.sha256" \
             "$manifest_dir/after-mcp-owners.sha256"
 
+          node --input-type=module - "$manifest_dir/reader.stop" <<'NODE' &
+          import {existsSync, readFileSync} from "node:fs";
+          const [stopPath] = process.argv.slice(2);
+          const waitState = new Int32Array(new SharedArrayBuffer(4));
+          const expected = ["eta-mu-claude", "eta-mu-receipt-river"];
+          while (!existsSync(stopPath)) {
+            const servers = JSON.parse(readFileSync(".mcp.json", "utf8")).mcpServers ?? {};
+            if (JSON.stringify(Object.keys(servers).sort()) !== JSON.stringify(expected)) {
+              throw new Error(`reader observed transient MCP state: ${Object.keys(servers).sort()}`);
+            }
+            Atomics.wait(waitState, 0, 0, 1);
+          }
+          NODE
+          reader_pid="$!"
+          registry_inode_before="$(stat -c %i .mcp.json)"
+          owners_inode_before="$(stat -c %i .muse-host-targets-owners.json)"
+          set +e
           scripts/build-host-targets.sh claude-server 2>&1 | tee -a host-build.log
+          claude_status="${PIPESTATUS[0]}"
+          touch "$manifest_dir/reader.stop"
+          wait "$reader_pid"
+          reader_status="$?"
+          set -e
+          test "$claude_status" -eq 0
+          test "$reader_status" -eq 0
           assert_mcp_state
+          test "$(stat -c %i .mcp.json)" != "$registry_inode_before"
+          test "$(stat -c %i .muse-host-targets-owners.json)" != "$owners_inode_before"
           sha256sum .mcp.json > "$manifest_dir/after-claude.sha256"
           sha256sum .muse-host-targets-owners.json \
             > "$manifest_dir/after-claude-owners.sha256"

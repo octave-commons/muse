@@ -2,7 +2,7 @@
 category: "kanban"
 labels: "build, host-targets, recovery"
 type: "task"
-write-id: "1788054156769-0.4f8holxmzdel3n332qw"
+write-id: "1788054921555-0.oul68cy3abibxd5hqy"
 points: "3"
 title: "Make generated host targets work from a cold checkout"
 priority: "P1"
@@ -91,4 +91,6 @@ Review finding accepted and corrected (PR #14 comment 3888152426): the rollback 
 Append-only terminology clarification for historical review evidence: read 'exact head 3fbcb6c' as 'exact commit 3fbcb6c'; read 'cold generated-host build' as 'cold-checkout host-target build'; and read 'Shadow numbered WARNING #N banners' as 'Shadow-numbered WARNING #N banners'. The earlier Rheos comment remains immutable provenance and is not hand-edited.
 
 Exact-head review findings accepted (PR #14, comments 3888171496 and 3888171499; reviewed commit 1cd6e73695c3a4ce7be6dc5d62c90466d393a77a): the hard-link stale-lock recovery could let concurrent reclaimers delete a successor lock, and payload-equality alias cleanup could retain an obsolete registration when both its name and command/path changed. Superseding correction: use one atomic ownership directory and never auto-reclaim an unowned/dead-owner lock; fail closed with verified-manual-cleanup guidance. Persist a target-to-registration ownership sidecar, snapshot/restore it with .mcp.json, and use the target key—not payload equality—to retire each rebuilt target's prior name. The hosted gate now proves live-lock rejection, stale-lock fail-closed behavior, simultaneous name/path replacement, deterministic ownership, and exact two-file rollback. Local isolated end-to-end fixtures plus bash syntax, shellcheck, actionlint, and git diff checks pass; the card remains testing pending the next immutable-head hosted gates and reviews.
+
+Exact-head review finding accepted (PR #14 comment 3888201349; reviewed commit e21d231952dfcd3a0e84bf19bae69f7ca6a442cd): publishing the merged .mcp.json with cp could expose a truncated or partial document to concurrent readers. Superseding correction: supported MCP/Claude releases now direct each build hook to a private staging output, so the hook never overwrites the live registry; merged registry and ownership state publish through same-filesystem temporary files and atomic rename, including rollback restoration. CI requires inode replacement, polls and parses the exact two-server live registry throughout a delayed Claude rebuild, and retains the exact two-file rollback assertions. Local staged-hook, concurrent-reader, inode-replacement, rollback, shell, workflow, Clojure lint, and diff checks pass; the card remains testing pending the next immutable-head hosted gates and reviews.
 ---

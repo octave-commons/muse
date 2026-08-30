@@ -66,6 +66,7 @@ done
 
 mcp_registry=""
 generated_mcp_registry=""
+mcp_generated_output=""
 mcp_ownership=""
 mcp_original_registry=""
 mcp_original_ownership=""
@@ -76,6 +77,22 @@ mcp_ownership_file="$repo_root/.muse-host-targets-owners.json"
 mcp_lock_dir="$repo_root/.muse-host-targets.lock"
 mcp_lock_owner="$mcp_lock_dir/owner"
 mcp_lock_acquired=0
+
+atomic_publish() {
+  local source="$1"
+  local destination="$2"
+  local staged
+
+  staged="$(mktemp "$repo_root/.muse-host-targets.publish.XXXXXX")" || return 1
+  if ! cp -- "$source" "$staged"; then
+    rm -f -- "$staged"
+    return 1
+  fi
+  if ! mv -f -- "$staged" "$destination"; then
+    rm -f -- "$staged"
+    return 1
+  fi
+}
 
 acquire_mcp_build_lock() {
   local owner
@@ -109,14 +126,14 @@ cleanup_mcp_registry() {
 
   if ((exit_status != 0 && mcp_state_restore_ready)); then
     if ((mcp_original_registry_present)); then
-      cp -- "$mcp_original_registry" .mcp.json \
+      atomic_publish "$mcp_original_registry" .mcp.json \
         || printf '[muse host build] failed to restore .mcp.json\n' >&2
     else
       rm -f -- .mcp.json \
         || printf '[muse host build] failed to remove partial .mcp.json\n' >&2
     fi
     if ((mcp_original_ownership_present)); then
-      cp -- "$mcp_original_ownership" "$mcp_ownership_file" \
+      atomic_publish "$mcp_original_ownership" "$mcp_ownership_file" \
         || printf '[muse host build] failed to restore %s\n' "$mcp_ownership_file" >&2
     else
       rm -f -- "$mcp_ownership_file" \
@@ -127,6 +144,7 @@ cleanup_mcp_registry() {
   for temp in \
     "$mcp_registry" \
     "$generated_mcp_registry" \
+    "$mcp_generated_output" \
     "$mcp_ownership" \
     "$mcp_original_registry" \
     "$mcp_original_ownership"; do
@@ -154,6 +172,7 @@ if ((mcp_target_count > 0)); then
   acquire_mcp_build_lock
   mcp_registry="$(mktemp)"
   generated_mcp_registry="$(mktemp)"
+  mcp_generated_output="$(mktemp)"
   mcp_ownership="$(mktemp)"
   mcp_original_registry="$(mktemp)"
   mcp_original_ownership="$(mktemp)"
@@ -177,7 +196,7 @@ fi
 
 merge_mcp_registration() {
   local target="$1"
-  local generated_registry=".mcp.json"
+  local generated_registry="$mcp_generated_output"
   [[ -s "$generated_registry" ]] || fail "host build did not publish $generated_registry"
 
   node --input-type=module - \
@@ -306,14 +325,22 @@ build_target() {
   [[ -s "$entrypoint" ]] || fail "generator did not write $entrypoint"
 
   printf '[muse host build] releasing %s\n' "$target"
-  "$shadow" release "$target"
+  case "$target" in
+    mcp-server|claude-server)
+      : > "$mcp_generated_output"
+      MUSE_MCP_CONFIG_OUTPUT="$mcp_generated_output" "$shadow" release "$target"
+      ;;
+    *)
+      "$shadow" release "$target"
+      ;;
+  esac
 
   if [[ -n "$mcp_registry" ]]; then
     case "$target" in
       mcp-server|claude-server)
         merge_mcp_registration "$target"
-        cp "$mcp_registry" .mcp.json
-        cp "$mcp_ownership" "$mcp_ownership_file"
+        atomic_publish "$mcp_registry" .mcp.json
+        atomic_publish "$mcp_ownership" "$mcp_ownership_file"
         ;;
     esac
   fi
@@ -327,8 +354,3 @@ build_target() {
 for target in "${targets[@]}"; do
   build_target "$target"
 done
-
-if [[ -n "$mcp_registry" ]]; then
-  cp "$mcp_registry" .mcp.json
-  cp "$mcp_ownership" "$mcp_ownership_file"
-fi
