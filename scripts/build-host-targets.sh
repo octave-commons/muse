@@ -186,15 +186,18 @@ build_target() {
   printf '[muse host build] releasing %s\n' "$target"
   "$shadow" release "$target"
 
+  if [[ -n "$mcp_registry" ]]; then
+    case "$target" in
+      mcp-server|claude-server)
+        merge_mcp_registration
+        cp "$mcp_registry" .mcp.json
+        ;;
+    esac
+  fi
+
   if [[ "$target" == claude-server ]]; then
     printf '[muse host build] emitting Claude hook configuration\n'
     node .claude/dist/claude-server.js --emit-hook-config
-  fi
-
-  if [[ -n "$mcp_registry" ]]; then
-    case "$target" in
-      mcp-server|claude-server) merge_mcp_registration ;;
-    esac
   fi
 }
 

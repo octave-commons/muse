@@ -2,7 +2,7 @@
 category: "kanban"
 labels: "build, host-targets, recovery"
 type: "task"
-write-id: "1788052010334-0.5v7x43vhh5a9xx66zzg"
+write-id: "1788052402717-0.ov9j66mjdftbvlspkl5"
 points: "3"
 title: "Make generated host targets work from a cold checkout"
 priority: "P1"
@@ -79,4 +79,6 @@ Corrective implementation evidence: merge now removes any previous server name w
 Review-hardening before the next immutable head: the MCP merger now requires each target hook to emit exactly one registration, stores arbitrary server names in null-prototype maps, and uses own-key checks so names such as inherited Object keys cannot create false conflicts. The hosted failure injection must now return exactly exit 73, preventing an unrelated build failure from being mistaken for the expected hook rollback case. Static shell/workflow checks remain green; the card stays testing.
 
 Review finding accepted and corrected (PR #14 comment 3888128068): the previous two-line warning fixture proved only that at least one form matched. CI now asserts WARNING: and Shadow WARNING #1 independently and separately requires benign text not to match. The exact regex fixtures, actionlint, and git diff --check pass locally; the card remains testing for the new immutable-head run.
+
+Exact-head review finding accepted and corrected (PR #14 comment 3888139823): successful MCP-producing releases temporarily exposed each hook's one-server .mcp.json until end-of-command publication. The script now merges and republishes the accumulated registry immediately after each Shadow release and before Claude hook emission. The injected hook shim validates that both live registrations are present at hook time before returning the expected exit 73; final hash rollback remains separately asserted. Static shell/workflow checks pass; the card remains testing.
 ---
