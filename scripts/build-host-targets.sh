@@ -123,10 +123,18 @@ function registrations(path) {
   return servers;
 }
 
-const merged = {...registrations(accumulatorPath)};
-const generatedThisRequest = {...registrations(generatedThisRequestPath)};
-for (const [name, registration] of Object.entries(registrations(generatedPath))) {
-  if (name in generatedThisRequest
+const merged = Object.assign(Object.create(null), registrations(accumulatorPath));
+const generatedThisRequest = Object.assign(
+  Object.create(null),
+  registrations(generatedThisRequestPath),
+);
+const generatedEntries = Object.entries(registrations(generatedPath));
+if (generatedEntries.length !== 1) {
+  throw new Error(`${generatedPath} must contain exactly one generated MCP registration`);
+}
+
+for (const [name, registration] of generatedEntries) {
+  if (Object.hasOwn(generatedThisRequest, name)
       && !isDeepStrictEqual(generatedThisRequest[name], registration)) {
     throw new Error(`conflicting MCP registration: ${name}`);
   }

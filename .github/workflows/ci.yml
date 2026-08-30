@@ -105,9 +105,13 @@ jobs:
           exec "$real_node" "\$@"
           SH
           chmod +x "$manifest_dir/failing-bin/node"
-          if PATH="$manifest_dir/failing-bin:$PATH" \
-            scripts/build-host-targets.sh claude-server 2>&1 | tee -a host-build.log; then
-            echo "expected injected Claude hook failure" >&2
+          set +e
+          PATH="$manifest_dir/failing-bin:$PATH" \
+            scripts/build-host-targets.sh claude-server 2>&1 | tee -a host-build.log
+          failure_status="${PIPESTATUS[0]}"
+          set -e
+          if [[ "$failure_status" -ne 73 ]]; then
+            echo "expected injected Claude hook exit 73; got $failure_status" >&2
             exit 1
           fi
           assert_mcp_registry

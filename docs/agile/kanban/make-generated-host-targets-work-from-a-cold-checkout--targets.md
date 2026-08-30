@@ -2,7 +2,7 @@
 category: "kanban"
 labels: "build, host-targets, recovery"
 type: "task"
-write-id: "1788051565127-0.v90cp4kpi8ktujv772b"
+write-id: "1788051840215-0.rzgv84n94sltcdjb4dl"
 points: "3"
 title: "Make generated host targets work from a cold checkout"
 priority: "P1"
@@ -75,4 +75,6 @@ Corrective implementation evidence: every MCP-producing request now seeds a temp
 Exact-head review findings accepted (PR #14, head ebe259e): a target name change could retain the prior name as an obsolete duplicate, and a later build or Claude hook failure could leave .mcp.json truncated because the union was republished only on success. Keep the card in testing. The correction must replace identity aliases for the same generated registration and restore the exact pre-command registry (or absence) on every failed MCP-producing request.
 
 Corrective implementation evidence: merge now removes any previous server name with the same deeply equal generated registration before publishing the current name. MCP requests snapshot the original .mcp.json, arm rollback only after a recoverable snapshot (or confirmed absence), and use an EXIT trap to restore those exact pre-command bytes or remove partial output on failure. CI renames the generic server to eta-mu-retired before a targeted rebuild and requires the exact current two-name registry; it also injects Claude hook exit 73 and requires the original registry hash afterward. bash -n, shellcheck, actionlint, git diff --check, isolated stale-name replacement, existing-registry rollback, absent-registry rollback, and exit-status preservation fixtures pass locally; exact-head hosted CI remains required.
+
+Review-hardening before the next immutable head: the MCP merger now requires each target hook to emit exactly one registration, stores arbitrary server names in null-prototype maps, and uses own-key checks so names such as inherited Object keys cannot create false conflicts. The hosted failure injection must now return exactly exit 73, preventing an unrelated build failure from being mistaken for the expected hook rollback case. Static shell/workflow checks remain green; the card stays testing.
 ---
