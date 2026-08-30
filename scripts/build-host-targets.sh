@@ -73,14 +73,23 @@ mcp_original_ownership=""
 mcp_original_registry_present=0
 mcp_original_ownership_present=0
 mcp_state_restore_ready=0
+mcp_state_publication_started=0
 mcp_public_registry=""
+mcp_resolved_destination=""
+mcp_registry_dir=""
+mcp_registry_dir_identity=""
 mcp_producer_id=""
 mcp_producer_file="$repo_root/.muse-host-targets-producer-id"
+mcp_ownership_alias=""
 mcp_ownership_file=""
+mcp_ownership_dir=""
+mcp_ownership_dir_identity=""
 mcp_lock_dir=""
 mcp_lock_owner=""
 mcp_lock_acquired=0
+mcp_lock_identity=""
 mcp_transaction_file=""
+mcp_transaction_alias=""
 mcp_transaction_record=""
 mcp_recovery_registry=""
 mcp_recovery_ownership=""
@@ -91,15 +100,17 @@ atomic_publish() {
   local new_mode="${3-}"
   local publish_destination="$destination"
   local publish_dir
+  local resolved
   local staged
 
-  if [[ -L "$destination" ]]; then
-    publish_destination="$(
-      node --input-type=module -e \
-        'import {realpathSync} from "node:fs"; process.stdout.write(realpathSync(process.argv[1]));' \
-        "$destination"
-    )" || return 1
-  fi
+  # Callers bind aliases to their ultimate target before snapshotting. Never
+  # follow a link introduced after that boundary: rename may replace the bound
+  # pathname, but publication must not be redirected to a substituted target.
+  mcp_destination_namespace_bindings_match "$publish_destination" || return 1
+  resolved="$(canonicalize_mcp_destination "$publish_destination")" || return 1
+  [[ "$resolved" == "$publish_destination" ]] || return 1
+  [[ ! -L "$publish_destination" ]] || return 1
+  [[ ! -e "$publish_destination" || -f "$publish_destination" ]] || return 1
   publish_dir="$(dirname "$publish_destination")"
   staged="$(mktemp "$publish_dir/.muse-host-targets.publish.XXXXXX")" || return 1
   if ! cp -- "$source" "$staged"; then
@@ -108,10 +119,13 @@ atomic_publish() {
   fi
   if [[ -e "$publish_destination" ]]; then
     if ! node --input-type=module - "$publish_destination" <<'NODE'
-import {statSync} from "node:fs";
+import {lstatSync} from "node:fs";
 
 const [destination] = process.argv.slice(2);
-const existing = statSync(destination);
+const existing = lstatSync(destination);
+if (!existing.isFile() || existing.isSymbolicLink()) {
+  throw new Error(`${destination} changed to a nonregular destination after binding`);
+}
 const uid = process.getuid();
 if (existing.uid !== uid) {
   throw new Error(`${destination} changed to cross-user ownership after preflight`);
@@ -147,6 +161,18 @@ NODE
     rm -f -- "$staged"
     return 1
   fi
+  if ! mcp_destination_namespace_bindings_match "$publish_destination"; then
+    rm -f -- "$staged"
+    return 1
+  fi
+  resolved="$(canonicalize_mcp_destination "$publish_destination")" || {
+    rm -f -- "$staged"
+    return 1
+  }
+  if [[ "$resolved" != "$publish_destination" ]]; then
+    rm -f -- "$staged"
+    return 1
+  fi
   if ! mv -f -- "$staged" "$publish_destination"; then
     rm -f -- "$staged"
     return 1
@@ -159,17 +185,39 @@ canonicalize_mcp_destination() {
 
   mkdir -p -- "$(dirname "$configured")"
   node --input-type=module - "$configured" <<'NODE'
-import {lstatSync, realpathSync} from "node:fs";
+import {lstatSync, readlinkSync, realpathSync} from "node:fs";
 import {basename, dirname, join, resolve} from "node:path";
 
 const [configured] = process.argv.slice(2);
-const absolute = resolve(configured);
-const existing = lstatSync(absolute, {throwIfNoEntry: false});
-if (existing) {
-  process.stdout.write(realpathSync(absolute));
-} else {
-  process.stdout.write(join(realpathSync(dirname(absolute)), basename(absolute)));
+function canonicalize(path, seen = new Set()) {
+  const absolute = resolve(path);
+  if (seen.has(absolute)) throw new Error(`destination symlink cycle: ${absolute}`);
+  seen.add(absolute);
+  const existing = lstatSync(absolute, {throwIfNoEntry: false});
+  if (!existing) {
+    return join(realpathSync(dirname(absolute)), basename(absolute));
+  }
+  if (existing.isSymbolicLink()) {
+    return canonicalize(resolve(dirname(absolute), readlinkSync(absolute)), seen);
+  }
+  return realpathSync(absolute);
 }
+process.stdout.write(canonicalize(configured));
+NODE
+}
+
+directory_identity() {
+  local directory="$1"
+
+  node --input-type=module - "$directory" <<'NODE'
+import {lstatSync} from "node:fs";
+
+const [directory] = process.argv.slice(2);
+const metadata = lstatSync(directory, {bigint: true});
+if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+  throw new Error(`${directory} is not a bound physical directory`);
+}
+process.stdout.write(`${metadata.dev}:${metadata.ino}`);
 NODE
 }
 
@@ -252,49 +300,225 @@ process.stdout.write(identity);
 NODE
 }
 
-resolve_mcp_public_registry() {
+resolve_mcp_target_destination() {
+  local target="$1"
   local configured
-  local registry_dir
-  local resolved
   local resolver
+
+  case "$target" in
+    mcp-server)
+      resolver="eta-mu.mcp.build/mcp-config-path"
+      ;;
+    claude-server)
+      resolver="eta-mu.claude.build/mcp-config-path"
+      ;;
+    *)
+      fail "cannot resolve an MCP destination for target: $target"
+      ;;
+  esac
+  configured="$(clojure -M -e "(print ((requiring-resolve '$resolver)))")"
+  [[ -n "$configured" ]] || fail "$target does not configure :publish :mcp-config"
+  [[ "$configured" != *$'\n'* ]] \
+    || fail "$target configured an invalid multiline MCP destination"
+  mcp_resolved_destination="$(canonicalize_mcp_destination "$configured")" \
+    || fail "$target configured an unresolvable MCP destination: $configured"
+}
+
+resolve_mcp_public_registry() {
+  local registry_dir
   local target
 
   for target in "${targets[@]}"; do
     case "$target" in
-      mcp-server)
-        resolver="eta-mu.mcp.build/mcp-config-path"
-        ;;
-      claude-server)
-        resolver="eta-mu.claude.build/mcp-config-path"
-        ;;
-      *)
-        continue
-        ;;
+      mcp-server|claude-server) ;;
+      *) continue ;;
     esac
-
-    configured="$(clojure -M -e "(print ((requiring-resolve '$resolver)))")"
-    [[ -n "$configured" ]] || fail "$target does not configure :publish :mcp-config"
-    [[ "$configured" != *$'\n'* ]] || fail "$target configured an invalid multiline MCP destination"
-    resolved="$(canonicalize_mcp_destination "$configured")"
+    resolve_mcp_target_destination "$target"
     if [[ -z "$mcp_public_registry" ]]; then
-      mcp_public_registry="$resolved"
-    elif [[ "$resolved" != "$mcp_public_registry" ]]; then
-      fail "MCP-producing targets configure different canonical destinations: $mcp_public_registry and $resolved"
+      mcp_public_registry="$mcp_resolved_destination"
+    elif [[ "$mcp_resolved_destination" != "$mcp_public_registry" ]]; then
+      fail "MCP-producing targets configure different canonical destinations: $mcp_public_registry and $mcp_resolved_destination"
     fi
   done
 
   [[ -n "$mcp_public_registry" ]] || fail "could not resolve the configured MCP destination"
   if [[ "${mcp_public_registry##*/}" == .mcp.json ]]; then
     registry_dir="${mcp_public_registry%/*}"
-    mcp_ownership_file="$registry_dir/.muse-host-targets-owners.json"
+    mcp_ownership_alias="$registry_dir/.muse-host-targets-owners.json"
     mcp_lock_dir="$registry_dir/.muse-host-targets.lock"
-    mcp_transaction_file="$registry_dir/.muse-host-targets-transaction.json"
+    mcp_transaction_alias="$registry_dir/.muse-host-targets-transaction.json"
   else
-    mcp_ownership_file="$mcp_public_registry.muse-host-targets-owners.json"
+    mcp_ownership_alias="$mcp_public_registry.muse-host-targets-owners.json"
     mcp_lock_dir="$mcp_public_registry.muse-host-targets.lock"
-    mcp_transaction_file="$mcp_public_registry.muse-host-targets-transaction.json"
+    mcp_transaction_alias="$mcp_public_registry.muse-host-targets-transaction.json"
   fi
+  # State names are already derived from the canonical registry. Preserve the
+  # documented ownership-sidecar link contract by binding its initial ultimate
+  # target, then revalidate that logical alias throughout the build. Recovery
+  # metadata itself stays at the fixed canonical-registry path so a later
+  # writer cannot miss a retained marker after an ownership-alias change.
+  mcp_ownership_file="$(canonicalize_mcp_destination "$mcp_ownership_alias")" \
+    || fail "could not bind the MCP ownership destination"
+  mcp_transaction_file="$(canonicalize_mcp_destination "$mcp_transaction_alias")" \
+    || fail "could not bind the MCP transaction destination"
+  [[ "$mcp_transaction_file" == "$mcp_transaction_alias" ]] \
+    || fail "MCP transaction state path must not be a symlink: $mcp_transaction_alias"
+  mcp_registry_dir="$(dirname "$mcp_public_registry")"
+  mcp_ownership_dir="$(dirname "$mcp_ownership_file")"
+  mcp_registry_dir_identity="$(directory_identity "$mcp_registry_dir")" \
+    || fail "could not bind the MCP registry directory identity"
+  mcp_ownership_dir_identity="$(directory_identity "$mcp_ownership_dir")" \
+    || fail "could not bind the MCP ownership directory identity"
   mcp_lock_owner="$mcp_lock_dir/owner"
+}
+
+mcp_registry_lock_binding_matches() {
+  local identity
+  local owner
+
+  if ! identity="$(directory_identity "$mcp_registry_dir" 2>/dev/null)"; then
+    printf '[muse host build] could not revalidate MCP registry directory identity: %s\n' \
+      "$mcp_registry_dir" >&2
+    return 1
+  fi
+  if [[ "$identity" != "$mcp_registry_dir_identity" ]]; then
+    printf '[muse host build] MCP registry directory identity changed after binding: expected %s, got %s\n' \
+      "$mcp_registry_dir_identity" "$identity" >&2
+    return 1
+  fi
+  if ((!mcp_lock_acquired)) || [[ -z "$mcp_lock_identity" ]]; then
+    printf '[muse host build] MCP build lock identity is not bound\n' >&2
+    return 1
+  fi
+  if ! identity="$(directory_identity "$mcp_lock_dir" 2>/dev/null)"; then
+    printf '[muse host build] could not revalidate MCP build lock identity: %s\n' \
+      "$mcp_lock_dir" >&2
+    return 1
+  fi
+  if [[ "$identity" != "$mcp_lock_identity" ]]; then
+    printf '[muse host build] MCP build lock identity changed after acquisition: expected %s, got %s\n' \
+      "$mcp_lock_identity" "$identity" >&2
+    return 1
+  fi
+  owner=""
+  IFS= read -r owner < "$mcp_lock_owner" 2>/dev/null || true
+  if [[ "$owner" != "$$" ]]; then
+    printf '[muse host build] MCP build lock owner changed after acquisition: expected %s, got %s\n' \
+      "$$" "$owner" >&2
+    return 1
+  fi
+  return 0
+}
+
+mcp_ownership_directory_binding_matches() {
+  local identity
+
+  if ! identity="$(directory_identity "$mcp_ownership_dir" 2>/dev/null)"; then
+    printf '[muse host build] could not revalidate MCP ownership directory identity: %s\n' \
+      "$mcp_ownership_dir" >&2
+    return 1
+  fi
+  if [[ "$identity" != "$mcp_ownership_dir_identity" ]]; then
+    printf '[muse host build] MCP ownership directory identity changed after binding: expected %s, got %s\n' \
+      "$mcp_ownership_dir_identity" "$identity" >&2
+    return 1
+  fi
+  return 0
+}
+
+mcp_namespace_bindings_match() {
+  mcp_registry_lock_binding_matches \
+    && mcp_ownership_directory_binding_matches
+}
+
+mcp_destination_namespace_bindings_match() {
+  local destination="$1"
+
+  case "$destination" in
+    "$mcp_public_registry"|"$mcp_ownership_file")
+      # A public-state operation must authenticate the complete pair, not only
+      # the directory containing the pathname it happens to replace. In
+      # particular, an ownership alias retargeted after transaction preparation
+      # must stop both the registry and ownership publication paths.
+      mcp_state_bindings_match
+      ;;
+    "$mcp_transaction_file")
+      # The fixed recovery marker deliberately remains writable when the
+      # ownership alias has changed, so cleanup can persist a rollback intent
+      # that authenticates the originally bound ownership target.
+      mcp_transaction_binding_matches
+      ;;
+    *)
+      printf '[muse host build] refused an unbound MCP publication destination: %s\n' \
+        "$destination" >&2
+      return 1
+      ;;
+  esac
+}
+
+mcp_state_bindings_match() {
+  local resolved
+
+  mcp_namespace_bindings_match || return 1
+  if ! resolved="$(canonicalize_mcp_destination "$mcp_public_registry")"; then
+    printf '[muse host build] could not revalidate MCP registry path: %s\n' \
+      "$mcp_public_registry" >&2
+    return 1
+  fi
+  if [[ "$resolved" != "$mcp_public_registry" ]]; then
+    printf '[muse host build] MCP registry path changed after binding: expected %s, got %s\n' \
+      "$mcp_public_registry" "$resolved" >&2
+    return 1
+  fi
+
+  if ! resolved="$(canonicalize_mcp_destination "$mcp_ownership_alias")"; then
+    printf '[muse host build] could not revalidate MCP ownership state path: %s\n' \
+      "$mcp_ownership_alias" >&2
+    return 1
+  fi
+  if [[ "$resolved" != "$mcp_ownership_file" ]]; then
+    printf '[muse host build] MCP ownership state path changed after binding: expected %s, got %s\n' \
+      "$mcp_ownership_file" "$resolved" >&2
+    return 1
+  fi
+  mcp_transaction_binding_matches
+}
+
+mcp_transaction_binding_matches() {
+  local resolved
+
+  mcp_registry_lock_binding_matches || return 1
+  if ! resolved="$(canonicalize_mcp_destination "$mcp_transaction_alias")"; then
+    printf '[muse host build] could not revalidate MCP transaction state path: %s\n' \
+      "$mcp_transaction_alias" >&2
+    return 1
+  fi
+  if [[ "$resolved" != "$mcp_transaction_file" ]]; then
+    printf '[muse host build] MCP transaction state path changed after binding: expected %s, got %s\n' \
+      "$mcp_transaction_file" "$resolved" >&2
+    return 1
+  fi
+  return 0
+}
+
+verify_mcp_state_bindings() {
+  mcp_state_bindings_match \
+    || fail "MCP state destination binding changed during build"
+}
+
+verify_mcp_public_registry() {
+  local target
+
+  for target in "${targets[@]}"; do
+    case "$target" in
+      mcp-server|claude-server) ;;
+      *) continue ;;
+    esac
+    resolve_mcp_target_destination "$target"
+    [[ "$mcp_resolved_destination" == "$mcp_public_registry" ]] \
+      || fail "$target configured MCP destination changed during build: expected $mcp_public_registry, got $mcp_resolved_destination"
+  done
+  verify_mcp_state_bindings
 }
 
 preflight_publish_destination() {
@@ -308,18 +532,18 @@ import {
   accessSync,
   constants,
   lstatSync,
-  realpathSync,
   statSync,
 } from "node:fs";
 import {dirname} from "node:path";
 
 const [destination] = process.argv.slice(2);
-const link = lstatSync(destination, {throwIfNoEntry: false});
-const resolved = link?.isSymbolicLink() ? realpathSync(destination) : destination;
-accessSync(dirname(resolved), constants.W_OK);
-const existing = lstatSync(resolved, {throwIfNoEntry: false});
+const existing = lstatSync(destination, {throwIfNoEntry: false});
+if (existing?.isSymbolicLink()) {
+  throw new Error(`${destination} changed to a symlink after binding`);
+}
+accessSync(dirname(destination), constants.W_OK);
 if (existing) {
-  const metadata = statSync(resolved);
+  const metadata = statSync(destination);
   const uid = process.getuid();
   if (metadata.uid !== uid) {
     throw new Error(`${destination} is owned by uid ${metadata.uid}; current uid is ${uid}`);
@@ -341,7 +565,8 @@ prepare_mcp_transaction() {
   local ownership_source="$3"
   local ownership_present="$4"
 
-  if [[ -L "$mcp_transaction_file" \
+  if ! mcp_transaction_binding_matches \
+      || [[ -L "$mcp_transaction_file" \
         || (-e "$mcp_transaction_file" && ! -f "$mcp_transaction_file") ]]; then
     return 1
   fi
@@ -352,12 +577,25 @@ prepare_mcp_transaction() {
     "$registry_source" \
     "$registry_present" \
     "$ownership_source" \
-    "$ownership_present" <<'NODE'
+    "$ownership_present" \
+    "$mcp_public_registry" \
+    "$mcp_registry_dir_identity" \
+    "$mcp_ownership_file" \
+    "$mcp_ownership_dir_identity" <<'NODE'
 import {createHash} from "node:crypto";
 import {readFileSync, writeFileSync} from "node:fs";
 
-const [output, registryPath, registryPresent, ownershipPath, ownershipPresent] =
-  process.argv.slice(2);
+const [
+  output,
+  registrySource,
+  registryPresent,
+  ownershipSource,
+  ownershipPresent,
+  registryPath,
+  registryDirectoryIdentity,
+  ownershipPath,
+  ownershipDirectoryIdentity,
+] = process.argv.slice(2);
 
 function capture(path, present) {
   if (present === "0") return {present: false, sha256: null, bytes: null};
@@ -371,16 +609,23 @@ function capture(path, present) {
 }
 
 const transaction = {
-  version: 1,
-  registry: capture(registryPath, registryPresent),
-  ownership: capture(ownershipPath, ownershipPresent),
+  version: 2,
+  binding: {
+    registryPath,
+    registryDirectoryIdentity,
+    ownershipPath,
+    ownershipDirectoryIdentity,
+  },
+  registry: capture(registrySource, registryPresent),
+  ownership: capture(ownershipSource, ownershipPresent),
 };
 writeFileSync(output, `${JSON.stringify(transaction)}\n`, {mode: 0o600});
 NODE
   then
     return 1
   fi
-  if ! atomic_publish "$mcp_transaction_record" "$mcp_transaction_file" 600; then
+  if ! mcp_transaction_binding_matches \
+      || ! atomic_publish "$mcp_transaction_record" "$mcp_transaction_file" 600; then
     return 1
   fi
   rm -f -- "$mcp_transaction_record"
@@ -397,7 +642,7 @@ publish_or_remove() {
       atomic_publish "$source" "$destination"
       ;;
     0)
-      rm -f -- "$destination" && sync -f -- "$(dirname "$destination")"
+      remove_bound_destination "$destination"
       ;;
     *)
       return 1
@@ -405,11 +650,31 @@ publish_or_remove() {
   esac
 }
 
+remove_bound_destination() {
+  local destination="$1"
+
+  mcp_destination_namespace_bindings_match "$destination" || return 1
+  if ! node --input-type=module - "$destination" <<'NODE'
+import {lstatSync, unlinkSync} from "node:fs";
+
+const [destination] = process.argv.slice(2);
+const existing = lstatSync(destination, {throwIfNoEntry: false});
+if (!existing) process.exit(0);
+if (!existing.isFile() || existing.isSymbolicLink()) {
+  throw new Error(`${destination} changed to a nonregular destination after binding`);
+}
+unlinkSync(destination);
+NODE
+  then
+    return 1
+  fi
+  sync -f -- "$(dirname "$destination")"
+}
+
 clear_mcp_transaction() {
   [[ -e "$mcp_transaction_file" || -L "$mcp_transaction_file" ]] || return 0
   [[ -f "$mcp_transaction_file" && ! -L "$mcp_transaction_file" ]] || return 1
-  rm -f -- "$mcp_transaction_file" \
-    && sync -f -- "$(dirname "$mcp_transaction_file")"
+  remove_bound_destination "$mcp_transaction_file"
 }
 
 apply_mcp_transaction() {
@@ -439,6 +704,7 @@ recover_mcp_transaction() {
   local registry_present
   local state
 
+  verify_mcp_state_bindings
   [[ -e "$mcp_transaction_file" || -L "$mcp_transaction_file" ]] || return 0
   [[ -f "$mcp_transaction_file" && ! -L "$mcp_transaction_file" ]] \
     || fail "MCP transaction marker is not a regular file: $mcp_transaction_file"
@@ -449,16 +715,47 @@ recover_mcp_transaction() {
   if ! state="$(node --input-type=module - \
     "$mcp_transaction_file" \
     "$mcp_recovery_registry" \
-    "$mcp_recovery_ownership" <<'NODE'
+    "$mcp_recovery_ownership" \
+    "$mcp_public_registry" \
+    "$mcp_registry_dir_identity" \
+    "$mcp_ownership_file" \
+    "$mcp_ownership_dir_identity" \
+    "$mcp_ownership_alias" <<'NODE'
 import {createHash} from "node:crypto";
 import {readFileSync, writeFileSync} from "node:fs";
 
-const [transactionPath, registryOutput, ownershipOutput] = process.argv.slice(2);
+const [
+  transactionPath,
+  registryOutput,
+  ownershipOutput,
+  registryPath,
+  registryDirectoryIdentity,
+  ownershipPath,
+  ownershipDirectoryIdentity,
+  ownershipAlias,
+] = process.argv.slice(2);
 const transaction = JSON.parse(readFileSync(transactionPath, "utf8"));
-if (transaction?.version !== 1) throw new Error("unsupported MCP transaction version");
 
 function objectMap(value) {
   return value && typeof value === "object" && !Array.isArray(value);
+}
+
+if (transaction?.version === 1) {
+  if (ownershipAlias !== ownershipPath) {
+    throw new Error(
+      "legacy MCP transaction cannot authenticate a linked ownership target",
+    );
+  }
+} else if (transaction?.version === 2) {
+  if (!objectMap(transaction.binding)
+      || transaction.binding.registryPath !== registryPath
+      || transaction.binding.registryDirectoryIdentity !== registryDirectoryIdentity
+      || transaction.binding.ownershipPath !== ownershipPath
+      || transaction.binding.ownershipDirectoryIdentity !== ownershipDirectoryIdentity) {
+    throw new Error("MCP transaction binding does not match the active publication namespace");
+  }
+} else {
+  throw new Error("unsupported MCP transaction version");
 }
 
 function decode(label, state, output) {
@@ -536,8 +833,10 @@ NODE
 }
 
 publish_mcp_state() {
+  verify_mcp_public_registry
   prepare_mcp_transaction "$mcp_registry" 1 "$mcp_ownership" 1 \
     || fail "could not prepare MCP state transaction"
+  mcp_state_publication_started=1
   apply_mcp_transaction "$mcp_registry" 1 "$mcp_ownership" 1 registry-first \
     || fail "could not publish MCP state transaction"
   clear_mcp_transaction \
@@ -554,6 +853,10 @@ acquire_mcp_build_lock() {
       fail "could not record ownership of the MCP build lock: $mcp_lock_dir"
     fi
     mcp_lock_acquired=1
+    mcp_lock_identity="$(directory_identity "$mcp_lock_dir")" \
+      || fail "could not bind the acquired MCP build lock identity"
+    mcp_namespace_bindings_match \
+      || fail "MCP publication namespace changed while acquiring the build lock"
     return
   fi
 
@@ -575,16 +878,19 @@ acquire_mcp_build_lock() {
 
 cleanup_mcp_registry() {
   local exit_status=$?
-  local owner
   local registry_restored=0
   local rollback_prepared=0
   local ownership_restored=0
+  local state_bindings_valid=0
   local temp
   set +e
   trap - EXIT
 
-  if ((exit_status != 0 && mcp_state_restore_ready)); then
-    if prepare_mcp_transaction \
+  if ((exit_status != 0 \
+      && mcp_state_restore_ready \
+      && mcp_state_publication_started)); then
+    if mcp_transaction_binding_matches \
+        && prepare_mcp_transaction \
       "$mcp_original_registry" \
       "$mcp_original_registry_present" \
       "$mcp_original_ownership" \
@@ -595,35 +901,43 @@ cleanup_mcp_registry() {
     fi
 
     if ((rollback_prepared)); then
-      if publish_or_remove \
-        "$mcp_original_ownership" \
-        "$mcp_original_ownership_present" \
-        "$mcp_ownership_file"; then
-        ownership_restored=1
+      if mcp_state_bindings_match; then
+        state_bindings_valid=1
       else
-        if ((mcp_original_ownership_present)); then
-          printf '[muse host build] failed to restore %s\n' "$mcp_ownership_file" >&2
-        else
-          printf '[muse host build] failed to remove partial %s\n' "$mcp_ownership_file" >&2
-        fi
+        printf '[muse host build] skipped MCP rollback because a state destination binding changed\n' >&2
       fi
 
-      if ((ownership_restored)); then
+      if ((state_bindings_valid)); then
         if publish_or_remove \
-          "$mcp_original_registry" \
-          "$mcp_original_registry_present" \
-          "$mcp_public_registry"; then
-          registry_restored=1
-        elif ((mcp_original_registry_present)); then
-          printf '[muse host build] failed to restore %s\n' "$mcp_public_registry" >&2
+          "$mcp_original_ownership" \
+          "$mcp_original_ownership_present" \
+          "$mcp_ownership_file"; then
+          ownership_restored=1
         else
-          printf '[muse host build] failed to remove partial %s\n' "$mcp_public_registry" >&2
+          if ((mcp_original_ownership_present)); then
+            printf '[muse host build] failed to restore %s\n' "$mcp_ownership_file" >&2
+          else
+            printf '[muse host build] failed to remove partial %s\n' "$mcp_ownership_file" >&2
+          fi
         fi
-      else
-        printf '[muse host build] skipped registry rollback because ownership rollback failed\n' >&2
+
+        if ((ownership_restored)); then
+          if publish_or_remove \
+            "$mcp_original_registry" \
+            "$mcp_original_registry_present" \
+            "$mcp_public_registry"; then
+            registry_restored=1
+          elif ((mcp_original_registry_present)); then
+            printf '[muse host build] failed to restore %s\n' "$mcp_public_registry" >&2
+          else
+            printf '[muse host build] failed to remove partial %s\n' "$mcp_public_registry" >&2
+          fi
+        else
+          printf '[muse host build] skipped registry rollback because ownership rollback failed\n' >&2
+        fi
       fi
 
-      if ((ownership_restored && registry_restored)); then
+      if ((state_bindings_valid && ownership_restored && registry_restored)); then
         clear_mcp_transaction \
           || printf '[muse host build] failed to clear completed MCP rollback transaction\n' >&2
       else
@@ -647,15 +961,13 @@ cleanup_mcp_registry() {
   done
 
   if ((mcp_lock_acquired)); then
-    owner=""
-    IFS= read -r owner < "$mcp_lock_owner" 2>/dev/null || true
-    if [[ "$owner" == "$$" ]]; then
+    if mcp_state_bindings_match; then
       rm -f -- "$mcp_lock_owner" \
         || printf '[muse host build] failed to remove lock owner %s\n' "$mcp_lock_owner" >&2
       rmdir -- "$mcp_lock_dir" \
         || printf '[muse host build] failed to release %s\n' "$mcp_lock_dir" >&2
     else
-      printf '[muse host build] refused to remove a lock owned by pid %s\n' "$owner" >&2
+      printf '[muse host build] refused to release the MCP build lock because its namespace binding changed\n' >&2
     fi
   fi
 
@@ -678,6 +990,7 @@ if ((mcp_target_count > 0)); then
   preflight_publish_destination "$mcp_transaction_file" \
     || fail "MCP transaction destination failed ownership/write preflight: $mcp_transaction_file"
   recover_mcp_transaction
+  verify_mcp_state_bindings
   mcp_registry="$(mktemp)"
   generated_mcp_registry="$(mktemp)"
   mcp_generated_output="$(mktemp)"
@@ -793,10 +1106,12 @@ for (const [name, registration] of generatedEntries) {
 
   const ownershipKey = `${producerId}:${target}`;
   const legacyOwnershipKey = `${legacyProducerId}:${target}`;
+  let legacyNameTransferred = false;
   for (const [ownedTarget, ownedName] of Object.entries(ownership)) {
     if (ownedTarget !== ownershipKey && ownedName === name) {
       if (ownedTarget === legacyOwnershipKey) {
         delete ownership[ownedTarget];
+        legacyNameTransferred = true;
       } else {
         throw new Error(`MCP registration ${name} is already owned by producer target ${ownedTarget}`);
       }
@@ -804,6 +1119,13 @@ for (const [name, registration] of generatedEntries) {
   }
 
   const previousName = ownership[ownershipKey];
+  const currentNameOwned = previousName === name;
+  if (Object.hasOwn(merged, name)
+      && !currentNameOwned
+      && !legacyNameTransferred
+      && !isDeepStrictEqual(merged[name], registration)) {
+    throw new Error(`unowned MCP registration ${name} conflicts with generated output`);
+  }
   if (previousName) {
     if (previousName !== name) {
       delete merged[previousName];
@@ -872,6 +1194,7 @@ build_target() {
   if [[ -n "$mcp_registry" ]]; then
     case "$target" in
       mcp-server|claude-server)
+        verify_mcp_public_registry
         merge_mcp_registration "$target"
         publish_mcp_state
         ;;

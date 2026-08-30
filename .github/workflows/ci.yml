@@ -102,6 +102,83 @@ jobs:
 
           assert_mcp_state
 
+          node --input-type=module <<'NODE'
+          import {writeFileSync} from "node:fs";
+          writeFileSync(
+            ".muse-host-targets-owners.json",
+            `${JSON.stringify({version: 1, targets: {}}, null, 2)}\n`,
+          );
+          NODE
+          scripts/build-host-targets.sh mcp-server 2>&1 | tee -a host-build.log
+          node --input-type=module <<'NODE'
+          import {readFileSync} from "node:fs";
+          const registry = JSON.parse(readFileSync(".mcp.json", "utf8")).mcpServers ?? {};
+          if (!registry["eta-mu-claude"] || !registry["eta-mu-receipt-river"]) {
+            throw new Error(`same-name neutral adoption lost a registration: ${JSON.stringify(registry)}`);
+          }
+          const ownership = JSON.parse(
+            readFileSync(".muse-host-targets-owners.json", "utf8"),
+          );
+          const expected = {
+            version: 2,
+            targets: {
+              [`${process.env.MUSE_TEST_MCP_PRODUCER_ID}:mcp-server`]: "eta-mu-receipt-river",
+            },
+          };
+          if (JSON.stringify(ownership) !== JSON.stringify(expected)) {
+            throw new Error(`same-name neutral adoption wrote incorrect ownership: ${JSON.stringify(ownership)}`);
+          }
+          NODE
+
+          cp "$manifest_dir/first-mcp.json" .mcp.json
+          node --input-type=module <<'NODE'
+          import {readFileSync, writeFileSync} from "node:fs";
+          const registry = JSON.parse(readFileSync(".mcp.json", "utf8"));
+          registry.mcpServers["eta-mu-receipt-river"] = {
+            command: "external-tool",
+            args: ["must-not-be-overwritten"],
+          };
+          writeFileSync(".mcp.json", `${JSON.stringify(registry, null, 2)}\n`);
+          writeFileSync(
+            ".muse-host-targets-owners.json",
+            `${JSON.stringify({version: 1, targets: {}}, null, 2)}\n`,
+          );
+          NODE
+          sha256sum .mcp.json > "$manifest_dir/before-unowned-conflict.sha256"
+          sha256sum .muse-host-targets-owners.json \
+            > "$manifest_dir/before-unowned-conflict-owners.sha256"
+          stat -c '%d:%i:%y' .mcp.json \
+            > "$manifest_dir/before-unowned-conflict.stat"
+          stat -c '%d:%i:%y' .muse-host-targets-owners.json \
+            > "$manifest_dir/before-unowned-conflict-owners.stat"
+          test ! -e .muse-host-targets-transaction.json
+          set +e
+          scripts/build-host-targets.sh mcp-server 2>&1 | tee -a host-build.log
+          unowned_conflict_status="${PIPESTATUS[0]}"
+          set -e
+          test "$unowned_conflict_status" -ne 0
+          grep -Fq 'unowned MCP registration eta-mu-receipt-river conflicts with generated output' \
+            host-build.log
+          sha256sum .mcp.json > "$manifest_dir/after-unowned-conflict.sha256"
+          sha256sum .muse-host-targets-owners.json \
+            > "$manifest_dir/after-unowned-conflict-owners.sha256"
+          diff -u "$manifest_dir/before-unowned-conflict.sha256" \
+            "$manifest_dir/after-unowned-conflict.sha256"
+          diff -u "$manifest_dir/before-unowned-conflict-owners.sha256" \
+            "$manifest_dir/after-unowned-conflict-owners.sha256"
+          stat -c '%d:%i:%y' .mcp.json \
+            > "$manifest_dir/after-unowned-conflict.stat"
+          stat -c '%d:%i:%y' .muse-host-targets-owners.json \
+            > "$manifest_dir/after-unowned-conflict-owners.stat"
+          diff -u "$manifest_dir/before-unowned-conflict.stat" \
+            "$manifest_dir/after-unowned-conflict.stat"
+          diff -u "$manifest_dir/before-unowned-conflict-owners.stat" \
+            "$manifest_dir/after-unowned-conflict-owners.stat"
+          test ! -e .muse-host-targets-transaction.json
+          cp "$manifest_dir/first-mcp.json" .mcp.json
+          cp "$manifest_dir/first-mcp-owners.json" .muse-host-targets-owners.json
+          assert_mcp_state
+
           checkout_b="$manifest_dir/checkout-b"
           git worktree add --detach "$checkout_b" HEAD
           ln -s "$PWD/node_modules" "$checkout_b/node_modules"
@@ -188,6 +265,7 @@ jobs:
           configured_dir="$manifest_dir/configured"
           configured_registry="$configured_dir/.mcp.json"
           configured_owners="$configured_dir/.muse-host-targets-owners.json"
+          configured_transaction="$configured_dir/.muse-host-targets-transaction.json"
           cp .ημ/config/mcp/root.edn "$manifest_dir/mcp-root.edn"
           node --input-type=module - "$configured_registry" <<'NODE'
           import {readFileSync, writeFileSync} from "node:fs";
@@ -249,6 +327,88 @@ jobs:
             throw new Error(`unexpected configured ownership: ${JSON.stringify(ownership)}`);
           }
           NODE
+          configured_owner_target="$configured_dir/owners-target.json"
+          mv "$configured_owners" "$configured_owner_target"
+          ln -s "$configured_owner_target" "$configured_owners"
+          configured_owner_target_inode="$(stat -c %i "$configured_owner_target")"
+          scripts/build-host-targets.sh mcp-server 2>&1 | tee -a host-build.log
+          test -L "$configured_owners"
+          test "$(readlink "$configured_owners")" = "$configured_owner_target"
+          test "$(stat -c %i "$configured_owner_target")" \
+            != "$configured_owner_target_inode"
+          test ! -e "$configured_transaction"
+          node --input-type=module - "$configured_owners" <<'NODE'
+          import {readFileSync} from "node:fs";
+          const [ownershipPath] = process.argv.slice(2);
+          const ownership = JSON.parse(readFileSync(ownershipPath, "utf8"));
+          if (ownership.version !== 2
+              || Object.values(ownership.targets).join(",") !== "eta-mu-receipt-river") {
+            throw new Error(`linked canonical ownership target was not published: ${JSON.stringify(ownership)}`);
+          }
+          NODE
+
+          owner_rotation_root="$manifest_dir/owner-rotation"
+          owner_rotation_live="$owner_rotation_root/live"
+          owner_rotation_old="$owner_rotation_root/live-old"
+          owner_rotation_owners="$owner_rotation_live/owners.json"
+          owner_rotation_log="$manifest_dir/owner-rotation.log"
+          mkdir -p "$owner_rotation_live" "$manifest_dir/owner-rotation-bin"
+          cp "$configured_owners" "$owner_rotation_owners"
+          unlink "$configured_owners"
+          ln -s "$owner_rotation_owners" "$configured_owners"
+          owner_rotation_registry_hash="$(sha256sum "$configured_registry" | cut -d ' ' -f 1)"
+          owner_rotation_registry_stat="$(stat -c '%d:%i:%y' "$configured_registry")"
+          owner_rotation_owners_hash="$(sha256sum "$owner_rotation_owners" | cut -d ' ' -f 1)"
+          cat > "$manifest_dir/owner-rotation-bin/clojure" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          "$MUSE_TEST_REAL_CLOJURE" "$@"
+          if [[ " $* " == *"eta-mu.mcp.build/generate-entrypoint"* ]] \
+              && mkdir "$MUSE_TEST_OWNER_ROTATE_ONCE" 2>/dev/null; then
+            mv "$MUSE_TEST_OWNER_LIVE" "$MUSE_TEST_OWNER_OLD"
+            mkdir "$MUSE_TEST_OWNER_LIVE"
+            printf '%s\n' '{"version":1,"targets":{"replacement":"untouched"}}' \
+              > "$MUSE_TEST_OWNER_PATH"
+          fi
+          SH
+          chmod +x "$manifest_dir/owner-rotation-bin/clojure"
+          set +e
+          MUSE_TEST_REAL_CLOJURE="$(command -v clojure)" \
+            MUSE_TEST_OWNER_LIVE="$owner_rotation_live" \
+            MUSE_TEST_OWNER_OLD="$owner_rotation_old" \
+            MUSE_TEST_OWNER_PATH="$owner_rotation_owners" \
+            MUSE_TEST_OWNER_ROTATE_ONCE="$manifest_dir/owner-rotation-once" \
+            PATH="$manifest_dir/owner-rotation-bin:$PATH" \
+            scripts/build-host-targets.sh mcp-server \
+              > "$owner_rotation_log" 2>&1
+          owner_rotation_status="$?"
+          set -e
+          test "$owner_rotation_status" -eq 64
+          grep -Fq 'MCP ownership directory identity changed after binding' \
+            "$owner_rotation_log"
+          grep -Fq 'refused to release the MCP build lock because its namespace binding changed' \
+            "$owner_rotation_log"
+          test "$(sha256sum "$configured_registry" | cut -d ' ' -f 1)" \
+            = "$owner_rotation_registry_hash"
+          test "$(stat -c '%d:%i:%y' "$configured_registry")" \
+            = "$owner_rotation_registry_stat"
+          test -L "$configured_owners"
+          test "$(readlink "$configured_owners")" = "$owner_rotation_owners"
+          test "$(cat "$owner_rotation_owners")" \
+            = '{"version":1,"targets":{"replacement":"untouched"}}'
+          test "$(sha256sum "$owner_rotation_old/owners.json" | cut -d ' ' -f 1)" \
+            = "$owner_rotation_owners_hash"
+          test ! -e "$configured_transaction"
+          test -f "$configured_lock/owner"
+          IFS= read -r owner_rotation_pid < "$configured_lock/owner"
+          if kill -0 "$owner_rotation_pid" 2>/dev/null; then
+            echo "ownership-parent rotation build owner is still active: $owner_rotation_pid" >&2
+            exit 1
+          fi
+          unlink "$configured_lock/owner"
+          rmdir "$configured_lock"
+          cat "$owner_rotation_log" >> host-build.log
+
           assert_mcp_state
           sha256sum .mcp.json > "$manifest_dir/after-configured-destination.sha256"
           diff -u "$manifest_dir/first-mcp.sha256" \
@@ -363,6 +523,592 @@ jobs:
           rmdir .muse-host-targets.lock
           cat "$manifest_dir/lock-build.log" >> host-build.log
           cp "$manifest_dir/relative-mcp-root.edn" .ημ/config/mcp/root.edn
+
+          real_clojure="$(command -v clojure)"
+          cp .ημ/config/mcp/root.edn "$manifest_dir/rebinding-mcp-root.edn"
+          sha256sum .mcp.json > "$manifest_dir/before-rebinding.sha256"
+          sha256sum .muse-host-targets-owners.json \
+            > "$manifest_dir/before-rebinding-owners.sha256"
+          rebound_registry="$manifest_dir/rebound/.mcp.json"
+          mkdir "$manifest_dir/rebinding-bin"
+          cat > "$manifest_dir/rebinding-bin/clojure" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          "$MUSE_TEST_REAL_CLOJURE" "$@"
+          if [[ " $* " == *"eta-mu.mcp.build/generate-entrypoint"* ]] \
+              && mkdir "$MUSE_TEST_REBIND_ONCE" 2>/dev/null; then
+            node --input-type=module - \
+              "$MUSE_TEST_REBIND_ROOT" "$MUSE_TEST_REBIND_DEST" <<'NODE'
+          import {readFileSync, writeFileSync} from "node:fs";
+          const [configPath, destination] = process.argv.slice(2);
+          const source = readFileSync(configPath, "utf8");
+          const changed = source.replace(
+            ':mcp-config ".mcp.json"',
+            `:mcp-config "${destination}"`,
+          );
+          if (changed === source) throw new Error("rebinding fixture did not change config");
+          writeFileSync(configPath, changed);
+          NODE
+          fi
+          SH
+          chmod +x "$manifest_dir/rebinding-bin/clojure"
+          set +e
+          MUSE_TEST_REAL_CLOJURE="$real_clojure" \
+            MUSE_TEST_REBIND_ROOT="$PWD/.ημ/config/mcp/root.edn" \
+            MUSE_TEST_REBIND_DEST="$rebound_registry" \
+            MUSE_TEST_REBIND_ONCE="$manifest_dir/rebinding-once" \
+            PATH="$manifest_dir/rebinding-bin:$PATH" \
+            scripts/build-host-targets.sh mcp-server 2>&1 | tee -a host-build.log
+          rebinding_status="${PIPESTATUS[0]}"
+          set -e
+          test "$rebinding_status" -eq 64
+          grep -Fq 'mcp-server configured MCP destination changed during build' \
+            host-build.log
+          test ! -e "$rebound_registry"
+          test ! -e "$manifest_dir/rebound/.muse-host-targets-owners.json"
+          sha256sum .mcp.json > "$manifest_dir/after-rebinding.sha256"
+          sha256sum .muse-host-targets-owners.json \
+            > "$manifest_dir/after-rebinding-owners.sha256"
+          diff -u "$manifest_dir/before-rebinding.sha256" \
+            "$manifest_dir/after-rebinding.sha256"
+          diff -u "$manifest_dir/before-rebinding-owners.sha256" \
+            "$manifest_dir/after-rebinding-owners.sha256"
+          cp "$manifest_dir/rebinding-mcp-root.edn" .ημ/config/mcp/root.edn
+
+          cp .ημ/config/mcp/root.edn "$manifest_dir/substitution-mcp-root.edn"
+          cp .ημ/config/claude/root.edn "$manifest_dir/substitution-claude-root.edn"
+          substitution_dir="$manifest_dir/substitution"
+          substituted_registry="$substitution_dir/registry.json"
+          redirected_registry="$substitution_dir/redirected.json"
+          substitution_marker="$substituted_registry.muse-host-targets-transaction.json"
+          substitution_lock="$substituted_registry.muse-host-targets.lock"
+          mkdir "$substitution_dir" "$manifest_dir/substitution-bin"
+          node --input-type=module - \
+            "$substituted_registry" \
+            .ημ/config/mcp/root.edn \
+            .ημ/config/claude/root.edn <<'NODE'
+          import {readFileSync, writeFileSync} from "node:fs";
+          const [destination, ...configPaths] = process.argv.slice(2);
+          for (const path of configPaths) {
+            const source = readFileSync(path, "utf8");
+            const changed = source.replace(
+              ':mcp-config ".mcp.json"',
+              `:mcp-config "${destination}"`,
+            );
+            if (changed === source) throw new Error(`substitution fixture did not change ${path}`);
+            writeFileSync(path, changed);
+          }
+          NODE
+          cat > "$manifest_dir/substitution-bin/clojure" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          "$MUSE_TEST_REAL_CLOJURE" "$@"
+          if [[ " $* " == *"eta-mu.claude.build/generate-entrypoint"* ]] \
+              && mkdir "$MUSE_TEST_SUBSTITUTE_ONCE" 2>/dev/null; then
+            node --input-type=module - \
+              "$MUSE_TEST_BOUND_PATH" "$MUSE_TEST_REDIRECT_PATH" <<'NODE'
+          import {symlinkSync, unlinkSync, writeFileSync} from "node:fs";
+          const [boundPath, redirectPath] = process.argv.slice(2);
+          writeFileSync(redirectPath, '{"sentinel":"unchanged"}\n');
+          unlinkSync(boundPath);
+          symlinkSync(redirectPath, boundPath);
+          NODE
+          fi
+          SH
+          chmod +x "$manifest_dir/substitution-bin/clojure"
+          set +e
+          MUSE_TEST_REAL_CLOJURE="$real_clojure" \
+            MUSE_TEST_BOUND_PATH="$substituted_registry" \
+            MUSE_TEST_REDIRECT_PATH="$redirected_registry" \
+            MUSE_TEST_SUBSTITUTE_ONCE="$manifest_dir/substitution-once" \
+            PATH="$manifest_dir/substitution-bin:$PATH" \
+            scripts/build-host-targets.sh mcp-server claude-server 2>&1 \
+              | tee -a host-build.log
+          substitution_status="${PIPESTATUS[0]}"
+          set -e
+          test "$substitution_status" -eq 64
+          grep -Fq 'mcp-server configured MCP destination changed during build' \
+            host-build.log
+          grep -Fq 'preserved MCP rollback transaction for recovery' host-build.log
+          test -L "$substituted_registry"
+          test "$(readlink "$substituted_registry")" = "$redirected_registry"
+          test "$(cat "$redirected_registry")" = '{"sentinel":"unchanged"}'
+          test -f "$substitution_marker"
+          test ! -L "$substitution_marker"
+          test "$(stat -c %a "$substitution_marker")" = 600
+          test -f "$substituted_registry.muse-host-targets-owners.json"
+          test -f "$substitution_lock/owner"
+          IFS= read -r substitution_owner < "$substitution_lock/owner"
+          if kill -0 "$substitution_owner" 2>/dev/null; then
+            echo "registry-substitution build owner is still active: $substitution_owner" >&2
+            exit 1
+          fi
+          unlink "$substitution_lock/owner"
+          rmdir "$substitution_lock"
+          unlink "$substituted_registry"
+          mkdir "$manifest_dir/substitution-recovery-bin"
+          cat > "$manifest_dir/substitution-recovery-bin/clojure" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ " $* " == *"eta-mu.mcp.build/generate-entrypoint"* ]]; then
+            exit 77
+          fi
+          exec "$MUSE_TEST_REAL_CLOJURE" "$@"
+          SH
+          chmod +x "$manifest_dir/substitution-recovery-bin/clojure"
+          set +e
+          MUSE_TEST_REAL_CLOJURE="$real_clojure" \
+            PATH="$manifest_dir/substitution-recovery-bin:$PATH" \
+            scripts/build-host-targets.sh mcp-server 2>&1 | tee -a host-build.log
+          substitution_recovery_status="${PIPESTATUS[0]}"
+          set -e
+          test "$substitution_recovery_status" -eq 77
+          grep -Fq 'recovering interrupted MCP state transaction' host-build.log
+          test ! -e "$substitution_marker"
+          test ! -e "$substituted_registry"
+          test "$(cat "$redirected_registry")" = '{"sentinel":"unchanged"}'
+          cp "$manifest_dir/substitution-mcp-root.edn" .ημ/config/mcp/root.edn
+          cp "$manifest_dir/substitution-claude-root.edn" .ημ/config/claude/root.edn
+
+          state_alias_dir="$manifest_dir/state-alias"
+          old_ownership_target="$state_alias_dir/owners-old.json"
+          new_ownership_target="$state_alias_dir/owners-new.json"
+          mkdir "$state_alias_dir" "$manifest_dir/ownership-rebind-bin"
+          sha256sum .mcp.json > "$manifest_dir/before-ownership-rebind.sha256"
+          sha256sum .muse-host-targets-owners.json \
+            > "$manifest_dir/before-ownership-rebind-owners.sha256"
+          ownership_real_mv="$(command -v mv)"
+          cat > "$manifest_dir/ownership-rebind-bin/mv" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          destination="${!#}"
+          if [[ "$destination" == "$MUSE_TEST_REGISTRY_PATH" ]] \
+              && mkdir "$MUSE_TEST_OWNERSHIP_REBIND_ONCE" 2>/dev/null; then
+            node --input-type=module - \
+              "$MUSE_TEST_OWNERSHIP_ALIAS" \
+              "$MUSE_TEST_OLD_OWNERSHIP" \
+              "$MUSE_TEST_NEW_OWNERSHIP" <<'NODE'
+          import {readFileSync, symlinkSync, unlinkSync, writeFileSync} from "node:fs";
+          const [aliasPath, oldPath, newPath] = process.argv.slice(2);
+          writeFileSync(oldPath, readFileSync(aliasPath));
+          unlinkSync(aliasPath);
+          writeFileSync(newPath, '{"version":1,"targets":{}}\n');
+          symlinkSync(newPath, aliasPath);
+          NODE
+          fi
+          exec "$MUSE_TEST_REAL_MV" "$@"
+          SH
+          chmod +x "$manifest_dir/ownership-rebind-bin/mv"
+          set +e
+          MUSE_TEST_REAL_MV="$ownership_real_mv" \
+            MUSE_TEST_REGISTRY_PATH="$PWD/.mcp.json" \
+            MUSE_TEST_OWNERSHIP_ALIAS="$PWD/.muse-host-targets-owners.json" \
+            MUSE_TEST_OLD_OWNERSHIP="$old_ownership_target" \
+            MUSE_TEST_NEW_OWNERSHIP="$new_ownership_target" \
+            MUSE_TEST_OWNERSHIP_REBIND_ONCE="$manifest_dir/ownership-rebind-once" \
+            PATH="$manifest_dir/ownership-rebind-bin:$PATH" \
+            scripts/build-host-targets.sh mcp-server 2>&1 \
+              | tee -a host-build.log
+          ownership_rebind_status="${PIPESTATUS[0]}"
+          set -e
+          test "$ownership_rebind_status" -eq 64
+          grep -Fq 'MCP ownership state path changed after binding' host-build.log
+          grep -Fq 'skipped MCP rollback because a state destination binding changed' \
+            host-build.log
+          test -L .muse-host-targets-owners.json
+          test "$(readlink .muse-host-targets-owners.json)" = "$new_ownership_target"
+          test "$(cat "$new_ownership_target")" = '{"version":1,"targets":{}}'
+          test -f .muse-host-targets-transaction.json
+          node --input-type=module - \
+            .muse-host-targets-transaction.json \
+            "$PWD/.mcp.json" \
+            "$PWD/.muse-host-targets-owners.json" <<'NODE'
+          import {readFileSync} from "node:fs";
+          const [markerPath, registryPath, ownershipPath] = process.argv.slice(2);
+          const marker = JSON.parse(readFileSync(markerPath, "utf8"));
+          if (marker.version !== 2
+              || marker.binding?.registryPath !== registryPath
+              || marker.binding?.ownershipPath !== ownershipPath
+              || !/^\d+:\d+$/.test(marker.binding?.registryDirectoryIdentity ?? "")
+              || !/^\d+:\d+$/.test(marker.binding?.ownershipDirectoryIdentity ?? "")) {
+            throw new Error(`rollback marker did not authenticate its bound paths: ${JSON.stringify(marker)}`);
+          }
+          NODE
+          sha256sum .mcp.json > "$manifest_dir/after-ownership-rebind.sha256"
+          sha256sum "$old_ownership_target" \
+            > "$manifest_dir/after-ownership-rebind-old-owners.sha256"
+          diff -u "$manifest_dir/before-ownership-rebind.sha256" \
+            "$manifest_dir/after-ownership-rebind.sha256"
+          sed "s#  .muse-host-targets-owners.json#  $old_ownership_target#" \
+            "$manifest_dir/before-ownership-rebind-owners.sha256" \
+            > "$manifest_dir/expected-ownership-rebind-old-owners.sha256"
+          diff -u "$manifest_dir/expected-ownership-rebind-old-owners.sha256" \
+            "$manifest_dir/after-ownership-rebind-old-owners.sha256"
+          test -f .muse-host-targets.lock/owner
+          IFS= read -r ownership_rebind_owner < .muse-host-targets.lock/owner
+          if kill -0 "$ownership_rebind_owner" 2>/dev/null; then
+            echo "ownership-rebind build owner is still active: $ownership_rebind_owner" >&2
+            exit 1
+          fi
+          unlink .muse-host-targets.lock/owner
+          rmdir .muse-host-targets.lock
+          unlink .muse-host-targets-owners.json
+          cp "$old_ownership_target" .muse-host-targets-owners.json
+          ownership_recovery_log="$manifest_dir/ownership-recovery.log"
+          set +e
+          MUSE_TEST_REAL_CLOJURE="$real_clojure" \
+            PATH="$manifest_dir/substitution-recovery-bin:$PATH" \
+            scripts/build-host-targets.sh mcp-server 2>&1 \
+              | tee "$ownership_recovery_log"
+          ownership_recovery_status="${PIPESTATUS[0]}"
+          set -e
+          test "$ownership_recovery_status" -eq 77
+          grep -Fq 'recovering interrupted MCP state transaction' \
+            "$ownership_recovery_log"
+          cat "$ownership_recovery_log" >> host-build.log
+          test ! -L .muse-host-targets-owners.json
+          test ! -e .muse-host-targets-transaction.json
+          sha256sum .mcp.json > "$manifest_dir/after-ownership-recovery.sha256"
+          sha256sum .muse-host-targets-owners.json \
+            > "$manifest_dir/after-ownership-recovery-owners.sha256"
+          diff -u "$manifest_dir/before-ownership-rebind.sha256" \
+            "$manifest_dir/after-ownership-recovery.sha256"
+          diff -u "$manifest_dir/before-ownership-rebind-owners.sha256" \
+            "$manifest_dir/after-ownership-recovery-owners.sha256"
+
+          transaction_redirect="$state_alias_dir/transaction-redirect.json"
+          transaction_rebind_log="$manifest_dir/transaction-rebind.log"
+          transaction_after_log="$manifest_dir/transaction-after-rebind.log"
+          transaction_real_mv="$(command -v mv)"
+          mkdir "$manifest_dir/transaction-rebind-bin"
+          cat > "$manifest_dir/transaction-rebind-bin/clojure" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          "$MUSE_TEST_REAL_CLOJURE" "$@"
+          if [[ " $* " == *"eta-mu.mcp.build/generate-entrypoint"* ]] \
+              && mkdir "$MUSE_TEST_TRANSACTION_REBIND_ONCE" 2>/dev/null; then
+            node --input-type=module - \
+              "$MUSE_TEST_TRANSACTION_ALIAS" "$MUSE_TEST_TRANSACTION_REDIRECT" <<'NODE'
+          import {symlinkSync, writeFileSync} from "node:fs";
+          const [aliasPath, redirectPath] = process.argv.slice(2);
+          writeFileSync(redirectPath, '{"sentinel":"unchanged"}\n');
+          symlinkSync(redirectPath, aliasPath);
+          NODE
+          fi
+          SH
+          cat > "$manifest_dir/transaction-rebind-bin/mv" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          destination="${!#}"
+          if [[ "$destination" == "$MUSE_TEST_REGISTRY_PATH" ]]; then
+            "$MUSE_TEST_REAL_MV" "$@"
+            kill -KILL "$PPID"
+            exit 137
+          fi
+          exec "$MUSE_TEST_REAL_MV" "$@"
+          SH
+          chmod +x \
+            "$manifest_dir/transaction-rebind-bin/clojure" \
+            "$manifest_dir/transaction-rebind-bin/mv"
+          sha256sum .mcp.json > "$manifest_dir/before-transaction-rebind.sha256"
+          sha256sum .muse-host-targets-owners.json \
+            > "$manifest_dir/before-transaction-rebind-owners.sha256"
+          set +e
+          MUSE_TEST_REAL_CLOJURE="$real_clojure" \
+            MUSE_TEST_REAL_MV="$transaction_real_mv" \
+            MUSE_TEST_REGISTRY_PATH="$PWD/.mcp.json" \
+            MUSE_TEST_TRANSACTION_ALIAS="$PWD/.muse-host-targets-transaction.json" \
+            MUSE_TEST_TRANSACTION_REDIRECT="$transaction_redirect" \
+            MUSE_TEST_TRANSACTION_REBIND_ONCE="$manifest_dir/transaction-rebind-once" \
+            PATH="$manifest_dir/transaction-rebind-bin:$PATH" \
+            scripts/build-host-targets.sh mcp-server \
+              > "$transaction_rebind_log" 2>&1
+          transaction_rebind_status="$?"
+          set -e
+          test "$transaction_rebind_status" -eq 64
+          grep -Fq 'MCP transaction state path changed after binding' \
+            "$transaction_rebind_log"
+          if grep -Fq 'recovering interrupted MCP state transaction' \
+            "$transaction_rebind_log"; then
+            cat "$transaction_rebind_log" >&2
+            exit 1
+          fi
+          test -L .muse-host-targets-transaction.json
+          test "$(readlink .muse-host-targets-transaction.json)" = "$transaction_redirect"
+          test "$(cat "$transaction_redirect")" = '{"sentinel":"unchanged"}'
+          test -f .muse-host-targets.lock/owner
+          IFS= read -r transaction_rebind_owner < .muse-host-targets.lock/owner
+          if kill -0 "$transaction_rebind_owner" 2>/dev/null; then
+            echo "transaction-rebind build owner is still active: $transaction_rebind_owner" >&2
+            exit 1
+          fi
+          unlink .muse-host-targets.lock/owner
+          rmdir .muse-host-targets.lock
+          sha256sum .mcp.json > "$manifest_dir/after-transaction-rebind.sha256"
+          sha256sum .muse-host-targets-owners.json \
+            > "$manifest_dir/after-transaction-rebind-owners.sha256"
+          diff -u "$manifest_dir/before-transaction-rebind.sha256" \
+            "$manifest_dir/after-transaction-rebind.sha256"
+          diff -u "$manifest_dir/before-transaction-rebind-owners.sha256" \
+            "$manifest_dir/after-transaction-rebind-owners.sha256"
+          unlink .muse-host-targets-transaction.json
+          set +e
+          MUSE_TEST_REAL_CLOJURE="$real_clojure" \
+            PATH="$manifest_dir/substitution-recovery-bin:$PATH" \
+            scripts/build-host-targets.sh mcp-server \
+              > "$transaction_after_log" 2>&1
+          transaction_after_status="$?"
+          set -e
+          test "$transaction_after_status" -eq 77
+          if grep -Fq 'recovering interrupted MCP state transaction' \
+            "$transaction_after_log"; then
+            cat "$transaction_after_log" >&2
+            exit 1
+          fi
+          test ! -e .muse-host-targets-transaction.json
+          test "$(cat "$transaction_redirect")" = '{"sentinel":"unchanged"}'
+          sha256sum .mcp.json > "$manifest_dir/after-transaction-retry.sha256"
+          sha256sum .muse-host-targets-owners.json \
+            > "$manifest_dir/after-transaction-retry-owners.sha256"
+          diff -u "$manifest_dir/before-transaction-rebind.sha256" \
+            "$manifest_dir/after-transaction-retry.sha256"
+          diff -u "$manifest_dir/before-transaction-rebind-owners.sha256" \
+            "$manifest_dir/after-transaction-retry-owners.sha256"
+          cat "$transaction_rebind_log" "$transaction_after_log" >> host-build.log
+
+          write_v1_transaction_marker() {
+            node --input-type=module - \
+              .muse-host-targets-transaction.json \
+              .mcp.json \
+              .muse-host-targets-owners.json <<'NODE'
+          import {createHash} from "node:crypto";
+          import {readFileSync, writeFileSync} from "node:fs";
+
+          const [markerPath, registryPath, ownershipPath] = process.argv.slice(2);
+          function capture(path) {
+            const bytes = readFileSync(path);
+            return {
+              present: true,
+              sha256: createHash("sha256").update(bytes).digest("hex"),
+              bytes: bytes.toString("base64"),
+            };
+          }
+          const marker = {
+            version: 1,
+            registry: capture(registryPath),
+            ownership: capture(ownershipPath),
+          };
+          writeFileSync(markerPath, `${JSON.stringify(marker)}\n`, {
+            flag: "wx",
+            mode: 0o600,
+          });
+          NODE
+          }
+
+          sha256sum .mcp.json > "$manifest_dir/before-v1-direct.sha256"
+          sha256sum .muse-host-targets-owners.json \
+            > "$manifest_dir/before-v1-direct-owners.sha256"
+          write_v1_transaction_marker
+          test "$(stat -c %a .muse-host-targets-transaction.json)" = 600
+          node --input-type=module <<'NODE'
+          import {writeFileSync} from "node:fs";
+          writeFileSync(
+            ".mcp.json",
+            '{"mcpServers":{"interrupted":{"command":"external-tool","args":["stale"]}}}\n',
+          );
+          writeFileSync(
+            ".muse-host-targets-owners.json",
+            '{"version":1,"targets":{"mcp-server":"interrupted"}}\n',
+          );
+          NODE
+          v1_direct_log="$manifest_dir/v1-direct-recovery.log"
+          set +e
+          MUSE_TEST_REAL_CLOJURE="$real_clojure" \
+            PATH="$manifest_dir/substitution-recovery-bin:$PATH" \
+            scripts/build-host-targets.sh mcp-server 2>&1 | tee "$v1_direct_log"
+          v1_direct_status="${PIPESTATUS[0]}"
+          set -e
+          test "$v1_direct_status" -eq 77
+          grep -Fq 'recovering interrupted MCP state transaction' "$v1_direct_log"
+          test ! -e .muse-host-targets-transaction.json
+          test ! -e .muse-host-targets.lock
+          sha256sum .mcp.json > "$manifest_dir/after-v1-direct.sha256"
+          sha256sum .muse-host-targets-owners.json \
+            > "$manifest_dir/after-v1-direct-owners.sha256"
+          diff -u "$manifest_dir/before-v1-direct.sha256" \
+            "$manifest_dir/after-v1-direct.sha256"
+          diff -u "$manifest_dir/before-v1-direct-owners.sha256" \
+            "$manifest_dir/after-v1-direct-owners.sha256"
+          cat "$v1_direct_log" >> host-build.log
+
+          write_v1_transaction_marker
+          v1_linked_owners="$state_alias_dir/v1-linked-owners.json"
+          mv .muse-host-targets-owners.json "$v1_linked_owners"
+          ln -s "$v1_linked_owners" .muse-host-targets-owners.json
+          v1_linked_marker_hash="$(sha256sum .muse-host-targets-transaction.json | cut -d ' ' -f 1)"
+          v1_linked_registry_hash="$(sha256sum .mcp.json | cut -d ' ' -f 1)"
+          v1_linked_owners_hash="$(sha256sum "$v1_linked_owners" | cut -d ' ' -f 1)"
+          v1_linked_log="$manifest_dir/v1-linked-refusal.log"
+          set +e
+          MUSE_TEST_REAL_CLOJURE="$real_clojure" \
+            PATH="$manifest_dir/substitution-recovery-bin:$PATH" \
+            scripts/build-host-targets.sh mcp-server \
+              > "$v1_linked_log" 2>&1
+          v1_linked_status="$?"
+          set -e
+          test "$v1_linked_status" -eq 64
+          grep -Fq 'legacy MCP transaction cannot authenticate a linked ownership target' \
+            "$v1_linked_log"
+          if grep -Fq 'recovering interrupted MCP state transaction' "$v1_linked_log"; then
+            cat "$v1_linked_log" >&2
+            exit 1
+          fi
+          test -L .muse-host-targets-owners.json
+          test "$(readlink .muse-host-targets-owners.json)" = "$v1_linked_owners"
+          test "$(sha256sum .muse-host-targets-transaction.json | cut -d ' ' -f 1)" \
+            = "$v1_linked_marker_hash"
+          test "$(sha256sum .mcp.json | cut -d ' ' -f 1)" = "$v1_linked_registry_hash"
+          test "$(sha256sum "$v1_linked_owners" | cut -d ' ' -f 1)" \
+            = "$v1_linked_owners_hash"
+          test ! -e .muse-host-targets.lock
+          unlink .muse-host-targets-owners.json
+          cp "$v1_linked_owners" .muse-host-targets-owners.json
+          unlink .muse-host-targets-transaction.json
+          cat "$v1_linked_log" >> host-build.log
+          assert_mcp_state
+
+          cp .ημ/config/mcp/root.edn "$manifest_dir/rotation-mcp-root.edn"
+          cp .ημ/config/claude/root.edn "$manifest_dir/rotation-claude-root.edn"
+          rotation_parent="$manifest_dir/rotation"
+          rotation_live="$rotation_parent/live"
+          rotation_old="$rotation_parent/live-old"
+          rotation_registry="$rotation_live/registry.json"
+          rotation_owners="$rotation_registry.muse-host-targets-owners.json"
+          rotation_lock="$rotation_registry.muse-host-targets.lock"
+          rotation_old_lock="$rotation_old/registry.json.muse-host-targets.lock"
+          rotation_log="$manifest_dir/rotation.log"
+          mkdir -p "$rotation_live" "$manifest_dir/rotation-bin"
+          cp .mcp.json "$rotation_registry"
+          cp .muse-host-targets-owners.json "$rotation_owners"
+          node --input-type=module - \
+            "$rotation_registry" \
+            .ημ/config/mcp/root.edn \
+            .ημ/config/claude/root.edn <<'NODE'
+          import {readFileSync, writeFileSync} from "node:fs";
+          const [destination, ...configPaths] = process.argv.slice(2);
+          for (const configPath of configPaths) {
+            const source = readFileSync(configPath, "utf8");
+            const changed = source.replace(
+              ':mcp-config ".mcp.json"',
+              `:mcp-config "${destination}"`,
+            );
+            if (changed === source) throw new Error(`rotation fixture did not change ${configPath}`);
+            writeFileSync(configPath, changed);
+          }
+          NODE
+          cat > "$manifest_dir/rotation-bin/clojure" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          "$MUSE_TEST_REAL_CLOJURE" "$@"
+          if [[ " $* " == *"eta-mu.claude.build/generate-entrypoint"* ]] \
+              && mkdir "$MUSE_TEST_ROTATE_ONCE" 2>/dev/null; then
+            mv "$MUSE_TEST_ROTATION_LIVE" "$MUSE_TEST_ROTATION_OLD"
+            mkdir "$MUSE_TEST_ROTATION_LIVE"
+            node --input-type=module - \
+              "$MUSE_TEST_ROTATION_REGISTRY" \
+              "$MUSE_TEST_ROTATION_OWNERS" <<'NODE'
+          import {writeFileSync} from "node:fs";
+          const [registryPath, ownershipPath] = process.argv.slice(2);
+          writeFileSync(
+            registryPath,
+            '{"mcpServers":{"replacement":{"command":"external-tool","args":["untouched"]}}}\n',
+          );
+          writeFileSync(ownershipPath, '{"version":1,"targets":{}}\n');
+          NODE
+          fi
+          SH
+          chmod +x "$manifest_dir/rotation-bin/clojure"
+          set +e
+          MUSE_TEST_REAL_CLOJURE="$real_clojure" \
+            MUSE_TEST_ROTATION_LIVE="$rotation_live" \
+            MUSE_TEST_ROTATION_OLD="$rotation_old" \
+            MUSE_TEST_ROTATION_REGISTRY="$rotation_registry" \
+            MUSE_TEST_ROTATION_OWNERS="$rotation_owners" \
+            MUSE_TEST_ROTATE_ONCE="$manifest_dir/rotation-once" \
+            PATH="$manifest_dir/rotation-bin:$PATH" \
+            scripts/build-host-targets.sh mcp-server claude-server \
+              > "$rotation_log" 2>&1
+          rotation_status="$?"
+          set -e
+          test "$rotation_status" -eq 64
+          grep -Fq 'MCP registry directory identity changed after binding' \
+            "$rotation_log"
+          grep -Fq 'refused to release the MCP build lock because its namespace binding changed' \
+            "$rotation_log"
+          test "$(cat "$rotation_registry")" \
+            = '{"mcpServers":{"replacement":{"command":"external-tool","args":["untouched"]}}}'
+          test "$(cat "$rotation_owners")" = '{"version":1,"targets":{}}'
+          test ! -e "$rotation_registry.muse-host-targets-transaction.json"
+          test ! -e "$rotation_lock"
+          test -f "$rotation_old_lock/owner"
+          test -f "$rotation_old/registry.json"
+          test -f "$rotation_old/registry.json.muse-host-targets-owners.json"
+          unlink "$rotation_old_lock/owner"
+          rmdir "$rotation_old_lock"
+          cat "$rotation_log" >> host-build.log
+          cp "$manifest_dir/rotation-mcp-root.edn" .ημ/config/mcp/root.edn
+          cp "$manifest_dir/rotation-claude-root.edn" .ημ/config/claude/root.edn
+
+          cp .ημ/config/mcp/root.edn "$manifest_dir/dangling-mcp-root.edn"
+          cp .ημ/config/claude/root.edn "$manifest_dir/dangling-claude-root.edn"
+          dangling_dir="$manifest_dir/dangling"
+          dangling_target="$dangling_dir/registry-target.json"
+          dangling_alias="$dangling_dir/registry-alias.json"
+          mkdir "$dangling_dir"
+          ln -s "$dangling_target" "$dangling_alias"
+          node --input-type=module - \
+            "$dangling_alias" \
+            .ημ/config/mcp/root.edn \
+            .ημ/config/claude/root.edn <<'NODE'
+          import {readFileSync, writeFileSync} from "node:fs";
+          const [destination, ...configPaths] = process.argv.slice(2);
+          for (const configPath of configPaths) {
+            const source = readFileSync(configPath, "utf8");
+            const changed = source.replace(
+              ':mcp-config ".mcp.json"',
+              `:mcp-config "${destination}"`,
+            );
+            if (changed === source) throw new Error(`dangling fixture did not change ${configPath}`);
+            writeFileSync(configPath, changed);
+          }
+          NODE
+          mkdir "$manifest_dir/dangling-bin"
+          cat > "$manifest_dir/dangling-bin/clojure" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ " $* " == *"eta-mu.claude.build/generate-entrypoint"* ]]; then
+            exit 76
+          fi
+          exec "$MUSE_TEST_REAL_CLOJURE" "$@"
+          SH
+          chmod +x "$manifest_dir/dangling-bin/clojure"
+          set +e
+          MUSE_TEST_REAL_CLOJURE="$real_clojure" \
+            PATH="$manifest_dir/dangling-bin:$PATH" \
+            scripts/build-host-targets.sh mcp-server claude-server 2>&1 \
+              | tee -a host-build.log
+          dangling_status="${PIPESTATUS[0]}"
+          set -e
+          test "$dangling_status" -eq 76
+          test -L "$dangling_alias"
+          test "$(readlink "$dangling_alias")" = "$dangling_target"
+          test ! -e "$dangling_target"
+          test ! -e "$dangling_target.muse-host-targets-owners.json"
+          test ! -e "$dangling_target.muse-host-targets-transaction.json"
+          test ! -e "$dangling_target.muse-host-targets.lock"
+          cp "$manifest_dir/dangling-mcp-root.edn" .ημ/config/mcp/root.edn
+          cp "$manifest_dir/dangling-claude-root.edn" .ημ/config/claude/root.edn
+          assert_mcp_state
 
           mkdir .muse-host-targets.lock
           printf '%s\n' '99999999' > .muse-host-targets.lock/owner
