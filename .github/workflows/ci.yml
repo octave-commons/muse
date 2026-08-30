@@ -93,8 +93,9 @@ jobs:
 
           assert_mcp_state
 
-          configured_registry="$manifest_dir/configured-mcp.json"
-          configured_owners="$configured_registry.muse-host-targets-owners.json"
+          configured_dir="$manifest_dir/configured"
+          configured_registry="$configured_dir/.mcp.json"
+          configured_owners="$configured_dir/.muse-host-targets-owners.json"
           cp .ημ/config/mcp/root.edn "$manifest_dir/mcp-root.edn"
           node --input-type=module - "$configured_registry" <<'NODE'
           import {readFileSync, writeFileSync} from "node:fs";
@@ -109,7 +110,8 @@ jobs:
           writeFileSync(path, changed);
           NODE
 
-          configured_lock="$configured_registry.muse-host-targets.lock"
+          configured_lock="$configured_dir/.muse-host-targets.lock"
+          mkdir -p "$configured_dir"
           mkdir "$configured_lock"
           printf '%s\n' "$$" > "$configured_lock/owner"
           set +e
@@ -162,6 +164,7 @@ jobs:
           cp .muse-host-targets-owners.json "$linked_owners"
           chmod 0640 "$linked_registry"
           chmod 0660 "$linked_owners"
+          touch -d @946684800 "$linked_registry" "$linked_owners"
           python3 - "$linked_registry" "$linked_owners" \
             "$manifest_dir/linked-registry.acl" \
             "$manifest_dir/linked-owners.acl" <<'PY'
@@ -211,6 +214,8 @@ jobs:
           test "$(stat -c %i "$linked_owners")" != "$linked_owners_inode"
           test "$(stat -c %a "$linked_registry")" = 640
           test "$(stat -c %a "$linked_owners")" = 660
+          test "$(stat -c %Y "$linked_registry")" != 946684800
+          test "$(stat -c %Y "$linked_owners")" != 946684800
           python3 - "$linked_registry" "$linked_owners" \
             "$manifest_dir/linked-registry.acl" \
             "$manifest_dir/linked-owners.acl" <<'PY'

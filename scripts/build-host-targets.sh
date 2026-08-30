@@ -116,7 +116,8 @@ NODE
       rm -f -- "$staged"
       return 1
     fi
-    if ! cp --attributes-only --preserve=all -- "$publish_destination" "$staged"; then
+    if ! cp --attributes-only --preserve=all --no-preserve=timestamps \
+      -- "$publish_destination" "$staged"; then
       rm -f -- "$staged"
       return 1
     fi
@@ -157,6 +158,7 @@ NODE
 
 resolve_mcp_public_registry() {
   local configured
+  local registry_dir
   local resolved
   local resolver
   local target
@@ -186,9 +188,10 @@ resolve_mcp_public_registry() {
   done
 
   [[ -n "$mcp_public_registry" ]] || fail "could not resolve the configured MCP destination"
-  if [[ "$mcp_public_registry" == "$repo_root/.mcp.json" ]]; then
-    mcp_ownership_file="$repo_root/.muse-host-targets-owners.json"
-    mcp_lock_dir="$repo_root/.muse-host-targets.lock"
+  if [[ "${mcp_public_registry##*/}" == .mcp.json ]]; then
+    registry_dir="${mcp_public_registry%/*}"
+    mcp_ownership_file="$registry_dir/.muse-host-targets-owners.json"
+    mcp_lock_dir="$registry_dir/.muse-host-targets.lock"
   else
     mcp_ownership_file="$mcp_public_registry.muse-host-targets-owners.json"
     mcp_lock_dir="$mcp_public_registry.muse-host-targets.lock"
