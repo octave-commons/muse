@@ -125,30 +125,159 @@ jobs:
             > "$warm_server_output"
           sha256sum "$warm_server_output" \
             > "$manifest_dir/warm-server-output-before.sha256"
+          warm_server_log=warm-server.log
           warm_server_pid=""
+          warm_server_port=""
+          warm_server_start_time=""
           warm_server_cleanup_armed=1
+          warm_server_process_matches() {
+            local observed_start_time
+            [[ -n "$warm_server_pid" && -n "$warm_server_start_time" ]] \
+              || return 1
+            kill -0 "$warm_server_pid" 2>/dev/null || return 1
+            observed_start_time="$(
+              awk '{print $22}' "/proc/$warm_server_pid/stat" 2>/dev/null
+            )" || return 1
+            test "$observed_start_time" = "$warm_server_start_time"
+          }
+          dump_warm_server_evidence() {
+            {
+              printf '%s\n' '--- warm Shadow server evidence ---'
+              printf 'captured pid=%q port=%q start-time=%q\n' \
+                "$warm_server_pid" "$warm_server_port" \
+                "$warm_server_start_time"
+              for evidence_path in \
+                .shadow-cljs/server.pid \
+                .shadow-cljs/cli-repl.port; do
+                if [[ -e "$evidence_path" ]]; then
+                  printf '%s=' "$evidence_path"
+                  od -An -tx1 -v "$evidence_path"
+                else
+                  printf '%s is absent\n' "$evidence_path"
+                fi
+              done
+              if [[ -n "$warm_server_pid" ]]; then
+                ps -o pid=,ppid=,lstart=,stat=,args= \
+                  -p "$warm_server_pid" || true
+              fi
+              for server_log in \
+                .shadow-cljs/server.stdout.log \
+                .shadow-cljs/server.stderr.log; do
+                if [[ -f "$server_log" ]]; then
+                  printf '%s\n' "--- $server_log ---"
+                  tail -n 200 "$server_log"
+                fi
+              done
+            } >> "$warm_server_log" 2>&1
+          }
+          stop_warm_server() {
+            local stop_status=0
+            printf '%s\n' 'stopping warm Shadow server' \
+              >> "$warm_server_log"
+            node_modules/.bin/shadow-cljs stop \
+              >> "$warm_server_log" 2>&1 || stop_status="$?"
+            for _ in {1..100}; do
+              warm_server_process_matches || break
+              sleep 0.1
+            done
+            if warm_server_process_matches; then
+              printf '%s\n' \
+                'pinned stop left the exact warm process live; sending TERM' \
+                >> "$warm_server_log"
+              stop_status=1
+              kill -TERM "$warm_server_pid" || stop_status=1
+              for _ in {1..100}; do
+                warm_server_process_matches || break
+                sleep 0.1
+              done
+            fi
+            if warm_server_process_matches; then
+              printf '%s\n' \
+                'TERM left the exact warm process live; sending KILL' \
+                >> "$warm_server_log"
+              stop_status=1
+              kill -KILL "$warm_server_pid" || stop_status=1
+              for _ in {1..100}; do
+                warm_server_process_matches || break
+                sleep 0.1
+              done
+            fi
+            if warm_server_process_matches; then
+              printf '%s\n' 'exact warm process is still live after KILL' \
+                >> "$warm_server_log"
+              return 1
+            fi
+            if [[ -f .shadow-cljs/server.pid \
+                && ! -L .shadow-cljs/server.pid \
+                && "$(< .shadow-cljs/server.pid)" = "$warm_server_pid" ]]; then
+              stop_status=1
+              unlink .shadow-cljs/server.pid || stop_status=1
+            fi
+            if [[ -f .shadow-cljs/cli-repl.port \
+                && ! -L .shadow-cljs/cli-repl.port \
+                && "$(< .shadow-cljs/cli-repl.port)" = "$warm_server_port" ]]; then
+              stop_status=1
+              unlink .shadow-cljs/cli-repl.port || stop_status=1
+            fi
+            test ! -e .shadow-cljs/server.pid || stop_status=1
+            test ! -e .shadow-cljs/cli-repl.port || stop_status=1
+            return "$stop_status"
+          }
           cleanup_warm_server() {
             local original_status="$?"
+            local cleanup_status=0
             trap - EXIT
             set +e
             if [[ "$warm_server_cleanup_armed" -eq 1 ]]; then
-              node_modules/.bin/shadow-cljs stop \
-                >> "$manifest_dir/warm-server.log" 2>&1
+              stop_warm_server || cleanup_status="$?"
+            fi
+            dump_warm_server_evidence
+            cat "$warm_server_log" >&2
+            if [[ "$original_status" -eq 0 \
+                && "$cleanup_status" -ne 0 ]]; then
+              original_status="$cleanup_status"
             fi
             exit "$original_status"
           }
           assert_warm_server_live() {
-            local expected_pid="$1"
-            local expected_port="$2"
+            local phase="$1"
+            local expected_pid="$2"
+            local expected_port="$3"
             local observed_pid
             local observed_port
-            IFS= read -r observed_pid < .shadow-cljs/server.pid
-            IFS= read -r observed_port < .shadow-cljs/cli-repl.port
-            test "$observed_pid" = "$expected_pid"
-            test "$observed_port" = "$expected_port"
-            kill -0 "$expected_pid"
-            MUSE_TEST_SHADOW_PORT="$expected_port" \
-              node --input-type=module <<'NODE'
+            printf '%s\n' "checking warm Shadow server: $phase" \
+              >> "$warm_server_log"
+            if [[ ! -s .shadow-cljs/server.pid ]]; then
+              printf '%s\n' "$phase: server.pid is absent or empty" \
+                >> "$warm_server_log"
+              return 1
+            fi
+            if [[ ! -s .shadow-cljs/cli-repl.port ]]; then
+              printf '%s\n' "$phase: cli-repl.port is absent or empty" \
+                >> "$warm_server_log"
+              return 1
+            fi
+            observed_pid="$(< .shadow-cljs/server.pid)"
+            observed_port="$(< .shadow-cljs/cli-repl.port)"
+            if [[ "$observed_pid" != "$expected_pid" ]]; then
+              printf '%s\n' \
+                "$phase: server PID changed from $expected_pid to $observed_pid" \
+                >> "$warm_server_log"
+              return 1
+            fi
+            if [[ "$observed_port" != "$expected_port" ]]; then
+              printf '%s\n' \
+                "$phase: server port changed from $expected_port to $observed_port" \
+                >> "$warm_server_log"
+              return 1
+            fi
+            if ! warm_server_process_matches; then
+              printf '%s\n' "$phase: exact server process is not live" \
+                >> "$warm_server_log"
+              return 1
+            fi
+            if ! MUSE_TEST_SHADOW_PORT="$expected_port" \
+              node --input-type=module >> "$warm_server_log" 2>&1 <<'NODE'
           import {connect} from "node:net";
           const port = Number(process.env.MUSE_TEST_SHADOW_PORT);
           if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -181,37 +310,63 @@ jobs:
           }
           throw lastError;
           NODE
+            then
+              printf '%s\n' "$phase: server socket is not reachable" \
+                >> "$warm_server_log"
+              return 1
+            fi
+            printf '%s\n' "$phase: exact process and socket are live" \
+              >> "$warm_server_log"
           }
           trap cleanup_warm_server EXIT
           MUSE_MCP_CONFIG_OUTPUT="$warm_server_output" \
             node_modules/.bin/shadow-cljs start \
-              > "$manifest_dir/warm-server.log" 2>&1
-          test -s .shadow-cljs/server.pid
-          test -s .shadow-cljs/cli-repl.port
-          IFS= read -r warm_server_pid < .shadow-cljs/server.pid
-          IFS= read -r warm_server_port < .shadow-cljs/cli-repl.port
-          [[ "$warm_server_pid" =~ ^[1-9][0-9]*$ ]]
-          [[ "$warm_server_port" =~ ^[1-9][0-9]*$ ]]
-          assert_warm_server_live "$warm_server_pid" "$warm_server_port"
+              > "$warm_server_log" 2>&1
+          if [[ ! -s .shadow-cljs/server.pid ]]; then
+            printf '%s\n' 'startup: server.pid is absent or empty' \
+              >> "$warm_server_log"
+            exit 1
+          fi
+          if [[ ! -s .shadow-cljs/cli-repl.port ]]; then
+            printf '%s\n' 'startup: cli-repl.port is absent or empty' \
+              >> "$warm_server_log"
+            exit 1
+          fi
+          warm_server_pid="$(< .shadow-cljs/server.pid)"
+          warm_server_port="$(< .shadow-cljs/cli-repl.port)"
+          if [[ ! "$warm_server_pid" =~ ^[1-9][0-9]*$ ]]; then
+            printf 'startup: server PID is not numeric: %q\n' \
+              "$warm_server_pid" >> "$warm_server_log"
+            exit 1
+          fi
+          if [[ ! "$warm_server_port" =~ ^[1-9][0-9]*$ ]]; then
+            printf 'startup: server port is not numeric: %q\n' \
+              "$warm_server_port" >> "$warm_server_log"
+            exit 1
+          fi
+          if ! warm_server_start_time="$(
+            awk '{print $22}' "/proc/$warm_server_pid/stat" 2>/dev/null
+          )"; then
+            printf '%s\n' 'startup: exact server process is not live' \
+              >> "$warm_server_log"
+            exit 1
+          fi
+          if [[ ! "$warm_server_start_time" =~ ^[1-9][0-9]*$ ]]; then
+            printf 'startup: process start time is not numeric: %q\n' \
+              "$warm_server_start_time" >> "$warm_server_log"
+            exit 1
+          fi
+          assert_warm_server_live \
+            before-build "$warm_server_pid" "$warm_server_port"
           scripts/build-host-targets.sh all 2>&1 | tee host-build.log
-          assert_warm_server_live "$warm_server_pid" "$warm_server_port"
+          assert_warm_server_live \
+            after-build "$warm_server_pid" "$warm_server_port"
           sha256sum "$warm_server_output" \
             > "$manifest_dir/warm-server-output-after.sha256"
           diff -u \
             "$manifest_dir/warm-server-output-before.sha256" \
             "$manifest_dir/warm-server-output-after.sha256"
-          node_modules/.bin/shadow-cljs stop \
-            >> "$manifest_dir/warm-server.log" 2>&1
-          for _ in {1..100}; do
-            if ! kill -0 "$warm_server_pid" 2>/dev/null; then
-              break
-            fi
-            sleep 0.1
-          done
-          if kill -0 "$warm_server_pid" 2>/dev/null; then
-            echo "warm Shadow server PID $warm_server_pid did not stop" >&2
-            exit 1
-          fi
+          stop_warm_server
           test ! -e .shadow-cljs/server.pid
           test ! -e .shadow-cljs/cli-repl.port
           warm_server_cleanup_armed=0
@@ -663,20 +818,8 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
 
-          if (($# == 3)) \
-              && [[ -n "${MUSE_TEST_LOCK_BIND_SUBSTITUTE-}" ]] \
-              && [[ ! -e "$MUSE_TEST_LOCK_BIND_SUBSTITUTE" ]]; then
-            case "$3" in
-              *.muse-host-targets.lock)
-                mv -- "$3" "$3.bound-original"
-                mkdir -m 0777 -- "$3"
-                : > "$MUSE_TEST_LOCK_BIND_SUBSTITUTE"
-                ;;
-            esac
-          fi
-
           lock_directory=""
-          if (($# == 7)); then
+          if (($# == 6)); then
             for argument in "$@"; do
               case "$argument" in
                 *.muse-host-targets.lock) lock_directory="$argument" ;;
@@ -687,19 +830,23 @@ jobs:
             exec "$MUSE_TEST_REAL_NODE" "$@"
           fi
 
-          if [[ -n "${MUSE_TEST_LOCK_PRE_READY-}" ]]; then
-            : > "$MUSE_TEST_LOCK_PRE_READY"
-            for ((attempt = 0; attempt < 3000; attempt++)); do
-              [[ -e "$MUSE_TEST_LOCK_PRE_GO" ]] && break
-              sleep 0.01
-            done
-            [[ -e "$MUSE_TEST_LOCK_PRE_GO" ]] || exit 97
+          if [[ "${MUSE_TEST_FAIL_LOCK_CREATE-}" == 1 ]]; then
+            exit 74
           fi
 
           set +e
           "$MUSE_TEST_REAL_NODE" "$@"
           node_status="$?"
           set -e
+          if ((node_status == 0)) \
+              && [[ -n "${MUSE_TEST_LOCK_BIND_SUBSTITUTE-}" ]] \
+              && [[ ! -e "$MUSE_TEST_LOCK_BIND_SUBSTITUTE" ]]; then
+            unlink -- "$lock_directory/owner"
+            mv -- "$lock_directory" "$lock_directory.bound-original"
+            mkdir -m 0777 -- "$lock_directory"
+            chmod 0777 -- "$lock_directory"
+            : > "$MUSE_TEST_LOCK_BIND_SUBSTITUTE"
+          fi
           if ((node_status != 0)) \
               && [[ -n "${MUSE_TEST_LOCK_SUBSTITUTION_MARKER-}" ]]; then
             shopt -s nullglob
@@ -735,6 +882,110 @@ jobs:
           chmod +x "$manifest_dir/lock-init-bin/mktemp"
 
           sha256sum .mcp.json .muse-host-targets-owners.json \
+            > "$manifest_dir/before-lock-create-failure.sha256"
+          find src/gen -type f -print0 | sort -z | xargs -0 sha256sum \
+            > "$manifest_dir/before-lock-create-failure-gen.sha256"
+          set +e
+          MUSE_TEST_REAL_NODE="$lock_real_node" \
+            MUSE_TEST_FAIL_LOCK_CREATE=1 \
+            PATH="$manifest_dir/lock-init-bin:$PATH" \
+            scripts/build-host-targets.sh mcp-server \
+              > "$manifest_dir/lock-create-failure.log" 2>&1
+          lock_create_failure_status="$?"
+          set -e
+          test "$lock_create_failure_status" -eq 64
+          grep -Fq 'could not create, bind, and record ownership of the MCP build lock' \
+            "$manifest_dir/lock-create-failure.log"
+          test ! -e .muse-host-targets.lock
+          test ! -e .muse-host-targets-transaction.json
+          sha256sum .mcp.json .muse-host-targets-owners.json \
+            > "$manifest_dir/after-lock-create-failure.sha256"
+          find src/gen -type f -print0 | sort -z | xargs -0 sha256sum \
+            > "$manifest_dir/after-lock-create-failure-gen.sha256"
+          diff -u "$manifest_dir/before-lock-create-failure.sha256" \
+            "$manifest_dir/after-lock-create-failure.sha256"
+          diff -u "$manifest_dir/before-lock-create-failure-gen.sha256" \
+            "$manifest_dir/after-lock-create-failure-gen.sha256"
+          cat "$manifest_dir/lock-create-failure.log" >> host-build.log
+          assert_mcp_state
+
+          sha256sum .mcp.json .muse-host-targets-owners.json \
+            > "$manifest_dir/before-existing-owner-probes.sha256"
+          find src/gen -type f -print0 | sort -z | xargs -0 sha256sum \
+            > "$manifest_dir/before-existing-owner-probes-gen.sha256"
+
+          mkdir -m 0700 .muse-host-targets.lock
+          mkfifo -m 0600 .muse-host-targets.lock/owner
+          set +e
+          MUSE_TEST_REAL_NODE="$lock_real_node" \
+            PATH="$manifest_dir/lock-init-bin:$PATH" \
+            timeout 2 scripts/build-host-targets.sh mcp-server \
+              > "$manifest_dir/fifo-lock-owner.log" 2>&1
+          fifo_lock_owner_status="$?"
+          set -e
+          test "$fifo_lock_owner_status" -eq 64
+          grep -Fq 'MCP build lock has no valid owner' \
+            "$manifest_dir/fifo-lock-owner.log"
+          test -p .muse-host-targets.lock/owner
+          unlink .muse-host-targets.lock/owner
+          rmdir .muse-host-targets.lock
+          cat "$manifest_dir/fifo-lock-owner.log" >> host-build.log
+
+          linked_lock_owner_fifo="$manifest_dir/linked-lock-owner.fifo"
+          mkfifo -m 0600 "$linked_lock_owner_fifo"
+          mkdir -m 0700 .muse-host-targets.lock
+          ln -s "$linked_lock_owner_fifo" .muse-host-targets.lock/owner
+          set +e
+          MUSE_TEST_REAL_NODE="$lock_real_node" \
+            PATH="$manifest_dir/lock-init-bin:$PATH" \
+            timeout 2 scripts/build-host-targets.sh mcp-server \
+              > "$manifest_dir/linked-fifo-lock-owner.log" 2>&1
+          linked_fifo_lock_owner_status="$?"
+          set -e
+          test "$linked_fifo_lock_owner_status" -eq 64
+          grep -Fq 'MCP build lock has no valid owner' \
+            "$manifest_dir/linked-fifo-lock-owner.log"
+          test -L .muse-host-targets.lock/owner
+          test "$(readlink .muse-host-targets.lock/owner)" \
+            = "$linked_lock_owner_fifo"
+          test -p "$linked_lock_owner_fifo"
+          unlink .muse-host-targets.lock/owner
+          rmdir .muse-host-targets.lock
+          unlink "$linked_lock_owner_fifo"
+          cat "$manifest_dir/linked-fifo-lock-owner.log" >> host-build.log
+
+          mkdir -m 0700 .muse-host-targets.lock
+          printf '%033d\n' 1 > .muse-host-targets.lock/owner
+          chmod 0600 .muse-host-targets.lock/owner
+          oversized_lock_owner_hash="$(sha256sum .muse-host-targets.lock/owner)"
+          set +e
+          MUSE_TEST_REAL_NODE="$lock_real_node" \
+            PATH="$manifest_dir/lock-init-bin:$PATH" \
+            timeout 2 scripts/build-host-targets.sh mcp-server \
+              > "$manifest_dir/oversized-lock-owner.log" 2>&1
+          oversized_lock_owner_status="$?"
+          set -e
+          test "$oversized_lock_owner_status" -eq 64
+          grep -Fq 'MCP build lock has no valid owner' \
+            "$manifest_dir/oversized-lock-owner.log"
+          test "$(sha256sum .muse-host-targets.lock/owner)" \
+            = "$oversized_lock_owner_hash"
+          unlink .muse-host-targets.lock/owner
+          rmdir .muse-host-targets.lock
+          cat "$manifest_dir/oversized-lock-owner.log" >> host-build.log
+
+          test ! -e .muse-host-targets-transaction.json
+          sha256sum .mcp.json .muse-host-targets-owners.json \
+            > "$manifest_dir/after-existing-owner-probes.sha256"
+          find src/gen -type f -print0 | sort -z | xargs -0 sha256sum \
+            > "$manifest_dir/after-existing-owner-probes-gen.sha256"
+          diff -u "$manifest_dir/before-existing-owner-probes.sha256" \
+            "$manifest_dir/after-existing-owner-probes.sha256"
+          diff -u "$manifest_dir/before-existing-owner-probes-gen.sha256" \
+            "$manifest_dir/after-existing-owner-probes-gen.sha256"
+          assert_mcp_state
+
+          sha256sum .mcp.json .muse-host-targets-owners.json \
             > "$manifest_dir/before-private-lock-substitution.sha256"
           lock_bind_substitution_marker="$manifest_dir/lock-bind-substitution-observed"
           set +e
@@ -747,7 +998,7 @@ jobs:
           set -e
           test "$lock_bind_substitution_status" -eq 64
           test -e "$lock_bind_substitution_marker"
-          grep -Fq 'MCP lock directory is not the bound private lock' host-build.log
+          grep -Fq 'MCP build lock identity changed after acquisition' host-build.log
           test -d .muse-host-targets.lock
           test -d .muse-host-targets.lock.bound-original
           test "$(stat -c %a .muse-host-targets.lock)" = 777
@@ -767,42 +1018,22 @@ jobs:
 
           sha256sum .mcp.json .muse-host-targets-owners.json \
             > "$manifest_dir/before-owner-write-failure.sha256"
-          owner_pre_ready="$manifest_dir/owner-pre.ready"
-          owner_pre_go="$manifest_dir/owner-pre.go"
-          owner_write_status_file="$manifest_dir/owner-write.status"
           owner_substitution_marker="$manifest_dir/owner-substitution-observed"
+          set +e
           (
-            set +e
-            (
-              umask 000
-              ulimit -c 0
-              ulimit -f 0
-              MUSE_TEST_REAL_NODE="$lock_real_node" \
-                MUSE_TEST_LOCK_PRE_READY="$owner_pre_ready" \
-                MUSE_TEST_LOCK_PRE_GO="$owner_pre_go" \
-                MUSE_TEST_LOCK_SUBSTITUTION_MARKER="$owner_substitution_marker" \
-                PATH="$manifest_dir/lock-init-bin:$PATH" \
-                scripts/build-host-targets.sh mcp-server
-            )
-            printf '%s\n' "$?" > "$owner_write_status_file"
-            exit 0
-          ) 2>&1 | tee -a host-build.log &
-          owner_write_job="$!"
-          for ((attempt = 0; attempt < 3000; attempt++)); do
-            [[ -e "$owner_pre_ready" ]] && break
-            sleep 0.01
-          done
-          owner_lock_mode="$(stat -c %a .muse-host-targets.lock 2>/dev/null || true)"
-          owner_preexisting_state=0
-          [[ ! -e .muse-host-targets.lock/owner ]] || owner_preexisting_state=1
-          : > "$owner_pre_go"
-          wait "$owner_write_job"
-          test -e "$owner_write_status_file"
-          owner_write_failure_status="$(cat "$owner_write_status_file")"
-          test "$owner_lock_mode" = 700
-          test "$owner_preexisting_state" -eq 0
+            umask 000
+            ulimit -c 0
+            ulimit -f 0
+            MUSE_TEST_REAL_NODE="$lock_real_node" \
+              MUSE_TEST_LOCK_SUBSTITUTION_MARKER="$owner_substitution_marker" \
+              PATH="$manifest_dir/lock-init-bin:$PATH" \
+              scripts/build-host-targets.sh mcp-server
+          ) 2>&1 | tee -a host-build.log
+          owner_write_failure_status="${PIPESTATUS[0]}"
+          set -e
           test "$owner_write_failure_status" -eq 64
-          grep -Fq 'could not record ownership of the MCP build lock' host-build.log
+          grep -Fq 'could not create, bind, and record ownership of the MCP build lock' \
+            host-build.log
           test ! -e "$owner_substitution_marker"
           test ! -e .muse-host-targets.lock
           sha256sum .mcp.json .muse-host-targets-owners.json \
@@ -2260,4 +2491,5 @@ jobs:
           path: |
             host-build.log
             test.log
+            warm-server.log
           if-no-files-found: error

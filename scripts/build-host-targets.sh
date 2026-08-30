@@ -869,7 +869,6 @@ initialize_mcp_lock_owner() {
     "$mcp_registry_dir" \
     "$mcp_registry_dir_identity" \
     "$mcp_lock_dir" \
-    "$mcp_lock_identity" \
     "$$" <<'NODE'
 import {randomBytes} from "node:crypto";
 import {
@@ -880,6 +879,7 @@ import {
   fsyncSync,
   linkSync,
   lstatSync,
+  mkdirSync,
   openSync,
   readdirSync,
   rmdirSync,
@@ -892,7 +892,6 @@ const [
   registryDirectory,
   expectedRegistryIdentity,
   lockDirectory,
-  expectedLockIdentity,
   ownerPid,
 ] = process.argv.slice(2);
 const effectiveUid = BigInt(process.geteuid());
@@ -930,6 +929,7 @@ if (dirname(lockDirectory) !== registryDirectory) {
 let registryDescriptor;
 let lockDescriptor;
 let ownerDescriptor;
+let createdLock;
 let createdOwner;
 let boundLockDirectory;
 let stagedOwner;
@@ -954,22 +954,22 @@ try {
 
   const boundRegistryDirectory = `/proc/self/fd/${registryDescriptor}`;
   boundLockDirectory = `${boundRegistryDirectory}/${basename(lockDirectory)}`;
-  assertDirectory(
-    boundLockDirectory,
-    expectedLockIdentity,
-    "MCP lock",
-  );
+  mkdirSync(boundLockDirectory, {mode: 0o700});
   lockDescriptor = openSync(
     boundLockDirectory,
     constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
   );
   const lockState = fstatSync(lockDescriptor, {bigint: true});
   if (!lockState.isDirectory()
-      || identity(lockState) !== expectedLockIdentity
       || lockState.uid !== effectiveUid
       || (lockState.mode & 0o777n) !== 0o700n) {
     throw new Error("MCP lock directory is not the bound private lock");
   }
+  assertDirectory(boundLockDirectory, identity(lockState), "MCP lock");
+  // Only an effective-UID-owned, exact-mode directory whose pathname still
+  // names the pinned descriptor gains cleanup authority. A replacement that
+  // fails any check remains entirely untouched.
+  createdLock = lockState;
 
   const boundLock = `/proc/self/fd/${lockDescriptor}`;
   stagedOwner = `${boundLock}/.owner.${ownerPid}.${randomBytes(16).toString("hex")}`;
@@ -998,7 +998,7 @@ try {
 
   assertDirectory(
     boundLockDirectory,
-    expectedLockIdentity,
+    identity(createdLock),
     "MCP lock",
   );
   linkSync(stagedOwner, ownerPath);
@@ -1019,21 +1019,33 @@ try {
 
 if (initializationError) {
   let cleanupError;
+
+  // EEXIST means another invocation (or an operator-visible stale lock)
+  // already owns the pathname. This invocation created nothing and therefore
+  // has no deletion authority; let the shell classify the existing owner.
+  if (initializationError?.code === "EEXIST" && createdLock === undefined) {
+    if (registryDescriptor !== undefined) closeSync(registryDescriptor);
+    process.exit(75);
+  }
+
   try {
-    // A failure before this invocation created and fstat-bound a staged inode
-    // has no deletion authority. Leave every pre-existing path for verified
-    // operator handling instead of guessing which process owns it.
-    if (createdOwner && lockDescriptor !== undefined) {
-      const currentOwner = existing(ownerPath);
-      const currentStage = existing(stagedOwner);
-      if (currentOwner && !sameIdentity(currentOwner, createdOwner)) {
-        throw new Error("refused to remove a substituted MCP lock owner");
+    // A failure before this invocation fstat-bound its private directory has
+    // no deletion authority. Once bound, remove only this invocation's exact
+    // owner inode, then remove the directory only if its original identity is
+    // still at the bound pathname and the held descriptor proves it empty.
+    if (createdLock && lockDescriptor !== undefined) {
+      if (createdOwner) {
+        const currentOwner = existing(ownerPath);
+        const currentStage = existing(stagedOwner);
+        if (currentOwner && !sameIdentity(currentOwner, createdOwner)) {
+          throw new Error("refused to remove a substituted MCP lock owner");
+        }
+        if (currentStage && !sameIdentity(currentStage, createdOwner)) {
+          throw new Error("refused to remove a substituted staged MCP lock owner");
+        }
+        if (currentOwner) unlinkSync(ownerPath);
+        if (currentStage) unlinkSync(stagedOwner);
       }
-      if (currentStage && !sameIdentity(currentStage, createdOwner)) {
-        throw new Error("refused to remove a substituted staged MCP lock owner");
-      }
-      if (currentOwner) unlinkSync(ownerPath);
-      if (currentStage) unlinkSync(stagedOwner);
       fsyncSync(lockDescriptor);
       if (readdirSync(`/proc/self/fd/${lockDescriptor}`).length !== 0) {
         throw new Error("refused to remove a nonempty MCP lock directory");
@@ -1043,7 +1055,7 @@ if (initializationError) {
       lockDescriptor = undefined;
       assertDirectory(
         boundLockDirectory,
-        expectedLockIdentity,
+        identity(createdLock),
         "MCP lock",
       );
       rmdirSync(boundLockDirectory);
@@ -1068,30 +1080,115 @@ if (initializationError) {
 closeSync(ownerDescriptor);
 closeSync(lockDescriptor);
 closeSync(registryDescriptor);
+process.stdout.write(identity(createdLock));
+NODE
+}
+
+read_existing_mcp_lock_owner() {
+  node --input-type=module - "$mcp_lock_owner" <<'NODE'
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  openSync,
+  readSync,
+} from "node:fs";
+
+const [ownerPath] = process.argv.slice(2);
+const maximumRecordBytes = 32;
+let descriptor;
+
+try {
+  try {
+    descriptor = openSync(
+      ownerPath,
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    );
+  } catch (error) {
+    // A newly published owner may not be visible on the first contention
+    // probe. Only absence is retryable; links, permissions, and other object
+    // types are immediately an invalid fail-closed record.
+    process.exit(error?.code === "ENOENT" ? 75 : 76);
+  }
+
+  const before = fstatSync(descriptor, {bigint: true});
+  if (!before.isFile()
+      || before.size < 2n
+      || before.size > BigInt(maximumRecordBytes)) {
+    process.exit(76);
+  }
+
+  // Read at most one byte beyond the contract so a concurrently enlarged
+  // record cannot turn this classification probe into unbounded input.
+  const bytes = Buffer.alloc(maximumRecordBytes + 1);
+  let length = 0;
+  while (length < bytes.length) {
+    const count = readSync(
+      descriptor,
+      bytes,
+      length,
+      bytes.length - length,
+      null,
+    );
+    if (count === 0) break;
+    length += count;
+  }
+  const after = fstatSync(descriptor, {bigint: true});
+  if (after.dev !== before.dev
+      || after.ino !== before.ino
+      || after.size !== before.size
+      || BigInt(length) !== before.size) {
+    process.exit(76);
+  }
+
+  const record = bytes.subarray(0, length).toString("utf8");
+  const match = /^([1-9][0-9]*)\n$/.exec(record);
+  if (!match || BigInt(match[1]) > 2147483647n) process.exit(76);
+  process.stdout.write(match[1]);
+} finally {
+  if (descriptor !== undefined) closeSync(descriptor);
+}
 NODE
 }
 
 acquire_mcp_build_lock() {
   local attempt
+  local initialize_status
   local owner
+  local owner_status
 
-  if (umask 077 && mkdir -- "$mcp_lock_dir") 2>/dev/null; then
-    mcp_lock_identity="$(directory_identity "$mcp_lock_dir")" \
-      || fail "could not bind the new MCP build lock identity"
-    if ! initialize_mcp_lock_owner; then
-      fail "could not record ownership of the MCP build lock: $mcp_lock_dir"
-    fi
+  set +e
+  mcp_lock_identity="$(umask 077; initialize_mcp_lock_owner)"
+  initialize_status="$?"
+  set -e
+  if ((initialize_status == 0)); then
+    # Success means the one initializer process created, fstat-bound, and
+    # recorded ownership in the private directory. Mark it acquired before
+    # validating stdout so every later refusal flows through guarded cleanup.
     mcp_lock_acquired=1
+    [[ "$mcp_lock_identity" =~ ^[0-9]+:[0-9]+$ ]] \
+      || fail "could not bind the new MCP build lock identity"
     mcp_namespace_bindings_match \
       || fail "MCP publication namespace changed while acquiring the build lock"
     return
+  fi
+  if ((initialize_status != 75)); then
+    fail "could not create, bind, and record ownership of the MCP build lock: $mcp_lock_dir"
   fi
 
   [[ -d "$mcp_lock_dir" ]] || fail "could not create the MCP build lock: $mcp_lock_dir"
   owner=""
   for ((attempt = 1; attempt <= 5; attempt++)); do
-    IFS= read -r owner < "$mcp_lock_owner" 2>/dev/null || true
-    [[ -n "$owner" ]] && break
+    set +e
+    owner="$(read_existing_mcp_lock_owner 2>/dev/null)"
+    owner_status="$?"
+    set -e
+    if ((owner_status == 0)); then
+      break
+    fi
+    if ((owner_status != 75)); then
+      fail "MCP build lock has no valid owner; remove $mcp_lock_dir only after verifying no build is active"
+    fi
     sleep 0.05
   done
   if [[ "$owner" =~ ^[0-9]+$ ]] && kill -0 "$owner" 2>/dev/null; then
