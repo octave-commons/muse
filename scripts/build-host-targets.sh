@@ -49,6 +49,56 @@ command -v node >/dev/null 2>&1 || fail "missing prerequisite: node"
 shadow="$repo_root/node_modules/.bin/shadow-cljs"
 [[ -x "$shadow" ]] || fail "missing pinned Shadow executable; run npm ci first"
 
+# The generic MCP and Claude targets both publish to .mcp.json. Their build
+# hooks each own a complete one-server document, so a multi-target request must
+# accumulate those documents and publish their union after all builds finish.
+mcp_target_count=0
+for target in "${targets[@]}"; do
+  case "$target" in
+    mcp-server|claude-server)
+      mcp_target_count=$((mcp_target_count + 1))
+      ;;
+  esac
+done
+
+mcp_registry=""
+if ((mcp_target_count > 1)); then
+  mcp_registry="$(mktemp)"
+  printf '%s\n' '{"mcpServers":{}}' > "$mcp_registry"
+  trap 'rm -f -- "$mcp_registry"' EXIT
+fi
+
+merge_mcp_registration() {
+  local generated_registry=".mcp.json"
+  [[ -s "$generated_registry" ]] || fail "host build did not publish $generated_registry"
+
+  node --input-type=module - "$mcp_registry" "$generated_registry" <<'NODE'
+import {readFileSync, writeFileSync} from "node:fs";
+
+const [accumulatorPath, generatedPath] = process.argv.slice(2);
+
+function registrations(path) {
+  const value = JSON.parse(readFileSync(path, "utf8"));
+  const servers = value?.mcpServers;
+  if (!servers || typeof servers !== "object" || Array.isArray(servers)) {
+    throw new Error(`${path} must contain an mcpServers object`);
+  }
+  return servers;
+}
+
+const merged = {...registrations(accumulatorPath)};
+for (const [name, registration] of Object.entries(registrations(generatedPath))) {
+  if (name in merged && JSON.stringify(merged[name]) !== JSON.stringify(registration)) {
+    throw new Error(`conflicting MCP registration: ${name}`);
+  }
+  merged[name] = registration;
+}
+
+const sorted = Object.fromEntries(Object.keys(merged).sort().map((name) => [name, merged[name]]));
+writeFileSync(accumulatorPath, `${JSON.stringify({mcpServers: sorted}, null, 2)}\n`);
+NODE
+}
+
 build_target() {
   local target="$1"
   local generator
@@ -80,8 +130,18 @@ build_target() {
     printf '[muse host build] emitting Claude hook configuration\n'
     node .claude/dist/claude-server.js --emit-hook-config
   fi
+
+  if [[ -n "$mcp_registry" ]]; then
+    case "$target" in
+      mcp-server|claude-server) merge_mcp_registration ;;
+    esac
+  fi
 }
 
 for target in "${targets[@]}"; do
   build_target "$target"
 done
+
+if [[ -n "$mcp_registry" ]]; then
+  cp "$mcp_registry" .mcp.json
+fi

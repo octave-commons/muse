@@ -2,11 +2,11 @@
 category: "kanban"
 labels: "build, host-targets, recovery"
 type: "task"
-write-id: "1788049907474-0.0hqlcg9mxaybe4s92fs"
+write-id: "1788050389062-0.992bnjdpnumkwr69ckh"
 points: "3"
 title: "Make generated host targets work from a cold checkout"
 priority: "P1"
-status: "review"
+status: "testing"
 uuid: "muse-issue-11-cold-generated-host-targets"
 created_at: "2026-08-29T23:57:40.532Z"
 ---
@@ -63,4 +63,8 @@ Implementation plan: add a fail-closed target dispatcher that runs the matching 
 Implementation evidence (2026-08-30): one generator-first script now owns OpenCode/MCP/Claude builds; all three source config plans, daemon test/example, bootstrap and Claude wrapper, live README/CLAUDE/deploy docs, CI, and sandbox bundle route through it. The cold clone began with no src/gen and no node_modules; npm ci passed. Direct generator execution on an isolated dependency-free Clojure alias produced exactly three entry files, and a second run preserved hashes claude=134c7160…, mcp=9df0e497…, opencode=57c7fa6a…. shellcheck, bash syntax, changed Clojure lint (0 errors/0 warnings), CI actionlint, EDN config parsing, request-validation exit 64, and git diff --check pass. The full pinned build/test could not resolve thheller/shadow-cljs 3.4.4 because this harness's Maven proxy at 127.0.0.1:39999 was unavailable; hosted cold-build CI remains required evidence.
 
 Review disposition (PR #14): exact head 3fbcb6c passed CI including the cold generated-host build, the full ClojureScript suite, Sandbox bundle, and eta-mu evidence review; Codex and eta-mu found no implementation defect. CodeRabbit prerequisite wording is corrected in docs/DEPLOY.md. Its MD003 finding is confirmed as the canonical Rheos comment-writer defect open-hax/eta-mu#295; direct projection edits are prohibited, so the upstream writer owns that formatting fix.
+
+Review bounce (PR #14): Codex found two exact-head defects after the documentation correction: multi-target builds allowed the Claude target to overwrite the generic MCP registration in .mcp.json, and CI matched WARNING: but not Shadow numbered WARNING #N banners. Both findings are accepted; return to implementation to merge MCP registrations deterministically and exercise both warning forms.
+
+Corrective implementation evidence: multi-target requests now accumulate each generated MCP document, reject conflicting duplicate registrations, sort server keys, and publish their union after all builds. CI asserts exactly eta-mu-claude and eta-mu-receipt-river with their expected compiled paths, hashes .mcp.json across both builds, and self-tests a warning regex covering WARNING: plus Shadow WARNING #N banners. bash -n, shellcheck, actionlint, regex positive/negative fixtures, and git diff --check pass locally; exact-head hosted cold-build CI remains required.
 ---

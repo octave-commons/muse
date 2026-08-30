@@ -44,19 +44,43 @@ jobs:
           set -euo pipefail
           test ! -e src/gen
           manifest_dir="$(mktemp -d)"
+          warning_pattern='(^|[[:space:]])WARNING(:|[[:space:]]+#[0-9]+([[:space:]]*-[[:space:]]*)?)'
+          printf '%s\n' 'WARNING: sample' '------ WARNING #1 - sample' \
+            | grep -Eq "$warning_pattern"
 
           scripts/build-host-targets.sh all 2>&1 | tee host-build.log
           test "$(find src/gen -type f | wc -l)" -eq 3
           find src/gen -type f -print0 | sort -z | xargs -0 sha256sum \
             > "$manifest_dir/first.sha256"
+          sha256sum .mcp.json > "$manifest_dir/first-mcp.sha256"
+
+          node --input-type=module <<'NODE'
+          import {readFileSync} from "node:fs";
+          const config = JSON.parse(readFileSync(".mcp.json", "utf8"));
+          const actual = config.mcpServers ?? {};
+          const expected = {
+            "eta-mu-claude": [".claude/dist/claude-server.js"],
+            "eta-mu-receipt-river": [".mcp/dist/receipt-river.js"],
+          };
+          if (JSON.stringify(Object.keys(actual).sort()) !== JSON.stringify(Object.keys(expected).sort())) {
+            throw new Error(`unexpected MCP registrations: ${Object.keys(actual).sort().join(", ")}`);
+          }
+          for (const [name, args] of Object.entries(expected)) {
+            if (actual[name]?.command !== "node" || JSON.stringify(actual[name]?.args) !== JSON.stringify(args)) {
+              throw new Error(`incorrect MCP registration: ${name}`);
+            }
+          }
+          NODE
 
           scripts/build-host-targets.sh all 2>&1 | tee -a host-build.log
           find src/gen -type f -print0 | sort -z | xargs -0 sha256sum \
             > "$manifest_dir/second.sha256"
+          sha256sum .mcp.json > "$manifest_dir/second-mcp.sha256"
 
           diff -u "$manifest_dir/first.sha256" "$manifest_dir/second.sha256"
-          if grep -Eq '(^|[[:space:]])WARNING:' host-build.log; then
-            grep -E '(^|[[:space:]])WARNING:' host-build.log >&2
+          diff -u "$manifest_dir/first-mcp.sha256" "$manifest_dir/second-mcp.sha256"
+          if grep -Eq "$warning_pattern" host-build.log; then
+            grep -E "$warning_pattern" host-build.log >&2
             exit 1
           fi
 
