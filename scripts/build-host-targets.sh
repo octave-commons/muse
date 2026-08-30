@@ -67,9 +67,57 @@ generated_mcp_registry=""
 mcp_original_registry=""
 mcp_original_registry_present=0
 mcp_registry_restore_ready=0
+mcp_lock_file="$repo_root/.muse-host-targets.lock"
+mcp_lock_acquired=0
+
+acquire_mcp_build_lock() {
+  local attempt
+  local claim
+  local owner
+
+  for ((attempt = 1; attempt <= 10; attempt++)); do
+    if (set -o noclobber; printf '%s\n' "$$" > "$mcp_lock_file") 2>/dev/null; then
+      mcp_lock_acquired=1
+      return
+    fi
+
+    owner=""
+    IFS= read -r owner < "$mcp_lock_file" 2>/dev/null || true
+    if [[ "$owner" =~ ^[0-9]+$ ]] && kill -0 "$owner" 2>/dev/null; then
+      fail "another MCP-producing build is active (pid $owner)"
+    fi
+
+    # A live acquirer may have created the file but not yet written its PID.
+    if [[ -z "$owner" && "$attempt" -lt 5 ]]; then
+      sleep 0.1
+      continue
+    fi
+
+    # Reclaim only the exact dead-owner inode inspected through this hard link;
+    # a concurrent replacement at the canonical path must never be removed.
+    claim="$mcp_lock_file.reclaim.$$.$attempt"
+    if ln "$mcp_lock_file" "$claim" 2>/dev/null; then
+      owner=""
+      IFS= read -r owner < "$claim" 2>/dev/null || true
+      if [[ "$owner" =~ ^[0-9]+$ ]] && kill -0 "$owner" 2>/dev/null; then
+        rm -f -- "$claim"
+        fail "another MCP-producing build is active (pid $owner)"
+      fi
+      if [[ -e "$mcp_lock_file" && "$mcp_lock_file" -ef "$claim" ]]; then
+        rm -f -- "$mcp_lock_file"
+      fi
+      rm -f -- "$claim"
+    fi
+  done
+
+  fail "could not acquire the MCP build lock: $mcp_lock_file"
+}
 
 cleanup_mcp_registry() {
   local exit_status=$?
+  local owner
+  local temp
+  set +e
   trap - EXIT
 
   if ((exit_status != 0 && mcp_registry_restore_ready)); then
@@ -82,15 +130,30 @@ cleanup_mcp_registry() {
     fi
   fi
 
-  rm -f -- "$mcp_registry" "$generated_mcp_registry" "$mcp_original_registry"
+  for temp in "$mcp_registry" "$generated_mcp_registry" "$mcp_original_registry"; do
+    [[ -z "$temp" ]] || rm -f -- "$temp"
+  done
+
+  if ((mcp_lock_acquired)); then
+    owner=""
+    IFS= read -r owner < "$mcp_lock_file" 2>/dev/null || true
+    if [[ "$owner" == "$$" ]]; then
+      rm -f -- "$mcp_lock_file" \
+        || printf '[muse host build] failed to release %s\n' "$mcp_lock_file" >&2
+    else
+      printf '[muse host build] refused to remove a lock owned by pid %s\n' "$owner" >&2
+    fi
+  fi
+
   exit "$exit_status"
 }
 
 if ((mcp_target_count > 0)); then
+  trap cleanup_mcp_registry EXIT
+  acquire_mcp_build_lock
   mcp_registry="$(mktemp)"
   generated_mcp_registry="$(mktemp)"
   mcp_original_registry="$(mktemp)"
-  trap cleanup_mcp_registry EXIT
   if [[ -e .mcp.json || -L .mcp.json ]]; then
     cp .mcp.json "$mcp_original_registry"
     mcp_original_registry_present=1

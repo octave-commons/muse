@@ -80,6 +80,23 @@ jobs:
 
           assert_mcp_registry
 
+          printf '%s\n' "$$" > .muse-host-targets.lock
+          set +e
+          scripts/build-host-targets.sh mcp-server \
+            > "$manifest_dir/lock-build.log" 2>&1
+          lock_status="$?"
+          set -e
+          test "$lock_status" -eq 64
+          grep -Fq "another MCP-producing build is active (pid $$)" \
+            "$manifest_dir/lock-build.log"
+          if grep -Fq '[muse host build] generating' "$manifest_dir/lock-build.log"; then
+            cat "$manifest_dir/lock-build.log" >&2
+            exit 1
+          fi
+          test "$(cat .muse-host-targets.lock)" = "$$"
+          rm .muse-host-targets.lock
+          cat "$manifest_dir/lock-build.log" >> host-build.log
+
           node --input-type=module <<'NODE'
           import {readFileSync, writeFileSync} from "node:fs";
           const path = ".mcp.json";

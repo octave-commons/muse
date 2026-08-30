@@ -2,7 +2,7 @@
 category: "kanban"
 labels: "build, host-targets, recovery"
 type: "task"
-write-id: "1788052402717-0.ov9j66mjdftbvlspkl5"
+write-id: "1788052968895-0.puqltk6lhkg1ubuqoug"
 points: "3"
 title: "Make generated host targets work from a cold checkout"
 priority: "P1"
@@ -81,4 +81,8 @@ Review-hardening before the next immutable head: the MCP merger now requires eac
 Review finding accepted and corrected (PR #14 comment 3888128068): the previous two-line warning fixture proved only that at least one form matched. CI now asserts WARNING: and Shadow WARNING #1 independently and separately requires benign text not to match. The exact regex fixtures, actionlint, and git diff --check pass locally; the card remains testing for the new immutable-head run.
 
 Exact-head review finding accepted and corrected (PR #14 comment 3888139823): successful MCP-producing releases temporarily exposed each hook's one-server .mcp.json until end-of-command publication. The script now merges and republishes the accumulated registry immediately after each Shadow release and before Claude hook emission. The injected hook shim validates that both live registrations are present at hook time before returning the expected exit 73; final hash rollback remains separately asserted. Static shell/workflow checks pass; the card remains testing.
+
+Exact-head review finding accepted (PR #14 comment 3888150526): concurrent supported MCP-producing commands could snapshot and mutate the shared .mcp.json independently, allowing one failure to overwrite another command's successful publication. The correction must acquire one repository-wide ownership lock before snapshot and hold it through generation, releases, publication, rollback, and cleanup; raw Shadow release remains outside the supported caller contract.
+
+Corrective implementation evidence: MCP-producing requests atomically create an ignored repository lock file with their PID before snapshotting. A live owner fails an overlapping request before generation; dead-owner recovery hard-links and verifies the exact inspected inode before removal, preventing a concurrent replacement from being deleted. The EXIT cleanup performs rollback, removes temporaries, and releases only its own lock with errexit disabled so all cleanup phases run. CI pins a live parent-shell lock, requires exit 64 plus no generation, and proves the owner lock remains untouched. Local active-lock rejection, dead-lock reclamation, failure-time release, bash syntax, shellcheck, actionlint, and git diff --check pass; exact-head hosted review remains required.
 ---

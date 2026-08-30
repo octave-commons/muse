@@ -40,3 +40,4 @@ src/gen/
 pseudo/
 .opencode/opencode.json
 .mcp.json
+.muse-host-targets.lock*
