@@ -10,7 +10,9 @@ machine-specific.
 
 ## 1. Prerequisites (installed out-of-band)
 
-None of these are pinned in the repo; install them however the host prefers.
+Host-managed prerequisites are not pinned unless the table says otherwise.
+`shadow-cljs` is the exception: `npm install` supplies the repository-pinned
+version, so no global Shadow installation is required.
 
 | Tool | Why | Check |
 |---|---|---|
