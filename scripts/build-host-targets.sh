@@ -81,14 +81,24 @@ mcp_lock_acquired=0
 atomic_publish() {
   local source="$1"
   local destination="$2"
+  local publish_destination="$destination"
+  local publish_dir
   local staged
 
-  staged="$(mktemp "$repo_root/.muse-host-targets.publish.XXXXXX")" || return 1
+  if [[ -L "$destination" ]]; then
+    publish_destination="$(
+      node --input-type=module -e \
+        'import {realpathSync} from "node:fs"; process.stdout.write(realpathSync(process.argv[1]));' \
+        "$destination"
+    )" || return 1
+  fi
+  publish_dir="$(dirname "$publish_destination")"
+  staged="$(mktemp "$publish_dir/.muse-host-targets.publish.XXXXXX")" || return 1
   if ! cp -- "$source" "$staged"; then
     rm -f -- "$staged"
     return 1
   fi
-  if ! mv -f -- "$staged" "$destination"; then
+  if ! mv -f -- "$staged" "$publish_destination"; then
     rm -f -- "$staged"
     return 1
   fi

@@ -93,6 +93,31 @@ jobs:
 
           assert_mcp_state
 
+          linked_registry="$manifest_dir/linked-mcp.json"
+          linked_owners="$manifest_dir/linked-mcp-owners.json"
+          cp .mcp.json "$linked_registry"
+          cp .muse-host-targets-owners.json "$linked_owners"
+          unlink .mcp.json
+          unlink .muse-host-targets-owners.json
+          ln -s "$linked_registry" .mcp.json
+          ln -s "$linked_owners" .muse-host-targets-owners.json
+          linked_registry_inode="$(stat -c %i "$linked_registry")"
+          linked_owners_inode="$(stat -c %i "$linked_owners")"
+
+          scripts/build-host-targets.sh mcp-server 2>&1 | tee -a host-build.log
+          assert_mcp_state
+          test -L .mcp.json
+          test -L .muse-host-targets-owners.json
+          test "$(readlink .mcp.json)" = "$linked_registry"
+          test "$(readlink .muse-host-targets-owners.json)" = "$linked_owners"
+          test "$(stat -c %i "$linked_registry")" != "$linked_registry_inode"
+          test "$(stat -c %i "$linked_owners")" != "$linked_owners_inode"
+
+          unlink .mcp.json
+          unlink .muse-host-targets-owners.json
+          cp "$linked_registry" .mcp.json
+          cp "$linked_owners" .muse-host-targets-owners.json
+
           mkdir .muse-host-targets.lock
           printf '%s\n' "$$" > .muse-host-targets.lock/owner
           set +e
