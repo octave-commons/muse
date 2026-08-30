@@ -11,7 +11,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -71,12 +71,14 @@ jobs:
 
           assert_mcp_state() {
             node --input-type=module <<'NODE'
-          import {readFileSync} from "node:fs";
+          import {readFileSync, realpathSync} from "node:fs";
+          import {resolve} from "node:path";
           const config = JSON.parse(readFileSync(".mcp.json", "utf8"));
           const actual = config.mcpServers ?? {};
+          const producerRoot = realpathSync(".");
           const expected = {
-            "eta-mu-claude": [".claude/dist/claude-server.js"],
-            "eta-mu-receipt-river": [".mcp/dist/receipt-river.js"],
+            "eta-mu-claude": [resolve(producerRoot, ".claude/dist/claude-server.js")],
+            "eta-mu-receipt-river": [resolve(producerRoot, ".mcp/dist/receipt-river.js")],
           };
           if (JSON.stringify(Object.keys(actual).sort()) !== JSON.stringify(Object.keys(expected).sort())) {
             throw new Error(`unexpected MCP registrations: ${Object.keys(actual).sort().join(", ")}`);
@@ -229,9 +231,12 @@ jobs:
           test "$checkout_b_producer_id" != "$MUSE_TEST_MCP_PRODUCER_ID"
           scripts/build-host-targets.sh claude-server 2>&1 | tee -a host-build.log
           scripts/build-host-targets.sh mcp-server 2>&1 | tee -a host-build.log
-          node --input-type=module - "$checkout_b_producer_id" <<'NODE'
-          import {readFileSync} from "node:fs";
-          const [checkoutBProducerId] = process.argv.slice(2);
+          node --input-type=module - "$checkout_b_producer_id" "$checkout_b" <<'NODE'
+          import {readFileSync, realpathSync} from "node:fs";
+          import {resolve} from "node:path";
+          const [checkoutBProducerId, checkoutBPath] = process.argv.slice(2);
+          const producerRoot = realpathSync(".");
+          const checkoutBRoot = realpathSync(checkoutBPath);
           const registry = JSON.parse(readFileSync(".mcp.json", "utf8")).mcpServers ?? {};
           const expectedRegistry = [
             "eta-mu-checkout-b",
@@ -241,6 +246,22 @@ jobs:
           ];
           if (JSON.stringify(Object.keys(registry).sort()) !== JSON.stringify(expectedRegistry.sort())) {
             throw new Error(`shared registry lost a checkout registration: ${JSON.stringify(registry)}`);
+          }
+          const expectedCommands = {
+            "eta-mu-checkout-b": [resolve(checkoutBRoot, ".mcp/dist/receipt-river.js")],
+            "eta-mu-claude": [resolve(producerRoot, ".claude/dist/claude-server.js")],
+            "eta-mu-receipt-river": [resolve(producerRoot, ".mcp/dist/receipt-river.js")],
+            "eta-mu-unowned-copy": [resolve(producerRoot, ".mcp/dist/receipt-river.js")],
+          };
+          for (const [name, args] of Object.entries(expectedCommands)) {
+            if (registry[name]?.command !== "node"
+                || JSON.stringify(registry[name]?.args) !== JSON.stringify(args)) {
+              throw new Error(`shared registry did not bind ${name} to its producer: ${JSON.stringify(registry[name])}`);
+            }
+          }
+          if (registry["eta-mu-checkout-b"].args[0]
+              === registry["eta-mu-receipt-river"].args[0]) {
+            throw new Error("distinct checkout registrations share one launch path");
           }
           const ownership = JSON.parse(
             readFileSync(".muse-host-targets-owners.json", "utf8"),
@@ -304,13 +325,14 @@ jobs:
 
           scripts/build-host-targets.sh mcp-server 2>&1 | tee -a host-build.log
           node --input-type=module - "$configured_registry" "$configured_owners" <<'NODE'
-          import {readFileSync} from "node:fs";
+          import {readFileSync, realpathSync} from "node:fs";
+          import {resolve} from "node:path";
           const [registryPath, ownershipPath] = process.argv.slice(2);
           const registry = JSON.parse(readFileSync(registryPath, "utf8")).mcpServers ?? {};
           const expectedRegistry = {
             "eta-mu-receipt-river": {
               command: "node",
-              args: [".mcp/dist/receipt-river.js"],
+              args: [resolve(realpathSync("."), ".mcp/dist/receipt-river.js")],
             },
           };
           if (JSON.stringify(registry) !== JSON.stringify(expectedRegistry)) {

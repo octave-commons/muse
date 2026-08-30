@@ -1026,8 +1026,10 @@ merge_mcp_registration() {
     "$generated_mcp_registry" \
     "$mcp_ownership" \
     "$target" \
-    "$mcp_producer_id" <<'NODE'
+    "$mcp_producer_id" \
+    "$repo_root" <<'NODE'
 import {readFileSync, writeFileSync} from "node:fs";
+import {isAbsolute, resolve} from "node:path";
 import {isDeepStrictEqual} from "node:util";
 
 const [
@@ -1037,6 +1039,7 @@ const [
   ownershipPath,
   target,
   producerId,
+  producerRoot,
 ] = process.argv.slice(2);
 const legacyProducerId = "0".repeat(64);
 
@@ -1083,6 +1086,28 @@ function targetOwnership(path) {
 if (!/^[0-9a-f]{64}$/.test(producerId) || producerId === legacyProducerId) {
   throw new Error(`invalid MCP producer identity: ${producerId}`);
 }
+if (!isAbsolute(producerRoot) || resolve(producerRoot) !== producerRoot) {
+  throw new Error(`invalid MCP producer root: ${producerRoot}`);
+}
+
+function bindRegistrationToProducer(registration) {
+  if (!registration
+      || typeof registration !== "object"
+      || Array.isArray(registration)
+      || registration.command !== "node"
+      || !Array.isArray(registration.args)
+      || registration.args.length === 0
+      || typeof registration.args[0] !== "string"
+      || registration.args[0].length === 0) {
+    throw new Error("generated MCP registration must launch one node entrypoint");
+  }
+  const args = [...registration.args];
+  // Hook output is relative to the checkout. The public registry may be
+  // shared by several checkouts and consumed from an unrelated working
+  // directory, so make the producing checkout part of the launch contract.
+  args[0] = resolve(producerRoot, args[0]);
+  return {...registration, args};
+}
 
 const merged = Object.assign(Object.create(null), registrations(accumulatorPath));
 const generatedThisRequest = Object.assign(
@@ -1098,7 +1123,8 @@ if (generatedEntries.length !== 1) {
   throw new Error(`${generatedPath} must contain exactly one generated MCP registration`);
 }
 
-for (const [name, registration] of generatedEntries) {
+for (const [name, generatedRegistration] of generatedEntries) {
+  const registration = bindRegistrationToProducer(generatedRegistration);
   if (Object.hasOwn(generatedThisRequest, name)
       && !isDeepStrictEqual(generatedThisRequest[name], registration)) {
     throw new Error(`conflicting MCP registration: ${name}`);
