@@ -17,6 +17,6 @@
 
  :profile :dev
 
- :build ["shadow-cljs" "release" "mcp-server"]
+ :build ["bash" "scripts/build-host-targets.sh" "mcp-server"]
 
  :publish {:mcp-config ".mcp.json"}}

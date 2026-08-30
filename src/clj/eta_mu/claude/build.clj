@@ -12,7 +12,7 @@
                runs one hook invocation, and no flag starts the MCP server
                (Claude connects to that via .mcp.json).
    :flush      emit-host-config — writes only the static artifacts
-               (package.json, .mcp.json); see scripts/build-claude-target.sh
+               (package.json, .mcp.json); see scripts/build-host-targets.sh
                for why hook/settings generation is not done here."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
@@ -140,7 +140,7 @@
    .mcp.json) get written here. .claude/settings.json and .claude/hooks/*.sh
    are generated separately, by the compiled artifact itself running
    `--emit-hook-config` (see eta-mu.boundaries.claude/emit-hook-config! and
-   scripts/build-claude-target.sh) -- not from this JVM-side :flush hook.
+   scripts/build-host-targets.sh) -- not from this JVM-side :flush hook.
    A :flush-stage hook that shelled out to inspect the just-compiled JS
    observed a stale/empty adapter, so hook discovery/settings generation
    needs a process that starts strictly after `shadow-cljs release` exits,

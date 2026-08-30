@@ -38,6 +38,28 @@ jobs:
       - name: Install locked JavaScript dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
 
+      - name: Build generated host targets from a cold checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e src/gen
+          manifest_dir="$(mktemp -d)"
+
+          scripts/build-host-targets.sh all 2>&1 | tee host-build.log
+          test "$(find src/gen -type f | wc -l)" -eq 3
+          find src/gen -type f -print0 | sort -z | xargs -0 sha256sum \
+            > "$manifest_dir/first.sha256"
+
+          scripts/build-host-targets.sh all 2>&1 | tee -a host-build.log
+          find src/gen -type f -print0 | sort -z | xargs -0 sha256sum \
+            > "$manifest_dir/second.sha256"
+
+          diff -u "$manifest_dir/first.sha256" "$manifest_dir/second.sha256"
+          if grep -Eq '(^|[[:space:]])WARNING:' host-build.log; then
+            grep -E '(^|[[:space:]])WARNING:' host-build.log >&2
+            exit 1
+          fi
+
       - name: Compile and run ClojureScript tests
         run: npx shadow-cljs compile test 2>&1 | tee test.log
 
@@ -49,5 +71,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ci-evidence
-          path: test.log
+          path: |
+            host-build.log
+            test.log
           if-no-files-found: error

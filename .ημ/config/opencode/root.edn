@@ -19,7 +19,7 @@
 
  :profile :dev
 
- :build ["shadow-cljs" "release" "opencode-plugin"]
+ :build ["bash" "scripts/build-host-targets.sh" "opencode-plugin"]
 
  :publish {:plugins-dir "~/.config/opencode/plugins"
            :agents-dir  "~/.config/opencode/agents"}}

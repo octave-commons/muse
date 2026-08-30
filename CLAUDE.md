@@ -22,8 +22,9 @@ shadow-cljs compile test
 
 # Builds
 shadow-cljs release daemon            # → dist-daemon/daemon.js
-shadow-cljs release opencode-plugin   # → .opencode/dist + shims + host config
-shadow-cljs release mcp-server        # → .mcp/dist/receipt-river.js + .mcp.json
+scripts/build-host-targets.sh opencode-plugin  # → .opencode/dist + host config
+scripts/build-host-targets.sh mcp-server       # → .mcp/dist + .mcp.json
+scripts/build-host-targets.sh claude-server    # → .claude/dist + hook config
 
 # Daemon process (pm2)
 pm2 start ecosystem.config.cjs        # app: eta-mu-daemon
@@ -47,11 +48,12 @@ appearing in `git diff`.
    plugin resources are exposed (e.g.
    `{:resource plugins.receipt-river/plugin :expose [:receipt/*]}`), their
    permissions, profiles, and publish targets.
-2. The `:opencode-plugin` shadow-cljs build's `:configure` hook
-   (`eta-mu.opencode.build/generate-entrypoint`) generates
-   `src/gen/eta_mu/gen/opencode_plugin.cljs`, which requires each plugin
-   namespace and runs `apply-exposure → apply-profile → validate-registry! →
-   compile-adapter`.
+2. `scripts/build-host-targets.sh opencode-plugin` invokes
+   `eta-mu.opencode.build/generate-entrypoint` before Shadow performs namespace
+   discovery. It generates `src/gen/eta_mu/gen/opencode_plugin.cljs`, which
+   requires each plugin namespace and runs `apply-exposure → apply-profile →
+   validate-registry! → compile-adapter`; the `:configure` hook repeats that
+   deterministic generation during the build.
 3. `eta-mu.boundaries.opencode/activate!` renders the compiled adapter into
    OpenCode `Hooks` — Malli → zod conversion happens only in this boundary.
 4. The build's `:flush` hook (`eta-mu.opencode.build/emit-host-config`) writes
