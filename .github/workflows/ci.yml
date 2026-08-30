@@ -97,6 +97,8 @@ jobs:
           linked_owners="$manifest_dir/linked-mcp-owners.json"
           cp .mcp.json "$linked_registry"
           cp .muse-host-targets-owners.json "$linked_owners"
+          chmod 0640 "$linked_registry"
+          chmod 0660 "$linked_owners"
           unlink .mcp.json
           unlink .muse-host-targets-owners.json
           ln -s "$linked_registry" .mcp.json
@@ -112,6 +114,8 @@ jobs:
           test "$(readlink .muse-host-targets-owners.json)" = "$linked_owners"
           test "$(stat -c %i "$linked_registry")" != "$linked_registry_inode"
           test "$(stat -c %i "$linked_owners")" != "$linked_owners_inode"
+          test "$(stat -c %a "$linked_registry")" = 640
+          test "$(stat -c %a "$linked_owners")" = 660
 
           unlink .mcp.json
           unlink .muse-host-targets-owners.json
@@ -235,6 +239,7 @@ jobs:
           rollback_hash="$(cut -d ' ' -f 1 "$manifest_dir/before-failure.sha256")"
           rollback_owners_hash="$(cut -d ' ' -f 1 "$manifest_dir/before-failure-owners.sha256")"
           real_node="$(command -v node)"
+          real_mv="$(command -v mv)"
           mkdir "$manifest_dir/failing-bin"
           cat > "$manifest_dir/failing-bin/node" <<SH
           #!/usr/bin/env bash
@@ -262,6 +267,26 @@ jobs:
           exec "$real_node" "\$@"
           SH
           chmod +x "$manifest_dir/failing-bin/node"
+          cat > "$manifest_dir/failing-bin/mv" <<SH
+          #!/usr/bin/env bash
+          set -euo pipefail
+          destination="\${!#}"
+          printf '%s\n' "\$destination" >> "$manifest_dir/rollback-mv.log"
+          if [[ "\${MUSE_TEST_FAIL_OWNERSHIP_RESTORE-}" == 1 \
+                && "\$destination" == "$PWD/.muse-host-targets-owners.json" ]]; then
+            ownership_count=0
+            if [[ -s "$manifest_dir/ownership-mv-count" ]]; then
+              IFS= read -r ownership_count < "$manifest_dir/ownership-mv-count"
+            fi
+            ownership_count=\$((ownership_count + 1))
+            printf '%s\n' "\$ownership_count" > "$manifest_dir/ownership-mv-count"
+            if [[ "\$ownership_count" -eq 2 ]]; then
+              exit 74
+            fi
+          fi
+          exec "$real_mv" "\$@"
+          SH
+          chmod +x "$manifest_dir/failing-bin/mv"
           set +e
           PATH="$manifest_dir/failing-bin:$PATH" \
             scripts/build-host-targets.sh claude-server 2>&1 | tee -a host-build.log
@@ -279,6 +304,47 @@ jobs:
           diff -u \
             "$manifest_dir/before-failure-owners.sha256" \
             "$manifest_dir/after-failure-owners.sha256"
+          mapfile -t rollback_publications < <(tail -n 2 "$manifest_dir/rollback-mv.log")
+          test "${rollback_publications[0]}" = "$PWD/.muse-host-targets-owners.json"
+          test "${rollback_publications[1]}" = .mcp.json
+
+          node --input-type=module <<'NODE'
+          import {readFileSync, writeFileSync} from "node:fs";
+          const registryPath = ".mcp.json";
+          const registry = JSON.parse(readFileSync(registryPath, "utf8"));
+          registry.mcpServers["eta-mu-retired-claude"] = {
+            command: "node",
+            args: [".claude/dist/retired-claude.js"],
+          };
+          delete registry.mcpServers["eta-mu-claude"];
+          writeFileSync(registryPath, `${JSON.stringify(registry)}\n`);
+
+          const ownershipPath = ".muse-host-targets-owners.json";
+          const ownership = JSON.parse(readFileSync(ownershipPath, "utf8"));
+          ownership.targets["claude-server"] = "eta-mu-retired-claude";
+          writeFileSync(ownershipPath, `${JSON.stringify(ownership)}\n`);
+          NODE
+          : > "$manifest_dir/rollback-mv.log"
+          : > "$manifest_dir/ownership-mv-count"
+          set +e
+          MUSE_TEST_FAIL_OWNERSHIP_RESTORE=1 \
+            PATH="$manifest_dir/failing-bin:$PATH" \
+            scripts/build-host-targets.sh claude-server 2>&1 | tee -a host-build.log
+          ownership_failure_status="${PIPESTATUS[0]}"
+          set -e
+          test "$ownership_failure_status" -eq 73
+          grep -Fq 'failed to restore' host-build.log
+          grep -Fq 'skipped registry rollback because ownership rollback failed' host-build.log
+          test "$(grep -Fxc "$PWD/.muse-host-targets-owners.json" "$manifest_dir/rollback-mv.log")" -eq 2
+          test "$(grep -Fxc '.mcp.json' "$manifest_dir/rollback-mv.log")" -eq 1
+          assert_mcp_state
+          sha256sum .mcp.json > "$manifest_dir/after-ownership-failure.sha256"
+          sha256sum .muse-host-targets-owners.json \
+            > "$manifest_dir/after-ownership-failure-owners.sha256"
+          diff -u "$manifest_dir/first-mcp.sha256" \
+            "$manifest_dir/after-ownership-failure.sha256"
+          diff -u "$manifest_dir/first-mcp-owners.sha256" \
+            "$manifest_dir/after-ownership-failure-owners.sha256"
 
           scripts/build-host-targets.sh all 2>&1 | tee -a host-build.log
           find src/gen -type f -print0 | sort -z | xargs -0 sha256sum \

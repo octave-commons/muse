@@ -98,6 +98,25 @@ atomic_publish() {
     rm -f -- "$staged"
     return 1
   fi
+  if ! node --input-type=module - "$staged" "$publish_destination" <<'NODE'
+import {chmodSync, chownSync, existsSync, statSync} from "node:fs";
+
+const [staged, destination] = process.argv.slice(2);
+if (existsSync(destination)) {
+  const current = statSync(staged);
+  const existing = statSync(destination);
+  if (current.uid !== existing.uid || current.gid !== existing.gid) {
+    chownSync(staged, existing.uid, existing.gid);
+  }
+  chmodSync(staged, existing.mode & 0o7777);
+} else {
+  chmodSync(staged, 0o666 & ~process.umask());
+}
+NODE
+  then
+    rm -f -- "$staged"
+    return 1
+  fi
   if ! mv -f -- "$staged" "$publish_destination"; then
     rm -f -- "$staged"
     return 1
@@ -130,24 +149,36 @@ acquire_mcp_build_lock() {
 cleanup_mcp_registry() {
   local exit_status=$?
   local owner
+  local ownership_restored=0
   local temp
   set +e
   trap - EXIT
 
   if ((exit_status != 0 && mcp_state_restore_ready)); then
-    if ((mcp_original_registry_present)); then
-      atomic_publish "$mcp_original_registry" .mcp.json \
-        || printf '[muse host build] failed to restore .mcp.json\n' >&2
-    else
-      rm -f -- .mcp.json \
-        || printf '[muse host build] failed to remove partial .mcp.json\n' >&2
-    fi
     if ((mcp_original_ownership_present)); then
-      atomic_publish "$mcp_original_ownership" "$mcp_ownership_file" \
-        || printf '[muse host build] failed to restore %s\n' "$mcp_ownership_file" >&2
+      if atomic_publish "$mcp_original_ownership" "$mcp_ownership_file"; then
+        ownership_restored=1
+      else
+        printf '[muse host build] failed to restore %s\n' "$mcp_ownership_file" >&2
+      fi
     else
-      rm -f -- "$mcp_ownership_file" \
-        || printf '[muse host build] failed to remove partial %s\n' "$mcp_ownership_file" >&2
+      if rm -f -- "$mcp_ownership_file"; then
+        ownership_restored=1
+      else
+        printf '[muse host build] failed to remove partial %s\n' "$mcp_ownership_file" >&2
+      fi
+    fi
+
+    if ((ownership_restored)); then
+      if ((mcp_original_registry_present)); then
+        atomic_publish "$mcp_original_registry" .mcp.json \
+          || printf '[muse host build] failed to restore .mcp.json\n' >&2
+      else
+        rm -f -- .mcp.json \
+          || printf '[muse host build] failed to remove partial .mcp.json\n' >&2
+      fi
+    else
+      printf '[muse host build] skipped registry rollback because ownership rollback failed\n' >&2
     fi
   fi
 
