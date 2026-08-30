@@ -120,6 +120,8 @@ jobs:
           };
           writeFileSync(".mcp.json", `${JSON.stringify(legacyRegistry, null, 2)}\n`);
           NODE
+          scripts/build-host-targets.sh all 2>&1 | tee host-build.log
+          test "$(find src/gen -type f | wc -l)" -eq 3
           warm_server_output="$manifest_dir/warm-server-output.json"
           printf '%s\n' '{"sentinel":"persistent-server-environment"}' \
             > "$warm_server_output"
@@ -358,7 +360,7 @@ jobs:
           fi
           assert_warm_server_live \
             before-build "$warm_server_pid" "$warm_server_port"
-          scripts/build-host-targets.sh all 2>&1 | tee host-build.log
+          scripts/build-host-targets.sh mcp-server 2>&1 | tee -a host-build.log
           assert_warm_server_live \
             after-build "$warm_server_pid" "$warm_server_port"
           sha256sum "$warm_server_output" \
