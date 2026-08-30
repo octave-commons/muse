@@ -2,7 +2,7 @@
 category: "kanban"
 labels: "build, host-targets, recovery"
 type: "task"
-write-id: "1788052968895-0.puqltk6lhkg1ubuqoug"
+write-id: "1788053205472-0.td02s8ssnjc83y651n"
 points: "3"
 title: "Make generated host targets work from a cold checkout"
 priority: "P1"
@@ -85,4 +85,8 @@ Exact-head review finding accepted and corrected (PR #14 comment 3888139823): su
 Exact-head review finding accepted (PR #14 comment 3888150526): concurrent supported MCP-producing commands could snapshot and mutate the shared .mcp.json independently, allowing one failure to overwrite another command's successful publication. The correction must acquire one repository-wide ownership lock before snapshot and hold it through generation, releases, publication, rollback, and cleanup; raw Shadow release remains outside the supported caller contract.
 
 Corrective implementation evidence: MCP-producing requests atomically create an ignored repository lock file with their PID before snapshotting. A live owner fails an overlapping request before generation; dead-owner recovery hard-links and verifies the exact inspected inode before removal, preventing a concurrent replacement from being deleted. The EXIT cleanup performs rollback, removes temporaries, and releases only its own lock with errexit disabled so all cleanup phases run. CI pins a live parent-shell lock, requires exit 64 plus no generation, and proves the owner lock remains untouched. Local active-lock rejection, dead-lock reclamation, failure-time release, bash syntax, shellcheck, actionlint, and git diff --check pass; exact-head hosted review remains required.
+
+Review finding accepted and corrected (PR #14 comment 3888152426): the rollback test previously started from canonical bytes and the shim unconditionally returned 73 after an inner mismatch. CI now compacts the same valid two-server registry into distinct pre-command bytes and hashes them; the hook-time validator requires canonical live server names plus a different live hash, runs under errexit, and only then returns 73. The post-failure assertion requires exact restoration of the distinct pre-command hash.
+
+Append-only terminology clarification for historical review evidence: read 'exact head 3fbcb6c' as 'exact commit 3fbcb6c'; read 'cold generated-host build' as 'cold-checkout host-target build'; and read 'Shadow numbered WARNING #N banners' as 'Shadow-numbered WARNING #N banners'. The earlier Rheos comment remains immutable provenance and is not hand-edited.
 ---
