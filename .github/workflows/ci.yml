@@ -76,6 +76,15 @@ jobs:
 
           assert_mcp_registry
 
+          node --input-type=module <<'NODE'
+          import {readFileSync, writeFileSync} from "node:fs";
+          const path = ".mcp.json";
+          const config = JSON.parse(readFileSync(path, "utf8"));
+          config.mcpServers["eta-mu-retired"] = config.mcpServers["eta-mu-receipt-river"];
+          delete config.mcpServers["eta-mu-receipt-river"];
+          writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
+          NODE
+
           scripts/build-host-targets.sh mcp-server 2>&1 | tee -a host-build.log
           assert_mcp_registry
           sha256sum .mcp.json > "$manifest_dir/after-mcp.sha256"
@@ -85,6 +94,25 @@ jobs:
           assert_mcp_registry
           sha256sum .mcp.json > "$manifest_dir/after-claude.sha256"
           diff -u "$manifest_dir/first-mcp.sha256" "$manifest_dir/after-claude.sha256"
+
+          real_node="$(command -v node)"
+          mkdir "$manifest_dir/failing-bin"
+          cat > "$manifest_dir/failing-bin/node" <<SH
+          #!/usr/bin/env bash
+          if [[ "\${1-}" == ".claude/dist/claude-server.js" && "\${2-}" == "--emit-hook-config" ]]; then
+            exit 73
+          fi
+          exec "$real_node" "\$@"
+          SH
+          chmod +x "$manifest_dir/failing-bin/node"
+          if PATH="$manifest_dir/failing-bin:$PATH" \
+            scripts/build-host-targets.sh claude-server 2>&1 | tee -a host-build.log; then
+            echo "expected injected Claude hook failure" >&2
+            exit 1
+          fi
+          assert_mcp_registry
+          sha256sum .mcp.json > "$manifest_dir/after-failure.sha256"
+          diff -u "$manifest_dir/first-mcp.sha256" "$manifest_dir/after-failure.sha256"
 
           scripts/build-host-targets.sh all 2>&1 | tee -a host-build.log
           find src/gen -type f -print0 | sort -z | xargs -0 sha256sum \

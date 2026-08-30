@@ -64,16 +64,43 @@ done
 
 mcp_registry=""
 generated_mcp_registry=""
+mcp_original_registry=""
+mcp_original_registry_present=0
+mcp_registry_restore_ready=0
+
+cleanup_mcp_registry() {
+  local exit_status=$?
+  trap - EXIT
+
+  if ((exit_status != 0 && mcp_registry_restore_ready)); then
+    if ((mcp_original_registry_present)); then
+      cp -- "$mcp_original_registry" .mcp.json \
+        || printf '[muse host build] failed to restore .mcp.json\n' >&2
+    else
+      rm -f -- .mcp.json \
+        || printf '[muse host build] failed to remove partial .mcp.json\n' >&2
+    fi
+  fi
+
+  rm -f -- "$mcp_registry" "$generated_mcp_registry" "$mcp_original_registry"
+  exit "$exit_status"
+}
+
 if ((mcp_target_count > 0)); then
   mcp_registry="$(mktemp)"
   generated_mcp_registry="$(mktemp)"
-  if [[ -e .mcp.json ]]; then
-    cp .mcp.json "$mcp_registry"
+  mcp_original_registry="$(mktemp)"
+  trap cleanup_mcp_registry EXIT
+  if [[ -e .mcp.json || -L .mcp.json ]]; then
+    cp .mcp.json "$mcp_original_registry"
+    mcp_original_registry_present=1
+    mcp_registry_restore_ready=1
+    cp "$mcp_original_registry" "$mcp_registry"
   else
+    mcp_registry_restore_ready=1
     printf '%s\n' '{"mcpServers":{}}' > "$mcp_registry"
   fi
   printf '%s\n' '{"mcpServers":{}}' > "$generated_mcp_registry"
-  trap 'rm -f -- "$mcp_registry" "$generated_mcp_registry"' EXIT
 fi
 
 merge_mcp_registration() {
@@ -83,6 +110,7 @@ merge_mcp_registration() {
   node --input-type=module - \
     "$mcp_registry" "$generated_registry" "$generated_mcp_registry" <<'NODE'
 import {readFileSync, writeFileSync} from "node:fs";
+import {isDeepStrictEqual} from "node:util";
 
 const [accumulatorPath, generatedPath, generatedThisRequestPath] = process.argv.slice(2);
 
@@ -99,8 +127,13 @@ const merged = {...registrations(accumulatorPath)};
 const generatedThisRequest = {...registrations(generatedThisRequestPath)};
 for (const [name, registration] of Object.entries(registrations(generatedPath))) {
   if (name in generatedThisRequest
-      && JSON.stringify(generatedThisRequest[name]) !== JSON.stringify(registration)) {
+      && !isDeepStrictEqual(generatedThisRequest[name], registration)) {
     throw new Error(`conflicting MCP registration: ${name}`);
+  }
+  for (const [previousName, previousRegistration] of Object.entries(merged)) {
+    if (previousName !== name && isDeepStrictEqual(previousRegistration, registration)) {
+      delete merged[previousName];
+    }
   }
   generatedThisRequest[name] = registration;
   merged[name] = registration;

@@ -2,7 +2,7 @@
 category: "kanban"
 labels: "build, host-targets, recovery"
 type: "task"
-write-id: "1788050987050-0.i3gsuxrsv799hnf9tjc"
+write-id: "1788051565127-0.v90cp4kpi8ktujv772b"
 points: "3"
 title: "Make generated host targets work from a cold checkout"
 priority: "P1"
@@ -71,4 +71,8 @@ Corrective implementation evidence: multi-target requests now accumulate each ge
 Exact-head review finding accepted (PR #14): after an all-target build, either supported single-target MCP rebuild rewrote .mcp.json with its own one-server document and dropped the other integration. Keep the card in testing. The correction must preserve unbuilt registrations, let a rebuilt target refresh its own registration, reject conflicting duplicate output within one request, and prove all -> mcp-server -> claude-server -> all behavior in hosted CI.
 
 Corrective implementation evidence: every MCP-producing request now seeds a temporary registry from the current .mcp.json (or an empty registry on a cold checkout), merges target-generated registrations with generated output authoritative for rebuilt names, tracks same-request output separately for conflict rejection, sorts keys, and publishes the union. CI now asserts the exact two expected registrations after all, mcp-server, claude-server, and a second all build, including byte-identical registry hashes. bash -n, shellcheck, actionlint, git diff --check, and isolated preserve/refresh/conflict merge fixtures pass locally; the full local build remains blocked before source compilation by the unavailable Maven proxy, so exact-head hosted CI remains required.
+
+Exact-head review findings accepted (PR #14, head ebe259e): a target name change could retain the prior name as an obsolete duplicate, and a later build or Claude hook failure could leave .mcp.json truncated because the union was republished only on success. Keep the card in testing. The correction must replace identity aliases for the same generated registration and restore the exact pre-command registry (or absence) on every failed MCP-producing request.
+
+Corrective implementation evidence: merge now removes any previous server name with the same deeply equal generated registration before publishing the current name. MCP requests snapshot the original .mcp.json, arm rollback only after a recoverable snapshot (or confirmed absence), and use an EXIT trap to restore those exact pre-command bytes or remove partial output on failure. CI renames the generic server to eta-mu-retired before a targeted rebuild and requires the exact current two-name registry; it also injects Claude hook exit 73 and requires the original registry hash afterward. bash -n, shellcheck, actionlint, git diff --check, isolated stale-name replacement, existing-registry rollback, absent-registry rollback, and exit-status preservation fixtures pass locally; exact-head hosted CI remains required.
 ---
