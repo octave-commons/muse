@@ -12,7 +12,7 @@
                runs one hook invocation, and no flag starts the MCP server
                (Claude connects to that via .mcp.json).
    :flush      emit-host-config — writes only the static artifacts
-               (package.json, .mcp.json); see scripts/build-claude-target.sh
+               (package.json, .mcp.json); see scripts/build-host-targets.sh
                for why hook/settings generation is not done here."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
@@ -26,6 +26,11 @@
   (str "src/gen/"
        (-> (str gen-ns) (str/replace "-" "_") (str/replace "." "/"))
        ".cljs"))
+
+(defn mcp-config-path
+  "Configured public MCP registry destination for the supported build wrapper."
+  []
+  (get-in (config/read-config root-path) [:root :publish :mcp-config]))
 
 ;; ---------------------------------------------------------------------------
 ;; Entrypoint generation
@@ -140,7 +145,7 @@
    .mcp.json) get written here. .claude/settings.json and .claude/hooks/*.sh
    are generated separately, by the compiled artifact itself running
    `--emit-hook-config` (see eta-mu.boundaries.claude/emit-hook-config! and
-   scripts/build-claude-target.sh) -- not from this JVM-side :flush hook.
+   scripts/build-host-targets.sh) -- not from this JVM-side :flush hook.
    A :flush-stage hook that shelled out to inspect the just-compiled JS
    observed a stale/empty adapter, so hook discovery/settings generation
    needs a process that starts strictly after `shadow-cljs release` exits,
@@ -152,7 +157,11 @@
         module-key  (name (ffirst modules))
         entry-path  (str output-dir "/" module-key ".js")]
     (emit! (str output-dir "/package.json") "{\n  \"type\": \"module\"\n}\n")
-    (when-let [mcp-config-path (get-in cfg [:root :publish :mcp-config])]
-      (let [server-name (get-in cfg [:root :info :name] "eta-mu-claude")]
+    (when-let [configured-path (mcp-config-path)]
+      ;; The supported wrapper stages hook output so live readers see only an
+      ;; atomically published merged registry. Raw Shadow keeps the configured path.
+      (let [mcp-config-path (or (not-empty (System/getenv "MUSE_MCP_CONFIG_OUTPUT"))
+                                configured-path)
+            server-name (get-in cfg [:root :info :name] "eta-mu-claude")]
         (emit! mcp-config-path (mcp-config-json server-name entry-path)))))
   build-state)

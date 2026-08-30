@@ -7,7 +7,7 @@
 # npm dist) — no eta-mu sibling checkout, no stubbed source paths.
 #
 # Prereqs (install out-of-band, see docs/DEPLOY.md §1):
-#   node >= 20, java, clojure CLI, shadow-cljs, pm2
+#   node >= 20, java, clojure CLI, pm2
 #
 # The repo must live under one of the daemon's scan roots:
 #   ~ (depth 1), ~/spaces (depth 3), ~/devel (depth 4)
@@ -21,10 +21,10 @@ say()  { printf '\033[1;36m[muse]\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31m[muse]\033[0m %s\n' "$*" >&2; exit 1; }
 
 # --- 1. prerequisites -------------------------------------------------------
-for tool in node npm java clojure shadow-cljs pm2; do
+for tool in node npm java clojure pm2; do
   command -v "$tool" >/dev/null 2>&1 || fail "missing prerequisite: $tool (see docs/DEPLOY.md §1)"
 done
-say "prerequisites present: node $(node -v), shadow-cljs, clojure, java, pm2 $(pm2 -v 2>/dev/null | tail -1)"
+say "prerequisites present: node $(node -v), clojure, java, pm2 $(pm2 -v 2>/dev/null | tail -1)"
 
 # --- 2. scan-root check -----------------------------------------------------
 case "$repo_root" in
@@ -39,14 +39,14 @@ say "npm install"
 npm install
 
 # --- 4. build ---------------------------------------------------------------
-say "building daemon (shadow-cljs release daemon)"
-shadow-cljs release daemon
+say "building daemon (pinned shadow-cljs release daemon)"
+node_modules/.bin/shadow-cljs release daemon
 
-say "building opencode plugin + publishing shims (shadow-cljs release opencode-plugin)"
-shadow-cljs release opencode-plugin
+say "building opencode plugin + publishing shims (generator-first host build)"
+scripts/build-host-targets.sh opencode-plugin
 
-say "running tests (shadow-cljs compile test)"
-shadow-cljs compile test
+say "running tests (pinned shadow-cljs compile test)"
+node_modules/.bin/shadow-cljs compile test
 
 # --- 5. run under pm2 -------------------------------------------------------
 say "starting daemon under pm2"

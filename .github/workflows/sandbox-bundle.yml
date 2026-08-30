@@ -97,11 +97,8 @@ jobs:
           set -euo pipefail
           {
             npm ci --ignore-scripts --no-audit --no-fund
-            clojure -M -e "(doseq [generator '[eta-mu.opencode.build/generate-entrypoint eta-mu.mcp.build/generate-entrypoint eta-mu.claude.build/generate-entrypoint]] ((requiring-resolve generator) {}))"
             npx shadow-cljs release daemon
-            npx shadow-cljs release opencode-plugin
-            npx shadow-cljs release mcp-server
-            npx shadow-cljs release claude-server
+            scripts/build-host-targets.sh all
             npx shadow-cljs compile test
             node target/test/test.cjs
           } 2>&1 | tee "$OUT/logs/validate.log"
