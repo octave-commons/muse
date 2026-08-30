@@ -1493,7 +1493,11 @@ build_target() {
   case "$target" in
     mcp-server|claude-server)
       : > "$mcp_generated_output"
-      MUSE_MCP_CONFIG_OUTPUT="$mcp_generated_output" "$shadow" release "$target"
+      # A persistent Shadow server keeps its startup environment. Force this
+      # release into a fresh JVM so the hook always receives this invocation's
+      # private output path instead of falling back to the live registry.
+      MUSE_MCP_CONFIG_OUTPUT="$mcp_generated_output" \
+        "$shadow" release "$target" --force-spawn
       ;;
     *)
       "$shadow" release "$target"

@@ -120,7 +120,102 @@ jobs:
           };
           writeFileSync(".mcp.json", `${JSON.stringify(legacyRegistry, null, 2)}\n`);
           NODE
+          warm_server_output="$manifest_dir/warm-server-output.json"
+          printf '%s\n' '{"sentinel":"persistent-server-environment"}' \
+            > "$warm_server_output"
+          sha256sum "$warm_server_output" \
+            > "$manifest_dir/warm-server-output-before.sha256"
+          warm_server_pid=""
+          warm_server_cleanup_armed=1
+          cleanup_warm_server() {
+            local original_status="$?"
+            trap - EXIT
+            set +e
+            if [[ "$warm_server_cleanup_armed" -eq 1 ]]; then
+              node_modules/.bin/shadow-cljs stop \
+                >> "$manifest_dir/warm-server.log" 2>&1
+            fi
+            exit "$original_status"
+          }
+          assert_warm_server_live() {
+            local expected_pid="$1"
+            local expected_port="$2"
+            local observed_pid
+            local observed_port
+            IFS= read -r observed_pid < .shadow-cljs/server.pid
+            IFS= read -r observed_port < .shadow-cljs/cli-repl.port
+            test "$observed_pid" = "$expected_pid"
+            test "$observed_port" = "$expected_port"
+            kill -0 "$expected_pid"
+            MUSE_TEST_SHADOW_PORT="$expected_port" \
+              node --input-type=module <<'NODE'
+          import {connect} from "node:net";
+          const port = Number(process.env.MUSE_TEST_SHADOW_PORT);
+          if (!Number.isInteger(port) || port < 1 || port > 65535) {
+            throw new Error(`invalid Shadow server port: ${process.env.MUSE_TEST_SHADOW_PORT}`);
+          }
+          const connectOnce = (host) => new Promise((resolve, reject) => {
+            const socket = connect({host, port});
+            const timer = setTimeout(() => {
+              socket.destroy();
+              reject(new Error(`timed out connecting to ${host}:${port}`));
+            }, 5000);
+            socket.once("connect", () => {
+              clearTimeout(timer);
+              socket.destroy();
+              resolve();
+            });
+            socket.once("error", (error) => {
+              clearTimeout(timer);
+              reject(error);
+            });
+          });
+          let lastError;
+          for (const host of ["127.0.0.1", "::1"]) {
+            try {
+              await connectOnce(host);
+              process.exit(0);
+            } catch (error) {
+              lastError = error;
+            }
+          }
+          throw lastError;
+          NODE
+          }
+          trap cleanup_warm_server EXIT
+          MUSE_MCP_CONFIG_OUTPUT="$warm_server_output" \
+            node_modules/.bin/shadow-cljs start \
+              > "$manifest_dir/warm-server.log" 2>&1
+          test -s .shadow-cljs/server.pid
+          test -s .shadow-cljs/cli-repl.port
+          IFS= read -r warm_server_pid < .shadow-cljs/server.pid
+          IFS= read -r warm_server_port < .shadow-cljs/cli-repl.port
+          [[ "$warm_server_pid" =~ ^[1-9][0-9]*$ ]]
+          [[ "$warm_server_port" =~ ^[1-9][0-9]*$ ]]
+          assert_warm_server_live "$warm_server_pid" "$warm_server_port"
           scripts/build-host-targets.sh all 2>&1 | tee host-build.log
+          assert_warm_server_live "$warm_server_pid" "$warm_server_port"
+          sha256sum "$warm_server_output" \
+            > "$manifest_dir/warm-server-output-after.sha256"
+          diff -u \
+            "$manifest_dir/warm-server-output-before.sha256" \
+            "$manifest_dir/warm-server-output-after.sha256"
+          node_modules/.bin/shadow-cljs stop \
+            >> "$manifest_dir/warm-server.log" 2>&1
+          for _ in {1..100}; do
+            if ! kill -0 "$warm_server_pid" 2>/dev/null; then
+              break
+            fi
+            sleep 0.1
+          done
+          if kill -0 "$warm_server_pid" 2>/dev/null; then
+            echo "warm Shadow server PID $warm_server_pid did not stop" >&2
+            exit 1
+          fi
+          test ! -e .shadow-cljs/server.pid
+          test ! -e .shadow-cljs/cli-repl.port
+          warm_server_cleanup_armed=0
+          trap - EXIT
           test -f .muse-host-targets-producer-id
           test ! -L .muse-host-targets-producer-id
           test "$(stat -c %a .muse-host-targets-producer-id)" = 600
@@ -242,6 +337,7 @@ jobs:
               ;;
             *) exit 98 ;;
           esac
+          [[ " $* " == *" --force-spawn "* ]] || exit 97
           if [[ "${MUSE_TEST_SWAP_DUPLICATE-}" == 1 \
               && "${2-}" == claude-server ]]; then
             registration_name=current
