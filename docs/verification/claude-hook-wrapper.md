@@ -3,11 +3,20 @@
 Run from the Muse checkout:
 
 ```bash
-pnpm build
-pnpm test
-pnpm lint
+npm run build
+npm test
+npm run lint
 node scripts/verify-claude-hook-wrapper.mjs
+npm run test:build-cold
 ```
+
+Direct host builds use `npm run build:opencode`, `npm run build:mcp` and
+`npm run build:claude`. Each invokes the same declared `prebuild` generator
+before Shadow resolves its entrypoint. The Claude wrapper then emits hook
+configuration from the completed bundle. The cold-build check executes each
+host's actual EDN build command in a disposable source copy with no generated
+entrypoints or compiler output. It shares installed Node and Maven dependencies
+and isolates the compiler's publish home, so global plugin paths are unaffected.
 
 The build releases all four owned targets and then asks the freshly compiled
 Claude server to emit hook configuration. The verification copies that actual
@@ -33,7 +42,7 @@ Verification for this review change:
   517 assertions, zero failures/errors, 22.584 seconds. The existing Mongo ledger
   round trip ran; its unavailable-server skip did not occur. To run that same
   integration against an existing local server, set `ETA_MU_MONGO_URI` when
-  invoking `pnpm test`. Without Mongo, the historical suite still skips that
+  invoking `npm test`. Without Mongo, the historical suite still skips that
   integration; a plain green run alone is not evidence of Mongo behavior.
 - Full Clojure lint and wrapper JavaScript lint/syntax checks pass.
 - Actual compiled emitter/wrapper verification passes in about one second.
@@ -48,3 +57,14 @@ archived through Rheos, and its complete projection is retained in
 31,208 bytes of the prior event ledger remain an unchanged prefix. This preserves
 the old evidence without rewriting an immutable identity or leaving an invalid
 card in the task tree.
+
+The direct-host generation follow-up was verified separately from a cold source
+copy: OpenCode 119 files, MCP 119 files and Claude 121 files, each with zero
+compiler warnings; all three completed in 85.774 seconds. The original direct
+OpenCode command failed because `eta-mu.gen.opencode-plugin` was unavailable.
+After routing through `prebuild`, the complete `npm run build` passed in
+35.416 seconds and `npm test` with native local Mongo passed 198 tests and
+517 assertions in 17.490 seconds. Configured Clojure lint, JavaScript lint and
+shell syntax checks passed with zero warnings/errors. The actual compiled hook
+verification passed in 0.573 seconds. Generated checkout-specific hook paths
+were excluded from the source change.

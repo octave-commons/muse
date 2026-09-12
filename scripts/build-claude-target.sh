@@ -14,5 +14,6 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-npx shadow-cljs release claude-server
+npm run prebuild
+npx --no-install shadow-cljs release claude-server
 node .claude/dist/claude-server.js --emit-hook-config

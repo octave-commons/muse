@@ -17,6 +17,6 @@
 
  :profile :dev
 
- :build ["shadow-cljs" "release" "mcp-server"]
+ :build ["npm" "run" "build:mcp"]
 
  :publish {:mcp-config ".mcp.json"}}
