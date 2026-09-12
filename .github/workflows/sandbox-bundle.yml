@@ -88,6 +88,7 @@ jobs:
         uses: DeLaGuardo/setup-clojure@3fe9b3ae632c6758d0b7757b0838606ef4287b08 # 13.4
         with:
           cli: ${{ env.CLOJURE_TOOLS_VERSION }}
+          clj-kondo: "2026.08.04"
 
       - name: Install, validate, test, and build
         id: validate
@@ -97,13 +98,11 @@ jobs:
           set -euo pipefail
           {
             npm ci --ignore-scripts --no-audit --no-fund
-            clojure -M -e "(doseq [generator '[eta-mu.opencode.build/generate-entrypoint eta-mu.mcp.build/generate-entrypoint eta-mu.claude.build/generate-entrypoint]] ((requiring-resolve generator) {}))"
-            npx shadow-cljs release daemon
-            npx shadow-cljs release opencode-plugin
-            npx shadow-cljs release mcp-server
-            npx shadow-cljs release claude-server
-            npx shadow-cljs compile test
-            node target/test/test.cjs
+            npm run build
+            node scripts/verify-claude-hook-wrapper.mjs
+            npm test
+            npm run test:build-cold
+            npm run lint
           } 2>&1 | tee "$OUT/logs/validate.log"
 
       - name: Collect generated outputs and portable toolchains

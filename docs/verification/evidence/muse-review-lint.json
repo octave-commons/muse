@@ -1,0 +1,16 @@
+{
+  "id": "muse-review-lint",
+  "cwd": "/tmp/foresight-restore-muse-review",
+  "argv": [
+    "npm",
+    "run",
+    "lint"
+  ],
+  "start": "2026-09-12T09:33:18.608Z",
+  "end": "2026-09-12T09:33:19.662Z",
+  "seconds": 1.054,
+  "code": 0,
+  "signal": null,
+  "timeout": false,
+  "log": "/workspace/scratch/3655842e43cf/evidence/logs/muse-review-lint.log"
+}

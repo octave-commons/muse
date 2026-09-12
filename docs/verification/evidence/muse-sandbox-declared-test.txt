@@ -1,0 +1,64 @@
+
+> test
+> shadow-cljs compile test && node target/test/test.cjs
+
+shadow-cljs - config: /tmp/foresight-restore-muse-review/shadow-cljs.edn
+shadow-cljs - starting via "clojure"
+Picked up JAVA_TOOL_OPTIONS: -Duser.home=/workspace/scratch/3655842e43cf/toolchain/jvm-homes/624278d6-a902-4872-8906-684e3e810146 -Djavax.net.ssl.trustStore=/workspace/scratch/3655842e43cf/toolchain/cacerts -Djavax.net.ssl.trustStorePassword=changeit -XX:ActiveProcessorCount=4 -Xmx2g -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=35695 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=35695 -Dhttp.nonProxyHosts=localhost|127.*|0.0.0.0|[::1]
+Picked up JAVA_TOOL_OPTIONS: -Duser.home=/workspace/scratch/3655842e43cf/toolchain/jvm-homes/624278d6-a902-4872-8906-684e3e810146 -Djavax.net.ssl.trustStore=/workspace/scratch/3655842e43cf/toolchain/cacerts -Djavax.net.ssl.trustStorePassword=changeit -XX:ActiveProcessorCount=4 -Xmx2g -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=35695 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=35695 -Dhttp.nonProxyHosts=localhost|127.*|0.0.0.0|[::1]
+[:test] Compiling ...
+[:test] Build completed. (155 files, 1 compiled, 0 warnings, 3.34s)
+
+Testing eta-mu.actor-test
+
+Testing eta-mu.actor.monitor-test
+
+Testing eta-mu.actor.muse-test
+
+Testing eta-mu.actor.task-test
+
+Testing eta-mu.actor.watch-test
+
+Testing eta-mu.boundaries.claude-test
+
+Testing eta-mu.boundaries.mongo.ledger-test
+
+Testing eta-mu.boundaries.node.ledger-test
+
+Testing eta-mu.domain.agent-test
+
+Testing eta-mu.domain.daemon-test
+
+Testing eta-mu.domain.mailbox-test
+
+Testing eta-mu.domain.mycology-test
+
+Testing eta-mu.domain.receipts-test
+
+Testing eta-mu.domain.repo-test
+
+Testing eta-mu.domain.review-test
+
+Testing eta-mu.domain.task-test
+
+Testing eta-mu.domain.watch-test
+
+Testing eta-mu.domain.websearch-test
+
+Testing eta-mu.dsl-test
+
+Testing eta-mu.dsl.normalize-test
+
+Testing eta-mu.dsl.schema-test
+
+Testing eta-mu.opencode.agents-test
+
+Testing eta-mu.opencode.config-test
+
+Testing eta-mu.opencode.settings-test
+
+Testing eta-mu.util.prompt-section-test
+
+Ran 198 tests containing 517 assertions.
+0 failures, 0 errors.
+PASS Muse Node suite with actual native Mongo ledger round trip; no integration skip

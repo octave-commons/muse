@@ -17,13 +17,14 @@ House rules for the layer architecture live in `AGENTS.md`; engineering style
 ## Commands
 
 ```sh
-# Tests (124 tests / 286 assertions currently; green without a local mongod)
-shadow-cljs compile test
+# Compile and run the current test suite
+npm test
 
 # Builds
 shadow-cljs release daemon            # → dist-daemon/daemon.js
-shadow-cljs release opencode-plugin   # → .opencode/dist + shims + host config
-shadow-cljs release mcp-server        # → .mcp/dist/receipt-river.js + .mcp.json
+npm run build:opencode               # → .opencode/dist + shims + host config
+npm run build:mcp                    # → .mcp/dist/receipt-river.js + .mcp.json
+npm run build:claude                 # → .claude/dist + active hook wrapper
 
 # Daemon process (pm2)
 pm2 start ecosystem.config.cjs        # app: eta-mu-daemon
@@ -134,12 +135,12 @@ worlds").
 
 - Clone this repo only under `~`, `~/spaces`, or `~/devel` — those are the
   daemon's scan roots.
-- `shadow-cljs.edn` also lists `../katamorph/src/cljs` and
-  `../event-ledger/src` as source paths for the `:app`/`:server` builds; they
-  must exist (real or stub) for shadow-cljs classpath resolution even when
-  building the daemon/plugin/test targets.
-- `@promethean-os/event-ledger` is a `file:` dependency on a sibling `eta-mu`
-  checkout — no registry fallback.
+- The owned daemon, OpenCode, MCP and Claude targets build from this checkout.
+  Run `npm ci` followed by `npm run build`; sibling checkouts and source stubs
+  are not prerequisites.
+- Claude settings and its generated PreToolUse wrapper are build outputs.
+  Run `npm run build` or `npm run build:claude` before activating Claude;
+  these generated files are ignored so checkout-specific paths stay out of Git.
 - Always rebuild `opencode-plugin` after cloning or moving the repo; the
   published global shim hardcodes an absolute path to this checkout's dist.
 
