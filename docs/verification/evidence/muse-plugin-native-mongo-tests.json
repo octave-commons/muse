@@ -1,0 +1,15 @@
+{
+  "id": "muse-plugin-native-mongo-tests",
+  "cwd": "/tmp/foresight-restore-muse-review",
+  "argv": [
+    "node",
+    "/workspace/scratch/3655842e43cf/evidence/muse-plugin-tests-with-mongo.mjs"
+  ],
+  "start": "2026-09-12T09:44:06.752Z",
+  "end": "2026-09-12T09:44:50.366Z",
+  "seconds": 43.614,
+  "code": 0,
+  "signal": null,
+  "timeout": false,
+  "log": "/workspace/scratch/3655842e43cf/evidence/logs/muse-plugin-native-mongo-tests.log"
+}

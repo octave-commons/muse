@@ -76,3 +76,28 @@ The CI workflow now executes `npm run test:build-cold`, so a generation bypass i
 After scratch cleanup, the published PR head was restored and its locked `npm ci` succeeded. The exact new CI command passed all three real host builds in 82.112 seconds with zero compiler warnings. Full source/test lint also passed with zero errors/warnings. [Run metadata](evidence/muse-review-cold-ci-command.json) and [actual output](evidence/muse-review-cold-ci-command.txt) are durable; paths in the metadata identify the original sandbox run. This successor changes CI/docs only and does not claim a new full Mongo test run. Existing full-suite observations above remain historical.
 
 The current canonical Rheos CLI requires `comment UUID --text TEXT`; its help corrected an initial rejected invocation with the older positional syntax. The two successful card comments were appended through Rheos; old ledger facts and the card's review state were preserved. No PM2 process was started.
+
+## Plugin lint coverage follow-up, 2026-09-12
+
+The lint command now includes `.ημ`, matching the plugin source used by the real
+compiler. Its first expanded run found two warnings: an unused destructuring
+binding in the EDN ledger plugin and an unused string require in the review
+pipeline plugin. Removing those names preserves behavior and produces zero lint
+errors and warnings without changing the lint rules.
+
+Fresh verification of this source change:
+
+- [Expanded lint before the fix](evidence/muse-plugin-lint-red.json): exit 2,
+  two warnings; [after the fix](evidence/muse-plugin-lint-green.json): exit 0,
+  zero errors and warnings.
+- [All four production releases](evidence/muse-plugin-build.json): daemon 69
+  files, OpenCode 119, MCP 119, Claude 121; zero warnings, 66.968 seconds.
+- [Actual native Mongo test run](evidence/muse-plugin-native-mongo-tests.json):
+  198 tests, 517 assertions, zero failures or errors, 43.614 seconds. The Mongo
+  round trip ran; no integration skip occurred. An uncaught-exception guard was
+  preloaded into the Node test process.
+
+Each metadata file has matching `.txt` output in the same directory. Paths are
+provenance from this sandbox run. Rheos appended the implementation and outcome
+comments without changing the card's review state or historical ledger facts.
+Generated hook paths from the build are excluded from this source commit.

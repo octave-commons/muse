@@ -1,0 +1,21 @@
+{
+  "id": "muse-plugin-lint-red",
+  "cwd": "/tmp/foresight-restore-muse-review",
+  "argv": [
+    "clj-kondo",
+    "--lint",
+    "src/cljs",
+    "src/clj",
+    "test/cljs",
+    ".ημ",
+    "--fail-level",
+    "warning"
+  ],
+  "start": "2026-09-12T09:43:36.930Z",
+  "end": "2026-09-12T09:43:37.773Z",
+  "seconds": 0.843,
+  "code": 2,
+  "signal": null,
+  "timeout": false,
+  "log": "/workspace/scratch/3655842e43cf/evidence/logs/muse-plugin-lint-red.log"
+}

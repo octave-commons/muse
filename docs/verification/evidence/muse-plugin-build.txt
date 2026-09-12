@@ -1,0 +1,22 @@
+
+> prebuild
+> clojure -M -e "(doseq [generator '[eta-mu.opencode.build/generate-entrypoint eta-mu.mcp.build/generate-entrypoint eta-mu.claude.build/generate-entrypoint]] ((requiring-resolve generator) {}))"
+
+Picked up JAVA_TOOL_OPTIONS: -Duser.home=/workspace/scratch/3655842e43cf/toolchain/jvm-homes/a0969acf-9aa7-48bd-a19a-4ad19bbdf122 -Djavax.net.ssl.trustStore=/workspace/scratch/3655842e43cf/toolchain/cacerts -Djavax.net.ssl.trustStorePassword=changeit -XX:ActiveProcessorCount=4 -Xmx2g -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=38251 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=38251 -Dhttp.nonProxyHosts=localhost|127.*|0.0.0.0|[::1]
+Picked up JAVA_TOOL_OPTIONS: -Duser.home=/workspace/scratch/3655842e43cf/toolchain/jvm-homes/a0969acf-9aa7-48bd-a19a-4ad19bbdf122 -Djavax.net.ssl.trustStore=/workspace/scratch/3655842e43cf/toolchain/cacerts -Djavax.net.ssl.trustStorePassword=changeit -XX:ActiveProcessorCount=4 -Xmx2g -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=38251 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=38251 -Dhttp.nonProxyHosts=localhost|127.*|0.0.0.0|[::1]
+
+> build
+> shadow-cljs release daemon opencode-plugin mcp-server claude-server && node .claude/dist/claude-server.js --emit-hook-config
+
+shadow-cljs - config: /tmp/foresight-restore-muse-review/shadow-cljs.edn
+shadow-cljs - starting via "clojure"
+Picked up JAVA_TOOL_OPTIONS: -Duser.home=/workspace/scratch/3655842e43cf/toolchain/jvm-homes/a0969acf-9aa7-48bd-a19a-4ad19bbdf122 -Djavax.net.ssl.trustStore=/workspace/scratch/3655842e43cf/toolchain/cacerts -Djavax.net.ssl.trustStorePassword=changeit -XX:ActiveProcessorCount=4 -Xmx2g -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=38251 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=38251 -Dhttp.nonProxyHosts=localhost|127.*|0.0.0.0|[::1]
+[:daemon] Compiling ...
+[:daemon] Build completed. (69 files, 21 compiled, 0 warnings, 16.81s)
+[:opencode-plugin] Compiling ...
+[:opencode-plugin] Build completed. (119 files, 69 compiled, 0 warnings, 10.28s)
+[:mcp-server] Compiling ...
+[:mcp-server] Build completed. (119 files, 67 compiled, 0 warnings, 7.41s)
+[:claude-server] Compiling ...
+[:claude-server] Build completed. (121 files, 69 compiled, 0 warnings, 6.53s)
+[eta-mu.boundaries.claude] wired 1 Claude hook(s): tool/requested

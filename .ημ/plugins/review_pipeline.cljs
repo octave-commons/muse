@@ -7,8 +7,7 @@
    eta-mu.domain.review; the final submission is machine-written to
    .opencode/review-evidence/submission.json. Nothing is parsed from model
    output text."
-  (:require [clojure.string :as str]
-            [eta-mu.boundaries.node.fs :as bfs]
+  (:require [eta-mu.boundaries.node.fs :as bfs]
             [eta-mu.domain.review :as review]
             [eta-mu.dsl :refer [deftool defplugin]]))
 
