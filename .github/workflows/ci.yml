@@ -28,6 +28,7 @@ jobs:
         uses: DeLaGuardo/setup-clojure@13.2
         with:
           cli: 1.12.5.1654
+          clj-kondo: 2026.08.04
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -39,7 +40,13 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Compile and run ClojureScript tests
-        run: npx shadow-cljs compile test 2>&1 | tee test.log
+        run: npm test 2>&1 | tee test.log
+
+      - name: Build all Muse host targets
+        run: npm run build
+
+      - name: Lint Clojure sources and tests
+        run: npm run lint
 
       - name: Verify ClojureScript assertions
         run: grep -q "0 failures, 0 errors." test.log

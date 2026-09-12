@@ -122,9 +122,12 @@ becoming a local fork of its laws.
 ## Tests
 
 ```sh
-shadow-cljs compile test    # :node-test target, autoruns target/test/test.cjs
+npm ci --ignore-scripts
+npm run build              # daemon, OpenCode, MCP, Claude adapters
+npm test                   # compile, then run Node with its assertion exit code
+npm run lint
 ```
 
-The latest handoff records 143 tests and zero warnings. Mongo-dependent tests
+The build surface follows the accepted [compatibility boundary](docs/architecture/compatibility-boundary.md). The historical `app`, `server-dev`, and `server` targets referenced absent `open-hax.sol.*` namespaces; those Sol application exports are retired from Muse. Mongo-dependent tests
 self-skip when no local server is reachable, so the suite remains runnable
 without Mongo.

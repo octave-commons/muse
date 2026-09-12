@@ -1,9 +1,10 @@
 (ns eta-mu.domain.review-test
-  (:require [cljs.test :refer [deftest is testing]]
+  (:require [cljs.test :refer [deftest is]]
+            [clojure.string :as str]
             [eta-mu.domain.review :as review]))
 
 (def sample-diff
-  (clojure.string/join
+  (str/join
    "\n"
    ["diff --git a/src/example.js b/src/example.js"
     "--- a/src/example.js"
