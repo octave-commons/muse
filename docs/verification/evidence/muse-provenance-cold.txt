@@ -1,0 +1,54 @@
+Source: published 571d7778a3c5e00c95e0016748c31ecd4a920f44; local 2f778e2c30ece4a7d8e4905e1ac9635e4deabfe2; exact complete tree cf84b13d7a0158af0f884091088c19b20611efc4
+Command: npm run test:build-cold
+Run: 2026-09-12T12:17:53.429Z through 2026-09-12T12:20:18.705Z; exit 0
+Local JVM options redacted and disposable paths normalized; diagnostic content retained.
+
+
+> test:build-cold
+> node scripts/verify-cold-host-builds.mjs
+
+
+> build:opencode
+> npm run prebuild && shadow-cljs release opencode-plugin
+
+
+> prebuild
+> clojure -M -e "(doseq [generator '[eta-mu.opencode.build/generate-entrypoint eta-mu.mcp.build/generate-entrypoint eta-mu.claude.build/generate-entrypoint]] ((requiring-resolve generator) {}))"
+
+[:opencode-plugin] Compiling ...
+[:opencode-plugin] Build completed. (119 files, 69 compiled, 0 warnings, 17.13s)
+PASS cold declared opencode build with shared dependencies and isolated publish home
+
+> build:mcp
+> npm run prebuild && shadow-cljs release mcp-server
+
+
+> prebuild
+> clojure -M -e "(doseq [generator '[eta-mu.opencode.build/generate-entrypoint eta-mu.mcp.build/generate-entrypoint eta-mu.claude.build/generate-entrypoint]] ((requiring-resolve generator) {}))"
+
+[:mcp-server] Compiling ...
+[:mcp-server] Build completed. (119 files, 67 compiled, 0 warnings, 25.67s)
+PASS cold declared mcp build with shared dependencies and isolated publish home
+
+> prebuild
+> clojure -M -e "(doseq [generator '[eta-mu.opencode.build/generate-entrypoint eta-mu.mcp.build/generate-entrypoint eta-mu.claude.build/generate-entrypoint]] ((requiring-resolve generator) {}))"
+
+[:claude-server] Compiling ...
+[:claude-server] Build completed. (121 files, 69 compiled, 0 warnings, 35.95s)
+[eta-mu.boundaries.claude] wired 1 Claude hook(s): tool/requested
+PASS cold declared claude build with shared dependencies and isolated publish home
+[local JVM home and truststore options redacted]
+[local JVM home and truststore options redacted]
+shadow-cljs - config: <disposable-muse-checkout>
+shadow-cljs - starting via "clojure"
+[local JVM home and truststore options redacted]
+[local JVM home and truststore options redacted]
+[local JVM home and truststore options redacted]
+shadow-cljs - config: <disposable-muse-checkout>
+shadow-cljs - starting via "clojure"
+[local JVM home and truststore options redacted]
+[local JVM home and truststore options redacted]
+[local JVM home and truststore options redacted]
+shadow-cljs - config: <disposable-muse-checkout>
+shadow-cljs - starting via "clojure"
+[local JVM home and truststore options redacted]

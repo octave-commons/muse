@@ -2,6 +2,20 @@
 
 The same sandbox now executes Muse's four declared targets, generated Claude hook, three independent cold host builds, Clojure lint and native Mongo integration tests.
 
+The table below records the earlier complete runtime-correction run. For fresh
+exact-source coverage of the final ignore policy and ownership regression,
+published `571d7778a3c5e00c95e0016748c31ecd4a920f44` and local
+`2f778e2c30ece4a7d8e4905e1ac9635e4deabfe2` share complete tree
+`cf84b13d7a0158af0f884091088c19b20611efc4`. On that clean tree, the actual
+compiled wrapper passed in 1.025 seconds and all three cold hosts passed in
+145.276 seconds. [Wrapper metadata](evidence/muse-provenance-hook.json) and
+[output](evidence/muse-provenance-hook.txt), plus
+[cold-host metadata](evidence/muse-provenance-cold.json) and
+[output](evidence/muse-provenance-cold.txt), carry their own source identity,
+commands, timestamps and exit codes. The older logs are explicitly labeled
+historical predecessor evidence. This successor only adds documentation,
+evidence and canonical board comments; it does not claim a later runtime test.
+
 Generated wrappers now live in the entirely emitter-owned `.claude/generated-hooks/` directory. Ignoring that directory covers PostToolUse and future supported hook names as well as PreToolUse, while handwritten sources and future hooks in `.claude/hooks/` remain visible to Git. CodeRabbit found that the first broad ignore rule mixed these ownership boundaries; the dedicated output directory fixes that mistake. The sandbox bundle now installs pinned clj-kondo 2026.08.04 and executes both declared cold-host verification and lint, matching the standard CI gate coverage.
 
 | Actual command | Result | Seconds |

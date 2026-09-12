@@ -115,7 +115,12 @@ metadata and output; only trailing blank lines were removed from copied logs.
 The generated `.claude/settings.json` and `pre-tool-use.sh` are no longer
 tracked. Their emitter remains authoritative; the other handwritten hook scripts
 are preserved. `CLAUDE.md` now describes the actual self-contained build targets.
-This successor was prepared through GitHub after the same sandbox disconnected
-with `409 environment_offline`. The previous build/hook results above predate
-this ignore/documentation change. A fresh sandbox build and clean-source check
-remain required before merge; hosted checks do not replace that missing run.
+At the historical `4e2ab4f1459df85afa3f589a6e6fa155f9caecc4` checkpoint, that
+successor had been prepared through GitHub after the sandbox disconnected with
+`409 environment_offline`. The earlier results above predated its ignore and
+documentation changes, so a fresh sandbox build was still missing then. That
+historical limitation was resolved by the actual recovered runs documented in
+[resumed sandbox gates](resumed-sandbox-gates.md), including subsequent
+revision-bound cold-host and compiled-wrapper evidence. Generated wrappers now
+live in `.claude/generated-hooks/`; handwritten `.claude/hooks/` files remain
+visible to Git.
