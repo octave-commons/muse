@@ -1,0 +1,1 @@
+PASS compiled emitter and executable PreToolUse wrapper preserve spaces, apostrophes and shell syntax; decision=true

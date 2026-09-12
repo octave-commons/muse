@@ -88,6 +88,7 @@ jobs:
         uses: DeLaGuardo/setup-clojure@3fe9b3ae632c6758d0b7757b0838606ef4287b08 # 13.4
         with:
           cli: ${{ env.CLOJURE_TOOLS_VERSION }}
+          clj-kondo: "2026.08.04"
 
       - name: Install, validate, test, and build
         id: validate
@@ -100,6 +101,8 @@ jobs:
             npm run build
             node scripts/verify-claude-hook-wrapper.mjs
             npm test
+            npm run test:build-cold
+            npm run lint
           } 2>&1 | tee "$OUT/logs/validate.log"
 
       - name: Collect generated outputs and portable toolchains

@@ -1,0 +1,6 @@
+{"id":"muse-final-build","args":["npm","run","build"],"cwd":"<muse-checkout>","started":"2026-09-12T11:29:13.378Z","seconds":62.496,"code":0,"signal":null}
+{"id":"muse-final-hook","args":["node","scripts/verify-claude-hook-wrapper.mjs"],"cwd":"<muse-checkout>","started":"2026-09-12T11:30:15.876Z","seconds":1.02,"code":0,"signal":null}
+{"id":"muse-final-cold","args":["npm","run","test:build-cold"],"cwd":"<muse-checkout>","started":"2026-09-12T11:30:16.897Z","seconds":172.912,"code":0,"signal":null}
+{"id":"muse-final-lint","args":["npm","run","lint"],"cwd":"<muse-checkout>","started":"2026-09-12T11:33:09.810Z","seconds":0.757,"code":0,"signal":null}
+{"id":"muse-final-tests","args":["npm","test"],"cwd":"<muse-checkout>","started":"2026-09-12T11:33:11.672Z","seconds":22.552,"code":0,"signal":null}
+PASS four real releases, compiled hook, three cold host builds, clean lint and 198/517 native-Mongo tests; Git source state unchanged
