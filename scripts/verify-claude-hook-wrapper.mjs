@@ -12,8 +12,10 @@ for(const filename of ['pre-tool-use.sh','post-tool-use.sh','session-start.sh'])
   const generated=spawnSync('git',['check-ignore','--quiet',`.claude/generated-hooks/${filename}`],{cwd:repo});
   assert.equal(generated.status,0,'Every emitted hook must be ignored');
 }
-const handwritten=spawnSync('git',['check-ignore','--quiet','.claude/hooks/new-handwritten-hook.sh'],{cwd:repo});
-assert.equal(handwritten.status,1,'New handwritten hook sources must remain visible to Git');
+for(const filename of ['new-handwritten-hook.sh','pre-tool-use.sh']) {
+  const handwritten=spawnSync('git',['check-ignore','--quiet',`.claude/hooks/${filename}`],{cwd:repo});
+  assert.equal(handwritten.status,1,'Every handwritten hook source must remain visible to Git');
+}
 const artifact=path.join(repo,'.claude/dist/claude-server.js');
 assert.ok(fs.existsSync(artifact),'Run npm run build before the compiled hook verification');
 assert.ok(fs.statSync(artifact).mtimeMs>=fs.statSync(path.join(repo,'src/cljs/eta_mu/boundaries/claude.cljs')).mtimeMs,'Rebuild the Claude artifact after changing its boundary');
