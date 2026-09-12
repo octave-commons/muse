@@ -3,11 +3,11 @@ category: "kanban"
 labels: "sandbox, build"
 dependency: []
 type: "task"
-write-id: "1789197681338-0.esbi0dhqw3hhh83qlc0"
+write-id: "1789198960919-0.n4bgq00i8a5tuwqtbm"
 points: "2"
 title: "Restore runnable Muse compilation and test targets"
 priority: "P1"
-status: "review"
+status: "archived"
 uuid: "muse-owned-build-targets"
 created_at: "2026-09-12T06:16:13.682Z"
 ---
@@ -40,5 +40,7 @@ PR16 fresh verification (2026-09-12): npm run build completed all four owned tar
 Hosted CI on bcab2e4 reproduced a fresh-checkout build failure after daemon succeeds: eta-mu.gen.opencode-plugin is unavailable because Shadow indexed classpaths before configure hooks generated src/gen. The sandbox-bundle workflow already invokes all three generators before starting Shadow. Plan: reuse that existing generation recipe in the top-level prebuild lifecycle, prove old command fails and new command builds all four targets in an isolated fresh source worktree with shared dependencies, preserve post-release Claude configuration and append exact output evidence.
 
 Cold-checkout verification: unmodified38641cb source with one shared node_modules symlink failed npm run build after daemon with missing eta-mu.gen.opencode-plugin in31.515s, matching hostedCI34678994363. Added only the existing three-generator recipe as prebuild; a second fresh worktree with no generated sources/compiler cache built daemon69/OpenCode119/MCP119/Claude121 with zero compiler warnings in51.960s, and post-release emitter wired the actual tool/requested hook. The command preserves the declared Clojure/JVM/Node tools and shares installed packages. Both old and fixed raw results are retained in recovery-muse-cold-build-red/green. Current197tests506assertions and lint0/0 remain unchanged source gates from38641cb.
+
+Retired by PR16 UUIDv4 review repair. Replacement canonical card: 45b3e181-d0b6-4c0f-938e-7e03d1805ce3. Identity is immutable, so no UUID or historical ledger fact is rewritten. This old projection will be archived through Rheos, then retained as docs/verification/muse-build-history.md outside the active board; its complete historical body remains inspectable.
 
 ---
