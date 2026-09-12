@@ -10,7 +10,8 @@
     "shadow-cljs": "3.4.4"
   },
   "scripts": {
-    "build": "shadow-cljs release daemon opencode-plugin mcp-server claude-server",
+    "prebuild": "clojure -M -e \"(doseq [generator '[eta-mu.opencode.build/generate-entrypoint eta-mu.mcp.build/generate-entrypoint eta-mu.claude.build/generate-entrypoint]] ((requiring-resolve generator) {}))\"",
+    "build": "shadow-cljs release daemon opencode-plugin mcp-server claude-server && node .claude/dist/claude-server.js --emit-hook-config",
     "test": "shadow-cljs compile test && node target/test/test.cjs",
     "lint": "clj-kondo --lint src/cljs src/clj test/cljs"
   }

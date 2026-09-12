@@ -128,6 +128,8 @@ npm test                   # compile, then run Node with its assertion exit code
 npm run lint
 ```
 
+The `prebuild` lifecycle generates the three host entrypoints before Shadow indexes its source classpath. The existing configure hooks keep those sources current during later builds, and the post-release Claude emitter writes hooks for the current checkout. A fresh checkout therefore uses the same command as a warm development tree.
+
 The build surface follows the accepted [compatibility boundary](docs/architecture/compatibility-boundary.md). The historical `app`, `server-dev`, and `server` targets referenced absent `open-hax.sol.*` namespaces; those Sol application exports are retired from Muse. Mongo-dependent tests
 self-skip when no local server is reachable, so the suite remains runnable
 without Mongo.
