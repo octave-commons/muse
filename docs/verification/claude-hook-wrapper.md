@@ -101,3 +101,13 @@ Each metadata file has matching `.txt` output in the same directory. Paths are
 provenance from this sandbox run. Rheos appended the implementation and outcome
 comments without changing the card's review state or historical ledger facts.
 Generated hook paths from the build are excluded from this source commit.
+
+The sandbox bundle workflow now invokes `npm run build`, the real compiled
+hook verification, and `npm test`. This uses the same entrypoint generation
+and post-release Claude config emission as a developer build. Actual verification
+on 2026-09-12 rebuilt all four targets with zero warnings, ran the emitted hook
+from a path containing spaces and shell metacharacters, and passed lint with
+zero warnings (39.263s). The exact declared test command passed 198 tests and
+517 assertions against native loopback Mongo with no integration skip (18.327s).
+See `evidence/muse-sandbox-declared-{build,test}.{json,txt}` for preserved
+metadata and output; only trailing blank lines were removed from copied logs.
