@@ -111,3 +111,11 @@ zero warnings (39.263s). The exact declared test command passed 198 tests and
 517 assertions against native loopback Mongo with no integration skip (18.327s).
 See `evidence/muse-sandbox-declared-{build,test}.{json,txt}` for preserved
 metadata and output; only trailing blank lines were removed from copied logs.
+
+The generated `.claude/settings.json` and `pre-tool-use.sh` are no longer
+tracked. Their emitter remains authoritative; the other handwritten hook scripts
+are preserved. `CLAUDE.md` now describes the actual self-contained build targets.
+This successor was prepared through GitHub after the same sandbox disconnected
+with `409 environment_offline`. The previous build/hook results above predate
+this ignore/documentation change. A fresh sandbox build and clean-source check
+remain required before merge; hosted checks do not replace that missing run.

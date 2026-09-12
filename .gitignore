@@ -40,3 +40,7 @@ src/gen/
 pseudo/
 .opencode/opencode.json
 .mcp.json
+
+# Generated Claude activation artifacts (npm run build / build:claude)
+.claude/settings.json
+.claude/hooks/pre-tool-use.sh

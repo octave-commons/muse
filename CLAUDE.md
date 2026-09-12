@@ -135,12 +135,12 @@ worlds").
 
 - Clone this repo only under `~`, `~/spaces`, or `~/devel` — those are the
   daemon's scan roots.
-- `shadow-cljs.edn` also lists `../katamorph/src/cljs` and
-  `../event-ledger/src` as source paths for the `:app`/`:server` builds; they
-  must exist (real or stub) for shadow-cljs classpath resolution even when
-  building the daemon/plugin/test targets.
-- `@promethean-os/event-ledger` is a `file:` dependency on a sibling `eta-mu`
-  checkout — no registry fallback.
+- The owned daemon, OpenCode, MCP and Claude targets build from this checkout.
+  Run `npm ci` followed by `npm run build`; sibling checkouts and source stubs
+  are not prerequisites.
+- Claude settings and its generated PreToolUse wrapper are build outputs.
+  Run `npm run build` or `npm run build:claude` before activating Claude;
+  these generated files are ignored so checkout-specific paths stay out of Git.
 - Always rebuild `opencode-plugin` after cloning or moving the repo; the
   published global shim hardcodes an absolute path to this checkout's dist.
 
