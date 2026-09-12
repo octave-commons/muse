@@ -68,3 +68,11 @@ After routing through `prebuild`, the complete `npm run build` passed in
 shell syntax checks passed with zero warnings/errors. The actual compiled hook
 verification passed in 0.573 seconds. Generated checkout-specific hook paths
 were excluded from the source change.
+
+## Cold-build CI follow-up, 2026-09-12
+
+The CI workflow now executes `npm run test:build-cold`, so a generation bypass in any declared host command fails the job even after the normal build warmed this checkout. The verifier itself creates independent copies without generated source or compiler output. README and CLAUDE host examples use `npm run build:opencode`, `npm run build:mcp`, and `npm run build:claude`; remaining direct daemon builds need no generated host entrypoint.
+
+After scratch cleanup, the published PR head was restored and its locked `npm ci` succeeded. The exact new CI command passed all three real host builds in 82.112 seconds with zero compiler warnings. Full source/test lint also passed with zero errors/warnings. [Run metadata](evidence/muse-review-cold-ci-command.json) and [actual output](evidence/muse-review-cold-ci-command.txt) are durable; paths in the metadata identify the original sandbox run. This successor changes CI/docs only and does not claim a new full Mongo test run. Existing full-suite observations above remain historical.
+
+The current canonical Rheos CLI requires `comment UUID --text TEXT`; its help corrected an initial rejected invocation with the older positional syntax. The two successful card comments were appended through Rheos; old ledger facts and the card's review state were preserved. No PM2 process was started.

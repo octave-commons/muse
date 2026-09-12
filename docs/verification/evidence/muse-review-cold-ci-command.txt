@@ -1,0 +1,49 @@
+
+> test:build-cold
+> node scripts/verify-cold-host-builds.mjs
+
+
+> build:opencode
+> npm run prebuild && shadow-cljs release opencode-plugin
+
+
+> prebuild
+> clojure -M -e "(doseq [generator '[eta-mu.opencode.build/generate-entrypoint eta-mu.mcp.build/generate-entrypoint eta-mu.claude.build/generate-entrypoint]] ((requiring-resolve generator) {}))"
+
+[:opencode-plugin] Compiling ...
+[:opencode-plugin] Build completed. (119 files, 69 compiled, 0 warnings, 11.64s)
+Picked up JAVA_TOOL_OPTIONS: -Duser.home=/workspace/scratch/3655842e43cf/toolchain/jvm-homes/ad3db430-2d46-42d9-8025-9ccd80a22e35 -Djavax.net.ssl.trustStore=/workspace/scratch/3655842e43cf/toolchain/cacerts -Djavax.net.ssl.trustStorePassword=changeit -XX:ActiveProcessorCount=4 -Xmx2g -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=40345 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=40345 -Dhttp.nonProxyHosts=localhost|127.*|0.0.0.0|[::1] -Duser.home="/tmp/muse-cold-opencode-i8PzQb/compiler-home"
+Picked up JAVA_TOOL_OPTIONS: -Duser.home=/workspace/scratch/3655842e43cf/toolchain/jvm-homes/ad3db430-2d46-42d9-8025-9ccd80a22e35 -Djavax.net.ssl.trustStore=/workspace/scratch/3655842e43cf/toolchain/cacerts -Djavax.net.ssl.trustStorePassword=changeit -XX:ActiveProcessorCount=4 -Xmx2g -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=40345 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=40345 -Dhttp.nonProxyHosts=localhost|127.*|0.0.0.0|[::1] -Duser.home="/tmp/muse-cold-opencode-i8PzQb/compiler-home"
+shadow-cljs - config: /tmp/muse-cold-opencode-i8PzQb/checkout/shadow-cljs.edn
+shadow-cljs - starting via "clojure"
+Picked up JAVA_TOOL_OPTIONS: -Duser.home=/workspace/scratch/3655842e43cf/toolchain/jvm-homes/ad3db430-2d46-42d9-8025-9ccd80a22e35 -Djavax.net.ssl.trustStore=/workspace/scratch/3655842e43cf/toolchain/cacerts -Djavax.net.ssl.trustStorePassword=changeit -XX:ActiveProcessorCount=4 -Xmx2g -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=40345 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=40345 -Dhttp.nonProxyHosts=localhost|127.*|0.0.0.0|[::1] -Duser.home="/tmp/muse-cold-opencode-i8PzQb/compiler-home"
+PASS cold declared opencode build with shared dependencies and isolated publish home
+
+> build:mcp
+> npm run prebuild && shadow-cljs release mcp-server
+
+
+> prebuild
+> clojure -M -e "(doseq [generator '[eta-mu.opencode.build/generate-entrypoint eta-mu.mcp.build/generate-entrypoint eta-mu.claude.build/generate-entrypoint]] ((requiring-resolve generator) {}))"
+
+[:mcp-server] Compiling ...
+[:mcp-server] Build completed. (119 files, 67 compiled, 0 warnings, 11.78s)
+Picked up JAVA_TOOL_OPTIONS: -Duser.home=/workspace/scratch/3655842e43cf/toolchain/jvm-homes/ad3db430-2d46-42d9-8025-9ccd80a22e35 -Djavax.net.ssl.trustStore=/workspace/scratch/3655842e43cf/toolchain/cacerts -Djavax.net.ssl.trustStorePassword=changeit -XX:ActiveProcessorCount=4 -Xmx2g -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=40345 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=40345 -Dhttp.nonProxyHosts=localhost|127.*|0.0.0.0|[::1] -Duser.home="/tmp/muse-cold-mcp-MPzv0P/compiler-home"
+Picked up JAVA_TOOL_OPTIONS: -Duser.home=/workspace/scratch/3655842e43cf/toolchain/jvm-homes/ad3db430-2d46-42d9-8025-9ccd80a22e35 -Djavax.net.ssl.trustStore=/workspace/scratch/3655842e43cf/toolchain/cacerts -Djavax.net.ssl.trustStorePassword=changeit -XX:ActiveProcessorCount=4 -Xmx2g -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=40345 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=40345 -Dhttp.nonProxyHosts=localhost|127.*|0.0.0.0|[::1] -Duser.home="/tmp/muse-cold-mcp-MPzv0P/compiler-home"
+shadow-cljs - config: /tmp/muse-cold-mcp-MPzv0P/checkout/shadow-cljs.edn
+shadow-cljs - starting via "clojure"
+Picked up JAVA_TOOL_OPTIONS: -Duser.home=/workspace/scratch/3655842e43cf/toolchain/jvm-homes/ad3db430-2d46-42d9-8025-9ccd80a22e35 -Djavax.net.ssl.trustStore=/workspace/scratch/3655842e43cf/toolchain/cacerts -Djavax.net.ssl.trustStorePassword=changeit -XX:ActiveProcessorCount=4 -Xmx2g -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=40345 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=40345 -Dhttp.nonProxyHosts=localhost|127.*|0.0.0.0|[::1] -Duser.home="/tmp/muse-cold-mcp-MPzv0P/compiler-home"
+PASS cold declared mcp build with shared dependencies and isolated publish home
+
+> prebuild
+> clojure -M -e "(doseq [generator '[eta-mu.opencode.build/generate-entrypoint eta-mu.mcp.build/generate-entrypoint eta-mu.claude.build/generate-entrypoint]] ((requiring-resolve generator) {}))"
+
+[:claude-server] Compiling ...
+[:claude-server] Build completed. (121 files, 69 compiled, 0 warnings, 12.95s)
+[eta-mu.boundaries.claude] wired 1 Claude hook(s): tool/requested
+Picked up JAVA_TOOL_OPTIONS: -Duser.home=/workspace/scratch/3655842e43cf/toolchain/jvm-homes/ad3db430-2d46-42d9-8025-9ccd80a22e35 -Djavax.net.ssl.trustStore=/workspace/scratch/3655842e43cf/toolchain/cacerts -Djavax.net.ssl.trustStorePassword=changeit -XX:ActiveProcessorCount=4 -Xmx2g -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=40345 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=40345 -Dhttp.nonProxyHosts=localhost|127.*|0.0.0.0|[::1] -Duser.home="/tmp/muse-cold-claude-a6AxoJ/compiler-home"
+Picked up JAVA_TOOL_OPTIONS: -Duser.home=/workspace/scratch/3655842e43cf/toolchain/jvm-homes/ad3db430-2d46-42d9-8025-9ccd80a22e35 -Djavax.net.ssl.trustStore=/workspace/scratch/3655842e43cf/toolchain/cacerts -Djavax.net.ssl.trustStorePassword=changeit -XX:ActiveProcessorCount=4 -Xmx2g -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=40345 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=40345 -Dhttp.nonProxyHosts=localhost|127.*|0.0.0.0|[::1] -Duser.home="/tmp/muse-cold-claude-a6AxoJ/compiler-home"
+shadow-cljs - config: /tmp/muse-cold-claude-a6AxoJ/checkout/shadow-cljs.edn
+shadow-cljs - starting via "clojure"
+Picked up JAVA_TOOL_OPTIONS: -Duser.home=/workspace/scratch/3655842e43cf/toolchain/jvm-homes/ad3db430-2d46-42d9-8025-9ccd80a22e35 -Djavax.net.ssl.trustStore=/workspace/scratch/3655842e43cf/toolchain/cacerts -Djavax.net.ssl.trustStorePassword=changeit -XX:ActiveProcessorCount=4 -Xmx2g -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=40345 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=40345 -Dhttp.nonProxyHosts=localhost|127.*|0.0.0.0|[::1] -Duser.home="/tmp/muse-cold-claude-a6AxoJ/compiler-home"
+PASS cold declared claude build with shared dependencies and isolated publish home

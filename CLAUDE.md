@@ -17,13 +17,14 @@ House rules for the layer architecture live in `AGENTS.md`; engineering style
 ## Commands
 
 ```sh
-# Tests (124 tests / 286 assertions currently; green without a local mongod)
-shadow-cljs compile test
+# Compile and run the current test suite
+npm test
 
 # Builds
 shadow-cljs release daemon            # → dist-daemon/daemon.js
-shadow-cljs release opencode-plugin   # → .opencode/dist + shims + host config
-shadow-cljs release mcp-server        # → .mcp/dist/receipt-river.js + .mcp.json
+npm run build:opencode               # → .opencode/dist + shims + host config
+npm run build:mcp                    # → .mcp/dist/receipt-river.js + .mcp.json
+npm run build:claude                 # → .claude/dist + active hook wrapper
 
 # Daemon process (pm2)
 pm2 start ecosystem.config.cjs        # app: eta-mu-daemon

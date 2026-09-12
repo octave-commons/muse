@@ -1,0 +1,16 @@
+{
+  "id": "muse-review-cold-ci-command",
+  "cwd": "/tmp/foresight-restore-muse-review",
+  "argv": [
+    "npm",
+    "run",
+    "test:build-cold"
+  ],
+  "start": "2026-09-12T09:29:47.933Z",
+  "end": "2026-09-12T09:31:10.045Z",
+  "seconds": 82.112,
+  "code": 0,
+  "signal": null,
+  "timeout": false,
+  "log": "/workspace/scratch/3655842e43cf/evidence/logs/muse-review-cold-ci-command.log"
+}
