@@ -7,8 +7,8 @@
       "build"
     ],
     "cwd": "<muse-checkout>",
-    "started": "2026-09-12T11:29:13.378Z",
-    "seconds": 62.496,
+    "started": "2026-09-12T11:51:02.668Z",
+    "seconds": 79.336,
     "code": 0,
     "signal": null
   },
@@ -19,8 +19,8 @@
       "scripts/verify-claude-hook-wrapper.mjs"
     ],
     "cwd": "<muse-checkout>",
-    "started": "2026-09-12T11:30:15.876Z",
-    "seconds": 1.02,
+    "started": "2026-09-12T11:52:22.006Z",
+    "seconds": 0.98,
     "code": 0,
     "signal": null
   },
@@ -32,8 +32,8 @@
       "test:build-cold"
     ],
     "cwd": "<muse-checkout>",
-    "started": "2026-09-12T11:30:16.897Z",
-    "seconds": 172.912,
+    "started": "2026-09-12T11:52:22.986Z",
+    "seconds": 241.457,
     "code": 0,
     "signal": null
   },
@@ -45,8 +45,8 @@
       "lint"
     ],
     "cwd": "<muse-checkout>",
-    "started": "2026-09-12T11:33:09.810Z",
-    "seconds": 0.757,
+    "started": "2026-09-12T11:56:24.451Z",
+    "seconds": 3.076,
     "code": 0,
     "signal": null
   },
@@ -57,8 +57,8 @@
       "test"
     ],
     "cwd": "<muse-checkout>",
-    "started": "2026-09-12T11:33:11.672Z",
-    "seconds": 22.552,
+    "started": "2026-09-12T11:56:29.303Z",
+    "seconds": 36.115,
     "code": 0,
     "signal": null
   }

@@ -7,7 +7,7 @@
                collects :resource symbols, generates the entrypoint that
                requires them, runs the DSL pipeline, and dispatches on argv
                at init: --emit-hook-config writes .claude/settings.json +
-               .claude/hooks/*.sh from the real adapter (see
+               .claude/generated-hooks/*.sh from the real adapter (see
                eta-mu.boundaries.claude/emit-hook-config!), --hook <event>
                runs one hook invocation, and no flag starts the MCP server
                (Claude connects to that via .mcp.json).
@@ -137,7 +137,7 @@
 
 (defn emit-host-config
   "Build hook (:flush stage). Only the static artifacts (package.json,
-   .mcp.json) get written here. .claude/settings.json and .claude/hooks/*.sh
+   .mcp.json) get written here. .claude/settings.json and .claude/generated-hooks/*.sh
    are generated separately, by the compiled artifact itself running
    `--emit-hook-config` (see eta-mu.boundaries.claude/emit-hook-config! and
    scripts/build-claude-target.sh) -- not from this JVM-side :flush hook.

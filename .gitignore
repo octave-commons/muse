@@ -43,4 +43,6 @@ pseudo/
 
 # Generated Claude activation artifacts (npm run build / build:claude)
 .claude/settings.json
-.claude/hooks/
+.claude/generated-hooks/
+# Former generated wrapper location; handwritten hook sources remain visible.
+.claude/hooks/pre-tool-use.sh

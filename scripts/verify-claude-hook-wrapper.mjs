@@ -8,6 +8,12 @@ import process from 'node:process';
 import {fileURLToPath} from 'node:url';
 
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+for(const filename of ['pre-tool-use.sh','post-tool-use.sh','session-start.sh']) {
+  const generated=spawnSync('git',['check-ignore','--quiet',`.claude/generated-hooks/${filename}`],{cwd:repo});
+  assert.equal(generated.status,0,'Every emitted hook must be ignored');
+}
+const handwritten=spawnSync('git',['check-ignore','--quiet','.claude/hooks/new-handwritten-hook.sh'],{cwd:repo});
+assert.equal(handwritten.status,1,'New handwritten hook sources must remain visible to Git');
 const artifact=path.join(repo,'.claude/dist/claude-server.js');
 assert.ok(fs.existsSync(artifact),'Run npm run build before the compiled hook verification');
 assert.ok(fs.statSync(artifact).mtimeMs>=fs.statSync(path.join(repo,'src/cljs/eta_mu/boundaries/claude.cljs')).mtimeMs,'Rebuild the Claude artifact after changing its boundary');
@@ -24,7 +30,7 @@ try{
   const settings=JSON.parse(fs.readFileSync(path.join(checkout,'.claude/settings.json'),'utf8'));
   const command=settings.hooks.PreToolUse[0].hooks[0].command;
   const wrapper=path.resolve(checkout,command);
-  assert.ok(wrapper.startsWith(path.join(checkout,'.claude/hooks/')));
+  assert.ok(wrapper.startsWith(path.join(checkout,'.claude/generated-hooks/')));
   assert.ok(fs.statSync(wrapper).mode&0o111,'The actual emitted wrapper must be executable');
   const result=spawnSync(wrapper,[],{cwd:checkout,input:JSON.stringify({tool_name:'Read',tool_input:{file_path:'README.md'}}),encoding:'utf8',timeout:10000});
   assert.equal(result.status,0,result.stderr);

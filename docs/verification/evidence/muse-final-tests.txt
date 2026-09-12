@@ -6,7 +6,7 @@ shadow-cljs - config: <muse-checkout>/shadow-cljs.edn
 shadow-cljs - starting via "clojure"
 Picked up JAVA_TOOL_OPTIONS: [local sandbox JVM paths and truststore options redacted]
 [:test] Compiling ...
-[:test] Build completed. (155 files, 1 compiled, 0 warnings, 5.07s)
+[:test] Build completed. (155 files, 3 compiled, 0 warnings, 10.26s)
 
 Testing eta-mu.actor-test
 

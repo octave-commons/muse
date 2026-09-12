@@ -11,24 +11,8 @@
 > clojure -M -e "(doseq [generator '[eta-mu.opencode.build/generate-entrypoint eta-mu.mcp.build/generate-entrypoint eta-mu.claude.build/generate-entrypoint]] ((requiring-resolve generator) {}))"
 
 [:opencode-plugin] Compiling ...
-[:opencode-plugin] Build completed. (119 files, 69 compiled, 0 warnings, 20.92s)
+[:opencode-plugin] Build completed. (119 files, 69 compiled, 0 warnings, 39.01s)
 Picked up JAVA_TOOL_OPTIONS: [local sandbox JVM paths and truststore options redacted]
-Downloading: org/clojure/clojure/1.12.5/clojure-1.12.5.pom from central
-Downloading: thheller/shadow-cljs/3.4.4/shadow-cljs-3.4.4.pom from clojars
-Downloading: cider/cider-nrepl/0.50.2/cider-nrepl-0.50.2.pom from clojars
-Downloading: refactor-nrepl/refactor-nrepl/3.9.1/refactor-nrepl-3.9.1.pom from clojars
-Downloading: com/thheller/shadow-http/0.1.4/shadow-http-0.1.4.pom from clojars
-Downloading: org/clojure/clojurescript/1.12.134/clojurescript-1.12.134.pom from central
-Downloading: mx/cider/logjam/0.3.0/logjam-0.3.0.pom from clojars
-Downloading: cider/orchard/0.27.2/orchard-0.27.2.pom from clojars
-Downloading: org/clojure/clojure/1.12.5/clojure-1.12.5.jar from central
-Downloading: org/clojure/clojurescript/1.12.134/clojurescript-1.12.134.jar from central
-Downloading: refactor-nrepl/refactor-nrepl/3.9.1/refactor-nrepl-3.9.1.jar from clojars
-Downloading: cider/orchard/0.27.2/orchard-0.27.2.jar from clojars
-Downloading: com/thheller/shadow-http/0.1.4/shadow-http-0.1.4.jar from clojars
-Downloading: cider/cider-nrepl/0.50.2/cider-nrepl-0.50.2.jar from clojars
-Downloading: mx/cider/logjam/0.3.0/logjam-0.3.0.jar from clojars
-Downloading: thheller/shadow-cljs/3.4.4/shadow-cljs-3.4.4.jar from clojars
 Picked up JAVA_TOOL_OPTIONS: [local sandbox JVM paths and truststore options redacted]
 shadow-cljs - config: <temporary-cold-opencode>/checkout/shadow-cljs.edn
 shadow-cljs - starting via "clojure"
@@ -43,7 +27,7 @@ PASS cold declared opencode build with shared dependencies and isolated publish 
 > clojure -M -e "(doseq [generator '[eta-mu.opencode.build/generate-entrypoint eta-mu.mcp.build/generate-entrypoint eta-mu.claude.build/generate-entrypoint]] ((requiring-resolve generator) {}))"
 
 [:mcp-server] Compiling ...
-[:mcp-server] Build completed. (119 files, 67 compiled, 0 warnings, 29.44s)
+[:mcp-server] Build completed. (119 files, 67 compiled, 0 warnings, 34.95s)
 Picked up JAVA_TOOL_OPTIONS: [local sandbox JVM paths and truststore options redacted]
 Picked up JAVA_TOOL_OPTIONS: [local sandbox JVM paths and truststore options redacted]
 shadow-cljs - config: <temporary-cold-mcp>/checkout/shadow-cljs.edn
@@ -55,7 +39,7 @@ PASS cold declared mcp build with shared dependencies and isolated publish home
 > clojure -M -e "(doseq [generator '[eta-mu.opencode.build/generate-entrypoint eta-mu.mcp.build/generate-entrypoint eta-mu.claude.build/generate-entrypoint]] ((requiring-resolve generator) {}))"
 
 [:claude-server] Compiling ...
-[:claude-server] Build completed. (121 files, 69 compiled, 0 warnings, 17.03s)
+[:claude-server] Build completed. (121 files, 69 compiled, 0 warnings, 29.06s)
 [eta-mu.boundaries.claude] wired 1 Claude hook(s): tool/requested
 Picked up JAVA_TOOL_OPTIONS: [local sandbox JVM paths and truststore options redacted]
 Picked up JAVA_TOOL_OPTIONS: [local sandbox JVM paths and truststore options redacted]
