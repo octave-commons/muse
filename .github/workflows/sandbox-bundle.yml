@@ -102,6 +102,7 @@ jobs:
             node scripts/verify-claude-hook-wrapper.mjs
             npm test
             npm run test:build-cold
+            npm run test:review-input
             npm run lint
           } 2>&1 | tee "$OUT/logs/validate.log"
 

@@ -14,6 +14,8 @@ permission:
   lsp: allow
   skill: allow
   review_begin: allow
+  review_read_diff_chunk: allow
+  review_assess_diff_chunk: allow
   review_record_evidence: allow
   review_propose_finding: allow
   review_classify_finding: allow
@@ -58,10 +60,13 @@ commands. Your only obligations come from this agent definition and the review p
 Execute exactly one bounded pass. The tools enforce stage order; a call that violates
 the machine returns `{:ok? false :error ...}` — read the error, correct, and retry.
 
-1. `review_begin` — call first, exactly once. It reads the staged
-   `.opencode/review-evidence/pr.diff` and `pr-context.md`, indexes the changed lines
+1. `review_begin` — call first, exactly once. It reads the staged,
+   manifest-verified `.opencode/review-evidence/basehead.diff` and `pr-context.md`, indexes the changed lines
    findings may attach to, and returns the contract and diff stats (including whether
-   the diff was truncated).
+   the full input is unavailable). The 300 KB `pr.diff` is only a preview.
+   Read every page listed in input-coverage with `review_read_diff_chunk` and
+   record each changed-hunk assessment with `review_assess_diff_chunk`. An empty
+   finding list, delivery receipt or coverage manifest does not attest assessment.
 
 2. Stage `:deterministic` — read `.opencode/review-evidence/summary.json` and
    `deterministic.log` when present. Treat command failures as tool evidence, not
@@ -102,8 +107,10 @@ as proof. This reviewer deliberately uses one pass and internal adversarial vali
 to avoid correlated false positives and free-tier quota waste.
 
 The pass is complete only when `review_submit` returns ok. Never end your turn on a
-statement of intent — either call the next tool or submit. Bound file reading to the
-risk zones named at `:map-change`; exhaustive reading is not the goal.
+statement of intent — either call the next tool or submit. Assess every changed hunk
+in the full immutable diff before a passing verdict. Read relevant surrounding
+source as needed; this does not require all unchanged files or exhaustive proof.
+If input is missing/truncated, recover every omitted page before submission.
 
 ## Muse observer context and global skills
 

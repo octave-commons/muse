@@ -48,6 +48,9 @@ jobs:
       - name: Verify each declared host builds from a cold checkout
         run: npm run test:build-cold
 
+      - name: Verify complete input through the compiled review tools
+        run: npm run test:review-input
+
       - name: Lint Clojure sources and tests
         run: npm run lint
 

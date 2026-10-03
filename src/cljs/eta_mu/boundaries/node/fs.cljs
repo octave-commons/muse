@@ -3,6 +3,7 @@
    node:path, node:os. Every function takes and returns plain CLJS data."
   (:refer-clojure :exclude [exists?])
   (:require ["node:fs" :as fs]
+            ["node:crypto" :as crypto]
             ["node:os" :as os]
             ["node:path" :as path]
             [clojure.string :as str]))
@@ -34,6 +35,31 @@
 (defn read-text [p]
   (when (exists? p)
     (.readFileSync fs p "utf8")))
+
+(defn remove-file!
+  "Remove one owned output file if present; never recurse into a directory."
+  [p]
+  (when (exists? p) (.unlinkSync fs p)))
+
+(defn read-review-input
+  "Verify the workflow's immutable full-input manifest before decoding UTF-8.
+   The manifest cannot redirect reads to an arbitrary path."
+  [dir]
+  (let [manifest (js->clj (js/JSON.parse (.readFileSync fs (join dir "input-manifest.json") "utf8"))
+                         :keywordize-keys true)
+        full (:full_diff manifest)
+        sha? #(and (string? %) (re-matches #"(?:[0-9a-f]{40}|[0-9a-f]{64})" %))]
+    (when-not (and (= "open-hax.review-input/v1" (:schema manifest))
+                   (= "basehead.diff" (:path full))
+                   (sha? (:base_sha manifest)) (sha? (:head_sha manifest)) (sha? (:diff_base_sha manifest))
+                   (integer? (:bytes full)) (<= 0 (:bytes full))
+                   (string? (:sha256 full)) (re-matches #"[0-9a-f]{64}" (:sha256 full)))
+      (throw (js/Error. "Invalid full-review input manifest.")))
+    (let [bytes (.readFileSync fs (join dir "basehead.diff"))
+          digest (-> (.createHash crypto "sha256") (.update bytes) (.digest "hex"))]
+      (when-not (and (= (:bytes full) (.-length bytes)) (= (:sha256 full) digest))
+        (throw (js/Error. "Full-review input is missing bytes or differs from its immutable manifest.")))
+      {:manifest manifest :text (.decode (js/TextDecoder. "utf-8" #js {:fatal true}) bytes)})))
 
 (defn write-text! [p text]
   (ensure-dir! (path/dirname p))

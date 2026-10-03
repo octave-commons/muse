@@ -75,6 +75,26 @@
 ;; Session
 ;; ---------------------------------------------------------------------------
 
+(defn diff-chunks
+  "Lossless bounded reader pages: at most 8192 UTF-16 units/128 lines.
+   Never split a surrogate pair; pages concatenate to the exact input text."
+  [text]
+  (let [text (or text "") size (count text)]
+    (loop [start 0 chunks []]
+      (if (= start size) chunks
+        (let [bound (min size (+ start 8192))
+              bound (if (and (< bound size)
+                             (<= 55296 #?(:clj (int (.charAt ^String text (dec bound)))
+                                          :cljs (.charCodeAt text (dec bound))) 56319))
+                      (dec bound) bound)
+              page (subs text start bound)
+              end (loop [at 0 lines 0]
+                    (if-let [newline (str/index-of page "\n" at)]
+                      (if (= 127 lines) (+ start (inc newline)) (recur (inc newline) (inc lines)))
+                      bound))]
+          (recur end (conj chunks {:id (inc (count chunks)) :start start :end end
+                                  :text (subs text start end)})))))))
+
 (defn begin
   "Start a review session over staged diff text."
   [diff-text]
@@ -83,14 +103,41 @@
      :evidence      []
      :candidates    {}
      :candidate-order []
+     :diff-chunks (diff-chunks diff-text)
+     :delivered-chunks #{}
+     :assessed-chunks {}
      :changed-lines changed
      :diff-stats    {:files          (count changed)
                      :bytes          (count (or diff-text ""))
-                     :truncated?     (boolean (and diff-text (str/includes? diff-text "[eta-mu review] diff truncated")))}}))
+                     :truncated?     (boolean (and diff-text (re-find #"(?m)^\[eta-mu review\] diff truncated at [0-9]+ bytes \(was [0-9]+\)\.$" diff-text)))}}))
 
 (defn- err [msg] {:ok? false :error msg})
 
 (defn- non-blank [s] (and (string? s) (not (str/blank? s))))
+
+(defn input-coverage
+  "Delivery and assessment are separate observations, never proof by metadata."
+  [session]
+  (let [ids (set (map :id (:diff-chunks session)))]
+    {:chunks (count ids) :delivered (count (:delivered-chunks session))
+     :assessed (count (:assessed-chunks session))
+     :missing (vec (sort (remove #(contains? (:assessed-chunks session) %) ids)))}))
+
+(defn read-diff-chunk
+  "Deliver one immutable input page through the existing review session."
+  [session id]
+  (if-let [chunk (when (and (integer? id) (pos? id)) (get (:diff-chunks session) (dec id)))]
+    {:ok? true :session (update session :delivered-chunks conj id) :chunk chunk}
+    (err "Unknown diff chunk; use the chunk count returned by review_begin.")))
+
+(defn assess-diff-chunk
+  "Record a substantive model assessment only after that page was delivered."
+  [session id note]
+  (cond
+    (not (contains? (:delivered-chunks session) id)) (err "Read the diff chunk before assessing it.")
+    (not (non-blank note)) (err "Explain the changed-hunk assessment in a non-empty note.")
+    :else {:ok? true :session (assoc-in session [:assessed-chunks id] note)
+           :chunk-id id :coverage (input-coverage (assoc-in session [:assessed-chunks id] note))}))
 
 (defn record-evidence
   "Record a note for the current stage and advance to the next stage."
@@ -230,6 +277,13 @@
       (not (non-blank summary))
       (err "Summary must be a non-empty string; it becomes the GitHub review body.")
 
+      (get-in session [:diff-stats :truncated?])
+      (err "The staged input is a truncated preview. Recover the full immutable diff before submitting.")
+
+      (seq (:missing (input-coverage session)))
+      (err (str "Unassessed full-input chunks remain: " (str/join ", " (:missing (input-coverage session)))
+                ". Read and assess every changed hunk before submitting."))
+
       (seq pending)
       (err (str "Unclassified candidates remain: "
                 (str/join ", " (map :id pending))
@@ -269,6 +323,11 @@
          :envelope {:schema  "open-hax.github-review/v1"
                     :event   event
                     :summary summary
+                    :input-source (:input-source session)
+                    :input-coverage (input-coverage session)
+                    :input-assessments (mapv #(assoc (select-keys % [:id :start :end])
+                                                    :note (get (:assessed-chunks session) (:id %)))
+                                             (:diff-chunks session))
                     :comments comments}}))))
 
 (defn status
@@ -278,5 +337,6 @@
    :stages           stages
    :evidence-count   (count (:evidence session))
    :diff-stats       (:diff-stats session)
+   :input-coverage   (input-coverage session)
    :candidates       (mapv #(select-keys % [:id :severity :category :path :line :status :confidence])
                            (ordered-candidates session))})

@@ -25,10 +25,16 @@
 (defn- begun []
   (review/begin sample-diff))
 
+(defn- assess-all [session]
+  (reduce (fn [s id]
+            (let [delivered (review/read-diff-chunk s id)]
+              (:session (review/assess-diff-chunk (:session delivered) id "Fixture assessed the full changed hunk."))))
+          session (map :id (:diff-chunks session))))
+
 (defn- through-stage
   "Advance session to the given stage by recording evidence."
   [session stage]
-  (loop [s session]
+  (loop [s (assess-all session)]
     (if (= (:stage s) stage)
       s
       (let [result (review/record-evidence s (:stage s) (str "note for " (name (:stage s))))]
@@ -243,3 +249,31 @@
         result (review/submission session "summary")]
     (is (false? (:ok? result)))
     (is (re-find #"share a location" (:error result)))))
+
+(deftest missing-full-input-cannot-approve
+  (let [diff (str sample-diff "\n[eta-mu review] diff truncated at 300000 bytes (was 400000).\n")
+        ;; Native failure shape: stage notes exist, but the omitted tail was
+        ;; never supplied or assessed. No findings is not full-input review.
+        session (through-stage (review/begin diff) :publish)
+        result (review/submission session "Only the preview/risk zones were assessed.")]
+    (is (false? (:ok? result)))
+    (is (not= "APPROVE" (get-in result [:envelope :event])))))
+
+(deftest missing-tail-delivery-and-assessment-are-separate
+  (let [tail (str sample-diff "\n" (apply str (repeat 200 "diff --git a/tail b/tail\n--- a/tail\n+++ b/tail\n@@ -1 +1 @@\n-old\n+tail-risk\n")))
+        begun (review/begin tail)
+        ;; Stage notes and a delivery receipt do not attest tail assessment.
+        partial (:session (review/read-diff-chunk begun 1))
+        publish (assoc partial :stage :publish)]
+    (is (> (count (:diff-chunks begun)) 1))
+    (is (false? (:ok? (review/submission publish "The delivered prefix had no findings."))))
+    (is (false? (:ok? (review/assess-diff-chunk begun 1 "Not actually delivered."))))
+    (is (:ok? (review/submission (assess-all publish) "All changed hunks assessed; full input recovered.")))
+    (is (= "APPROVE" (get-in (review/submission (assess-all publish) "Complete review.") [:envelope :event])))))
+
+(deftest reader-pages-preserve-unicode-and-long-lines
+  (let [text (str (apply str (repeat 8191 "x")) "😀ημ" (apply str (repeat 400 "\n")))
+        chunks (review/diff-chunks text)]
+    (is (= text (apply str (map :text chunks))))
+    (is (every? #(<= (count (:text %)) 8192) chunks))
+    (is (every? #(<= (count (re-seq #"\n" (:text %))) 128) chunks))))
