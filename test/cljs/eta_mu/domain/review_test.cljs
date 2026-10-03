@@ -70,6 +70,43 @@
         (is (:ok? result))
         (is (= [canonical] (mapv :path (get-in result [:envelope :comments]))))))))
 
+(defn- header-diff [header]
+  (str "diff --git a/old b/new\n--- a/old\n+++ " header "\n@@ -1 +1,2 @@\n kept\n+added"))
+
+(deftest diff-paths-preserve-filename-identity
+  (doseq [[header filename]
+          [["b/.ημ/receipts.edn" ".ημ/receipts.edn"]
+           ["b/café.edn" "café.edn"]
+           ["b/café.edn" "café.edn"]
+           ["b/ trailing space \t" " trailing space "]
+           ["\"b/\\303\\251.edn\"" "é.edn"]
+           ["\"b/\\360\\237\\230\\200.edn\"" "😀.edn"]
+           ["\"b/tab\\tline\\nquote\\\"slash\\\\.edn\"" "tab\tline\nquote\"slash\\.edn"]
+           ["\"b/bell\\aback\\bvertical\\vform\\freturn\\r.edn\""
+            (str "bell" (char 7) "back\bvertical" (char 11) "form\freturn\r.edn")]
+           ["\"b/\\141\\163\\143\\151\\151.edn\"" "ascii.edn"]
+           ["\"b/raw-η\\t.edn\"" "raw-η\t.edn"]]]
+    (is (= {filename #{2}} (review/parse-diff-added-lines (header-diff header))) header))
+  (let [diff (str (header-diff "b/café.edn") "\n" (header-diff "b/café.edn"))]
+    (is (= #{"café.edn" "café.edn"} (set (keys (review/parse-diff-added-lines diff)))))))
+
+(deftest malformed-diff-paths-fail-before-session-admission
+  (doseq [header ["\"b/unterminated" "\"b/trailing\"junk" "\"b/unknown\\q\""
+                  "\"b/short\\12\"" "\"b/invalid\\400\"" "\"b/null\\000\""
+                  "\"b/overlong\\300\\257\"" "\"b/shortutf8\\316\""
+                  "\"b/continuation\\200\"" "\"b/surrogate\\355\\240\\200\""
+                  "\"b/outofrange\\364\\220\\200\\200\"" "b/" "\"\""
+                  "b/raw\\escape" "b/raw\"quote" "b/raw\tcontrol"]]
+    (is (thrown-with-msg? js/Error #"Invalid Git diff path" (review/begin (header-diff header))) header)))
+
+(deftest renamed-deleted-and-header-looking-added-lines
+  (let [renamed (str "diff --git a/old.edn \"b/.\\316\\267\\316\\274/new.edn\"\n"
+                     "similarity index 50%\nrename from old.edn\nrename to .ημ/new.edn\n"
+                     "--- a/old.edn\n+++ \"b/.\\316\\267\\316\\274/new.edn\"\n"
+                     "@@ -1 +1,3 @@\n kept\n+++ \"not a header\n+tail\n")
+        deleted "diff --git a/gone b/gone\n--- a/gone\n+++ /dev/null\n@@ -1 +0,0 @@\n-old\n"]
+    (is (= {".ημ/new.edn" #{2 3}} (review/parse-diff-added-lines (str renamed deleted))))))
+
 (deftest parse-diff-added-lines-indexes-only-added-head-lines
   (let [indexed (review/parse-diff-added-lines sample-diff)]
     (is (= #{11 12} (get indexed "src/example.js")))

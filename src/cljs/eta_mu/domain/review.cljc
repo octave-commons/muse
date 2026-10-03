@@ -7,7 +7,8 @@
    (schema open-hax.github-review/v1) produced by `submission`.
 
    No I/O lives in this namespace."
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [eta-mu.shape.git-diff-path :as diff-path]))
 
 ;; ---------------------------------------------------------------------------
 ;; Stages
@@ -44,10 +45,11 @@
            acc      {}]
       (if-let [row (first rows)]
         (cond
-          (str/starts-with? row "+++ ")
-          (let [p (str/trim (subs row 4))
-                p (if (str/starts-with? p "b/") (subs p 2) p)]
-            (recur (rest rows) (when-not (= p "/dev/null") p) nil acc))
+          (str/starts-with? row "diff --git ")
+          (recur (rest rows) nil nil acc)
+
+          (and (nil? new-line) (str/starts-with? row "+++ "))
+          (recur (rest rows) (diff-path/normalize (subs row 4)) nil acc)
 
           (str/starts-with? row "@@ ")
           (recur (rest rows) path (parse-hunk-header row) acc)

@@ -9,6 +9,7 @@ const {
   readSubmission,
   addedRightLines,
   validateEnvelope,
+  changedLineIndex,
   publishReview,
 } = require('./publish-opencode-review.cjs');
 
@@ -33,6 +34,29 @@ test('readSubmission reads the machine-written review submission', () => {
   const value = envelope();
   const file = tempSubmissionFile(`${JSON.stringify(value, null, 2)}\n`);
   assert.deepEqual(readSubmission({ submissionFile: file }), value);
+});
+
+test('canonical UTF-8 filenames reach publisher validation without Git-quoted aliases', async () => {
+  const filename = '.ημ/receipts.edn';
+  const alias = String.raw`"b/.\316\267\316\274/receipts.edn"`;
+  const listFiles = async () => {};
+  const github = {
+    rest: { pulls: { listFiles } },
+    paginate: async (operation) => {
+      assert.equal(operation, listFiles);
+      return [{ filename, patch: '@@ -1,2 +1,3 @@\n historical one\n historical two\n+receipt' }];
+    },
+  };
+  const context = { repo: { owner: 'octave-commons', repo: 'muse' }, payload: { pull_request: { number: 18 } } };
+  const index = await changedLineIndex({ github, context });
+  assert.deepEqual([...index.keys()], [filename]);
+  const value = (path, line = 3) => envelope({
+    event: 'COMMENT', comments: [{ path, line, side: 'RIGHT', severity: 'medium', blocking: false,
+      body: 'Synthetic pathname-boundary fixture' }],
+  });
+  assert.equal(validateEnvelope(value(filename), index).comments[0].path, filename);
+  assert.throws(() => validateEnvelope(value(alias), index), /did not provide a reviewable patch/);
+  assert.throws(() => validateEnvelope(value(filename, 2), index), /not an added line/);
 });
 
 test('readSubmission requires the review_submit artifact', () => {
