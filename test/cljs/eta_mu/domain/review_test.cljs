@@ -35,6 +35,41 @@
         (assert (:ok? result) (:error result))
         (recur (:session result))))))
 
+(def quoted-receipt-diff
+  ;; Git-emitted header from the isolated red fixture, with quotePath=true.
+  ;; Native Foresight125/126 evidence uses this same C-octal UTF-8 spelling.
+  (str/join "\n"
+            ["diff --git \"a/.\\316\\267\\316\\274/receipts.edn\" \"b/.\\316\\267\\316\\274/receipts.edn\""
+             "--- \"a/.\\316\\267\\316\\274/receipts.edn\""
+             "+++ \"b/.\\316\\267\\316\\274/receipts.edn\""
+             "@@ -1,2 +1,3 @@"
+             " historical receipt one"
+             " historical receipt two"
+             "+new receipt"]))
+
+(defn- location-candidate [path line]
+  {:id "receipt" :severity "medium" :category "contract"
+   :claim "Synthetic location probe" :path path :line line
+   :body "Location-law fixture, not an adjudicated receipt defect"
+   :confidence 0.9 :blocking false})
+
+(deftest git-quoted-utf8-receipt-index-and-admission
+  (let [session (through-stage (review/begin quoted-receipt-diff) :generate-candidates)
+        canonical ".ημ/receipts.edn"
+        alias "\"b/.\\316\\267\\316\\274/receipts.edn\""
+        admitted (review/propose-finding session (location-candidate canonical 3))]
+    (is (= {canonical #{3}} (:changed-lines session)))
+    (is (:ok? admitted))
+    (is (false? (:ok? (review/propose-finding session (location-candidate alias 3)))))
+    (is (false? (:ok? (review/propose-finding session (location-candidate canonical 2)))))
+    (is (false? (:ok? (review/propose-finding session (location-candidate "absent.edn" 3)))))
+    (when (:ok? admitted)
+      (let [session (through-stage (:session admitted) :adversarial-validate)
+            session (:session (review/classify-finding session "receipt" "confirmed" "Synthetic fixture trace"))
+            result (review/submission (through-stage session :publish) "Synthetic publication boundary")]
+        (is (:ok? result))
+        (is (= [canonical] (mapv :path (get-in result [:envelope :comments]))))))))
+
 (deftest parse-diff-added-lines-indexes-only-added-head-lines
   (let [indexed (review/parse-diff-added-lines sample-diff)]
     (is (= #{11 12} (get indexed "src/example.js")))
