@@ -29,12 +29,24 @@ uuid: "<uuid v4>"
 title: "Imperative title"
 status: incoming        # Promethean initial state
 priority: P1            # P0..P3
-labels: ["area", "3sp"]
+labels: area, 3sp
 created_at: "<ISO-8601>"
 points: 3
 category: audit         # free-form grouping
 ---
 ```
+
+The example shows a CLI-produced card, not mandatory metadata for every
+Markdown input. Hand-authored cards are supported: `uuid:` is canonical identity;
+use comma-separated scalar labels and write scope/acceptance as Markdown.
+Creation metadata and `write-id` are engine provenance when present. Do not
+invent an engine event for a manually authored card. Rheos owns interpretation,
+operational status, comments and transitions; no local validator or alternate
+board command is authorized by this authoring support.
+
+A harness without Rheos may inspect and author content but cannot validate the
+board or mutate its operational state. This distinction follows the user's
+canonical global contract and resolves the repeated restoration-card critique.
 
 Body is markdown. `---` on its own line after the frontmatter toggles
 comment sections (muted in the web UI) — `eta-mu kanban comment` appends

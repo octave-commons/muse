@@ -4,7 +4,7 @@ description: >
   validates candidate defects, and submits its decision through the review
   pipeline tools. It never emits text for anyone to parse.
 mode: primary
-model: opencode/mimo-v2.5-free
+model: opencode/mimo-v2.6-flash-free
 temperature: 0.1
 permission:
   read: allow
@@ -20,7 +20,12 @@ permission:
   review_status: allow
   review_submit: allow
   edit: deny
-  bash: deny
+  # Keep the bash tool registered but unusable. A blanket deny drops the tool
+  # from the request, and OpenCode Zen's free tier then rejects it with
+  # "free tier can only be used from within OpenCode". `true` is a no-op.
+  bash:
+    "*": deny
+    "true": allow
   task: deny
   webfetch: deny
   websearch: deny
