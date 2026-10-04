@@ -17,6 +17,7 @@
     "build:claude": "bash scripts/build-claude-target.sh",
     "test": "shadow-cljs compile test && node target/test/test.cjs",
     "test:build-cold": "node scripts/verify-cold-host-builds.mjs",
+    "test:review-input": "node scripts/verify-full-review-input.mjs",
     "lint": "clj-kondo --lint src/cljs src/clj test/cljs .ημ --fail-level warning"
   }
 }
