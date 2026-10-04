@@ -139,10 +139,20 @@
     :else {:ok? true :session (assoc-in session [:assessed-chunks id] note)
            :chunk-id id :coverage (input-coverage (assoc-in session [:assessed-chunks id] note))}))
 
+(defn- full-input-error [session]
+  (cond
+    (get-in session [:diff-stats :truncated?])
+    "The staged input is a truncated preview. Recover the full immutable diff before publishing."
+
+    (seq (:missing (input-coverage session)))
+    (str "Unassessed full-input chunks remain: " (str/join ", " (:missing (input-coverage session)))
+         ". Read and assess every changed hunk before publishing.")))
+
 (defn record-evidence
   "Record a note for the current stage and advance to the next stage."
   [session stage note]
-  (let [current (:stage session)]
+  (let [current (:stage session)
+        input-error (when (= stage :adversarial-validate) (full-input-error session))]
     (cond
       (not (contains? (set stages) stage))
       (err (str "Unknown stage " stage "; stages are " (str/join ", " (map name stages)) "."))
@@ -153,6 +163,9 @@
 
       (not (non-blank note))
       (err "Evidence note must be a non-empty string.")
+
+      input-error
+      (err input-error)
 
       :else
       (let [next-idx (inc (.indexOf stages current))]
@@ -268,7 +281,8 @@
         confirmed  (filter #(= :confirmed (:status %)) candidates)
         underconfident (filter #(< (:confidence %) confirmation-confidence-threshold) confirmed)
         locations  (frequencies (map (juxt :path :line) confirmed))
-        duplicated (keep (fn [[loc n]] (when (> n 1) loc)) locations)]
+        duplicated (keep (fn [[loc n]] (when (> n 1) loc)) locations)
+        input-error (full-input-error session)]
     (cond
       (not= (:stage session) :publish)
       (err (str "Review cannot be submitted at stage " (name (:stage session))
@@ -277,12 +291,8 @@
       (not (non-blank summary))
       (err "Summary must be a non-empty string; it becomes the GitHub review body.")
 
-      (get-in session [:diff-stats :truncated?])
-      (err "The staged input is a truncated preview. Recover the full immutable diff before submitting.")
-
-      (seq (:missing (input-coverage session)))
-      (err (str "Unassessed full-input chunks remain: " (str/join ", " (:missing (input-coverage session)))
-                ". Read and assess every changed hunk before submitting."))
+      input-error
+      (err input-error)
 
       (seq pending)
       (err (str "Unclassified candidates remain: "

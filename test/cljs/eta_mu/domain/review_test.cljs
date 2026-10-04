@@ -254,7 +254,8 @@
   (let [diff (str sample-diff "\n[eta-mu review] diff truncated at 300000 bytes (was 400000).\n")
         ;; Native failure shape: stage notes exist, but the omitted tail was
         ;; never supplied or assessed. No findings is not full-input review.
-        session (through-stage (review/begin diff) :publish)
+        ;; Forged stage state still cannot bypass submission's defensive guard.
+        session (assoc (through-stage (review/begin diff) :adversarial-validate) :stage :publish)
         result (review/submission session "Only the preview/risk zones were assessed.")]
     (is (false? (:ok? result)))
     (is (not= "APPROVE" (get-in result [:envelope :event])))))
@@ -270,6 +271,47 @@
     (is (false? (:ok? (review/assess-diff-chunk begun 1 "Not actually delivered."))))
     (is (:ok? (review/submission (assess-all publish) "All changed hunks assessed; full input recovered.")))
     (is (= "APPROVE" (get-in (review/submission (assess-all publish) "Complete review.") [:envelope :event])))))
+
+(deftest unassessed-tail-keeps-findings-open-until-input-recovery
+  (let [diff (str "diff --git a/large b/large\n--- a/large\n+++ b/large\n@@ -0,0 +1,300 @@\n"
+                  (apply str (repeat 299 "+prefix\n")) "+tail-risk\n")
+        begun (review/begin diff)
+        prefix (:session (review/read-diff-chunk begun 1))
+        prefix (:session (review/assess-diff-chunk prefix 1 "Assessed the prefix, not the missing tail."))
+        adversarial (reduce (fn [session stage]
+                              (:session (review/record-evidence session stage "Stage evidence without tail coverage.")))
+                            prefix [:deterministic :map-change :generate-candidates])
+        refused (review/record-evidence adversarial :adversarial-validate "Ready to publish the prefix.")]
+    (is (> (count (:diff-chunks begun)) 1))
+    (is (false? (:ok? refused)))
+    (is (re-find #"Unassessed full-input chunks" (or (:error refused) "")))
+    (is (= :adversarial-validate (:stage adversarial)))
+    (is (= 3 (count (:evidence adversarial))))
+    ;; Recovery retains this session so the omitted tail can still supply a
+    ;; finding; no restart or relaxation of the :publish restriction is needed.
+    (let [recovered (assess-all adversarial)
+          proposed (review/propose-finding recovered
+                                          {:id "tail" :severity "high" :category "semantic-regression"
+                                           :claim "Synthetic tail finding" :path "large" :line 300
+                                           :body "The recovered tail contains this synthetic blocking fixture."
+                                           :confidence 0.95 :blocking true})
+          classified (review/classify-finding (:session proposed) "tail" "confirmed" "Recovered tail verified.")
+          advanced (review/record-evidence (:session classified) :adversarial-validate "All pages assessed.")
+          submitted (review/submission (:session advanced) "Recovered tail finding retained.")]
+      (is (:ok? proposed))
+      (is (:ok? classified))
+      (is (:ok? advanced))
+      (is (= :publish (get-in advanced [:session :stage])))
+      (is (= "REQUEST_CHANGES" (get-in submitted [:envelope :event])))
+      (is (= [300] (mapv :line (get-in submitted [:envelope :comments]))))
+      (is (false? (:ok? (review/propose-finding (:session advanced) (location-candidate "large" 300))))))))
+
+(deftest truncated-input-cannot-enter-publish
+  (let [diff (str sample-diff "\n[eta-mu review] diff truncated at 300000 bytes (was 400000).\n")
+        session (through-stage (review/begin diff) :adversarial-validate)
+        result (review/record-evidence session :adversarial-validate "Every supplied preview page assessed.")]
+    (is (false? (:ok? result)))
+    (is (re-find #"truncated preview" (or (:error result) "")))))
 
 (deftest reader-pages-preserve-unicode-and-long-lines
   (let [text (str (apply str (repeat 8191 "x")) "😀ημ" (apply str (repeat 400 "\n")))

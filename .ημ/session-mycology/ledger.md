@@ -24,3 +24,12 @@
   spore: none
   receipt-refs: full-input-repair/preparation
   note: Keep preview and full source distinct; preserve delivery versus assessment, source hashes and historical prefixes. Extend the existing reviewer instead of adding an alternate engine. User hold keeps all source uncommitted; no provider retry or native approval claimed.
+
+- ts: "2026-10-04T00:14:27.593028+00:00"
+  origin: Muse19/native-review-followup
+  p-efficiency: 0.85
+  p-friction: 0.2
+  p-skill-candidate: 0.2
+  spore: none
+  receipt-refs: Muse19/native-review-followup
+  note: Guard the transition that closes candidate admission, retain the submission guard, and verify actual producer-to-compiled-consumer recovery. Candidate commits can qualify together before merge; caller activation waits for both qualified merges. No source installation, provider request or native approval fabricated.

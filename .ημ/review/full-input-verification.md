@@ -88,9 +88,12 @@ Local fixture coverage does not certify native model review or approval.
 The new workflow and Muse profile must be qualified and selected together.
 An old Muse profile lacks the reader tools; an old workflow lacks the required
 full-input manifest. Eta-mu's current default Muse selection remains 05b in
-this uncommitted preparation, so parent must select the qualified new Muse
-commit before hosted qualification of the changed workflow. Existing callers
-remain on b5 until a separately reviewed functional revision update.
+this uncommitted preparation. After committing the corrected Muse source,
+parent selects that immutable commit at all three eta-mu selection sites and
+publishes the workflow candidate for joint native qualification. Muse need
+not merge first: eta-mu's own PR workflow can check out the exact candidate
+commit. Existing callers remain on b5 until both candidates qualify and merge,
+followed by a separately reviewed functional revision update.
 
 Parent owns exact-head hosted checks/reviews, findings settlement, release
 selection and subsequent merge decisions. No paid credits, quota retries,
@@ -98,3 +101,52 @@ provider watcher changes or additional historical repair rounds are requested.
 The existing 20,754-byte receipt prefix has SHA-256
 `d0fd2f0761438833727ceb87dd4361811a1a49cf3c2ca6cd1b5509785ab1c7f2`.
 Historical receipts and board events are preserved byte-for-byte.
+
+## Muse19 native review follow-up
+
+At exact head `1e2e63369c9fccb309e6788641b0d290ac2313aa`, CodeRabbit review
+`5403507228` selected all 15 changed files and posted three findings:
+`4175445588` (P2, retry wording), `4175445594` (P1, paired staging/tool contract),
+and `4175445601` (P1, coverage before entering `:publish`). Manual request
+`5974714381` completed in native reply `5974715275`; aggregate `5974665393`
+contains exact-head reviewed coverage and retains the actionable concerns.
+This is full review evidence, not a passing CodeRabbit verdict.
+
+MiMo review `5403513175`, by `eta-mu-ai[bot]`, formally approved the same head
+and explicitly reports all 15 files and the complete final hunk, with no
+confirmed findings. Artifact `11288510167` from run `37162421833` retains a
+52,968-byte `pr.diff` exactly equal to the full base/head Git diff, SHA-256
+`6b39d0ef14e1e8d376e9cc65a98f2526124a1521a61cda39c3db51b05d3e4159`.
+There is no standalone truncation marker. Its two needs-human observations
+(producer identity binding and marker grammar), test-gap notes and deployment
+caveats remain distinguishable from confirmed defects. Native test, bundle,
+CodeRabbit and the MiMo evidence/review/terminal jobs all passed on that old
+head. Codex quota comment `5974664917` supplies no approval or round credit.
+These records do not qualify the corrected source after a new commit.
+
+The follow-up keeps the existing one-pass engine and candidate restriction.
+The reviewer may retry failed input admission after restoring the input.
+A shared full-input guard rejects the transition to `:publish` as well as
+submission until complete input has been assessed. Rejected transitions leave
+the prior session intact at `:adversarial-validate`, so a recovered tail finding
+can be proposed and classified without restarting.
+
+Actual local RED: 22 tests / 95 assertions, four semantic failures and zero
+errors on the old domain; the cold compiled tool fixture independently failed
+because an unassessed tail entered `:publish`. GREEN: 22 / 95, zero failures or
+errors; the actual eight-tool, 204-page fixture rejects premature publish,
+retains a recovered blocking tail finding in REQUEST_CHANGES, and still
+accepts a separate complete clean generation as APPROVE. Both are synthetic
+envelopes with no native publication. Full compiled suite: 210 tests / 579
+assertions, zero failures/errors and zero compiler warnings; the existing
+Mongo integration test reports unavailable authentication. Lint: zero errors
+and warnings. No new test skips were added.
+
+The executable local pair probe reads the actual eta-mu YAML staging and
+observer-build steps, compiles all 22 tools, feeds the producer's manifest and
+over-300-KB Git input to the compiled consumer, and verifies recovery plus a
+retained Git-quoted Unicode tail finding through publisher validation. It is
+under the repair evidence directory in `muse19-native-followup/`.
+Until `MUSE_SOURCE_SHA` names a clean committed Muse checkout and matches all
+three workflow selections, its output is source-contract evidence only.
+Parent owns source commits, push, native reruns, review settlement and merges.

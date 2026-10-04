@@ -84,9 +84,13 @@ try {
   assert.ok(count > 1);
   await call('review_read_diff_chunk', {id: 1}, ctx);
   await call('review_assess_diff_chunk', {id: 1, note: 'Synthetic assessment of the delivered first page'}, ctx);
-  for (const stage of ['deterministic', 'map-change', 'generate-candidates', 'adversarial-validate']) {
+  for (const stage of ['deterministic', 'map-change', 'generate-candidates']) {
     assert.equal((await call('review_record_evidence', {stage, note: 'Synthetic stage evidence'}, ctx))['ok?'], true);
   }
+  const premature = await call('review_record_evidence',
+    {stage: 'adversarial-validate', note: 'Synthetic attempt before tail assessment'}, ctx);
+  assert.equal(premature['ok?'], false, 'unassessed tail must keep the candidate stage open');
+  assert.equal((await call('review_status', {}, ctx)).stage, 'adversarial-validate');
   assert.equal((await call('review_submit', {summary: 'Prefix alone is insufficient'}, ctx))['ok?'], false);
   let recovered = '';
   for (let id = 1; id <= count; id++) {
@@ -97,6 +101,31 @@ try {
     assert.equal((await call('review_assess_diff_chunk', {id, note: `Synthetic changed-hunk assessment of page ${id}`}, ctx))['ok?'], true);
   }
   assert.equal(recovered, full.toString('utf8'), 'all reader pages must preserve the omitted Unicode tail');
+  assert.equal((await call('review_propose_finding', {id: 'tail', severity: 'high',
+    category: 'semantic-regression', claim: 'Synthetic recovered-tail candidate', path: 'large', line: 26001,
+    body: 'Synthetic blocking fixture in the recovered Unicode tail', confidence: 0.95, blocking: true}, ctx))['ok?'], true);
+  assert.equal((await call('review_classify_finding',
+    {id: 'tail', status: 'confirmed', rationale: 'Synthetic recovered-tail fixture verified'}, ctx))['ok?'], true);
+  assert.equal((await call('review_record_evidence',
+    {stage: 'adversarial-validate', note: 'All pages assessed; tail finding classified'}, ctx))['ok?'], true);
+  const tailSubmission = await call('review_submit', {summary: 'Complete synthetic review retains the tail finding'}, ctx);
+  assert.equal(tailSubmission['ok?'], true);
+  assert.equal(tailSubmission.event, 'REQUEST_CHANGES');
+  const tailEnvelope = JSON.parse(fs.readFileSync(path.join(evidence, 'submission.json'), 'utf8'));
+  assert.deepEqual(tailEnvelope.comments.map(comment => comment.line), [26001]);
+  assert.equal((await call('review_propose_finding', {id: 'late', severity: 'low', category: 'test-gap',
+    claim: 'Late synthetic candidate', path: 'large', line: 26001, body: 'Must remain forbidden at publish',
+    confidence: 0.9, blocking: false}, ctx))['ok?'], false);
+  // A separate complete, clean generation retains the original approval path.
+  assert.equal((await call('review_begin', {}, ctx))['ok?'], true);
+  for (let id = 1; id <= count; id++) {
+    assert.equal((await call('review_read_diff_chunk', {id}, ctx))['ok?'], true);
+    assert.equal((await call('review_assess_diff_chunk',
+      {id, note: `Synthetic changed-hunk assessment of page ${id}`}, ctx))['ok?'], true);
+  }
+  for (const stage of ['deterministic', 'map-change', 'generate-candidates', 'adversarial-validate']) {
+    assert.equal((await call('review_record_evidence', {stage, note: 'Complete clean fixture'}, ctx))['ok?'], true);
+  }
   const submitted = await call('review_submit', {summary: 'Complete synthetic input fixture; no native review'}, ctx);
   assert.equal(submitted['ok?'], true);
   assert.equal(submitted.event, 'APPROVE');
@@ -113,5 +142,6 @@ try {
   assert.equal(fs.existsSync(path.join(evidence, 'submission.json')), false,
     'a failed new generation must not retain the previous publishable artifact');
   console.log(JSON.stringify({result: 'pass', tools: tools.length, pages: count,
-    missing_tail_refused: true, recovered_full_input_accepted: true, native_review: false}));
+    missing_tail_refused: true, premature_publish_refused: true, recovered_tail_finding_retained: true,
+    recovered_full_input_accepted: true, native_review: false}));
 } finally {fs.rmSync(fixture, {recursive: true, force: true});}

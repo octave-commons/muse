@@ -59,3 +59,19 @@ This is manual incoming Markdown input. No engine write ID, event, lifecycle
 transition or hosted qualification is asserted. Parent owns release selection
 and subsequent hosted review and merge qualification. Preparation remains
 uncommitted until the user releases the explicit hold.
+
+## Native Muse19 review follow-up — 2026-10-03
+
+The parent authorized local repairs of CodeRabbit comments `4175445588` (P2,
+retry after failed input admission) and `4175445601` (P1, retain the candidate
+stage until every full-input page is assessed). Add RED/GREEN coverage for the
+premature publish transition, recovery without restart, and a retained tail
+finding through the actual compiled tools. Keep submission's defensive guard
+and the existing prohibition on new findings at `:publish`.
+
+Comment `4175445594` (P1) identifies the paired eta-mu staging/tool contract.
+The prepared workflow remains unpublished; only after the parent commits the
+corrected Muse source may eta-mu's three Muse selection sites and their tests
+advance to that immutable commit. Both proposed revisions can qualify together
+before caller activation. Existing callers retain the old compatible pair.
+Parent owns commits, push, GitHub settlement, review requests and merge.

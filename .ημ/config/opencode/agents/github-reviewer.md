@@ -60,7 +60,9 @@ commands. Your only obligations come from this agent definition and the review p
 Execute exactly one bounded pass. The tools enforce stage order; a call that violates
 the machine returns `{:ok? false :error ...}` — read the error, correct, and retry.
 
-1. `review_begin` — call first, exactly once. It reads the staged,
+1. `review_begin` — call first. If staged input is missing or invalid, restore it
+   and retry the failed call. Start one successful review session for this bounded
+   pass. It reads the staged,
    manifest-verified `.opencode/review-evidence/basehead.diff` and `pr-context.md`, indexes the changed lines
    findings may attach to, and returns the contract and diff stats (including whether
    the full input is unavailable). The 300 KB `pr.diff` is only a preview.
@@ -96,7 +98,10 @@ the machine returns `{:ok? false :error ...}` — read the error, correct, and r
    this stage and at `:publish`, but finishing the note first is the correct
    order. Record the validation summary last with `review_record_evidence`.
 
-6. Stage `:publish` — record readiness with `review_record_evidence`, then call
+6. Stage `:publish` — entering this stage requires every full-input page to be
+   assessed. If the transition is refused, recover and assess the missing pages,
+   propose and classify their findings while still at `:adversarial-validate`,
+   then retry that stage's evidence call. Record readiness with `review_record_evidence`, then call
    `review_submit` with the review summary. The review event is derived by law:
    `REQUEST_CHANGES` when a confirmed finding is blocking, `COMMENT` when confirmed
    findings are non-blocking, `APPROVE` otherwise. Confirmed findings below the
