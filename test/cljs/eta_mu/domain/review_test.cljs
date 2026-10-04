@@ -272,6 +272,15 @@
     (is (:ok? (review/submission (assess-all publish) "All changed hunks assessed; full input recovered.")))
     (is (= "APPROVE" (get-in (review/submission (assess-all publish) "Complete review.") [:envelope :event])))))
 
+(deftest invalid-page-or-empty-assessment-cannot-supply-coverage
+  (let [begun (review/begin sample-diff)
+        delivered (:session (review/read-diff-chunk begun 1))]
+    (is (false? (:ok? (review/read-diff-chunk begun (inc (count (:diff-chunks begun)))))))
+    (is (false? (:ok? (review/assess-diff-chunk begun 99 "Unknown page."))))
+    (doseq [note ["" " \n\t"]]
+      (is (false? (:ok? (review/assess-diff-chunk delivered 1 note)))))
+    (is (= 0 (:assessed (review/input-coverage delivered))))))
+
 (deftest unassessed-tail-keeps-findings-open-until-input-recovery
   (let [diff (str "diff --git a/large b/large\n--- a/large\n+++ b/large\n@@ -0,0 +1,300 @@\n"
                   (apply str (repeat 299 "+prefix\n")) "+tail-risk\n")

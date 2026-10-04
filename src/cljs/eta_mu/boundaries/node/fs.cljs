@@ -48,7 +48,7 @@
   (let [manifest (js->clj (js/JSON.parse (.readFileSync fs (join dir "input-manifest.json") "utf8"))
                          :keywordize-keys true)
         full (:full_diff manifest)
-        sha? #(and (string? %) (re-matches #"(?:[0-9a-f]{40}|[0-9a-f]{64})" %))]
+        sha? #(and (string? %) (re-matches #"^(?:[0-9a-f]{40}|[0-9a-f]{64})$" %))]
     (when-not (and (= "open-hax.review-input/v1" (:schema manifest))
                    (= "basehead.diff" (:path full))
                    (sha? (:base_sha manifest)) (sha? (:head_sha manifest)) (sha? (:diff_base_sha manifest))

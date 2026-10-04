@@ -56,3 +56,17 @@
   (with-input (js/Buffer.from #js [255])
     (fn [dir _ _ _]
       (is (thrown? js/Error (bfs/read-review-input dir))))))
+
+(deftest manifest-supports-complete-commit-identities
+  (with-input (js/Buffer.from "+complete input\n" "utf8")
+    (fn [dir _ manifest-path manifest]
+      (let [sha256-id (apply str (repeat 64 "a"))
+            complete (assoc manifest :base_sha sha256-id :head_sha sha256-id :diff_base_sha sha256-id)]
+        (bfs/write-text! manifest-path (js/JSON.stringify (clj->js complete)))
+        (is (= complete (:manifest (bfs/read-review-input dir))))
+        (doseq [invalid [(apply str (repeat 41 "a"))
+                         (apply str (repeat 63 "a"))
+                         (apply str (repeat 65 "a"))
+                         (str sha256-id "z")]]
+          (bfs/write-text! manifest-path (js/JSON.stringify (clj->js (assoc complete :head_sha invalid))))
+          (is (thrown-with-msg? js/Error #"Invalid full-review input manifest" (bfs/read-review-input dir))))))))

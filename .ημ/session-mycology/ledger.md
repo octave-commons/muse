@@ -33,3 +33,12 @@
   spore: none
   receipt-refs: Muse19/native-review-followup
   note: Guard the transition that closes candidate admission, retain the submission guard, and verify actual producer-to-compiled-consumer recovery. Candidate commits can qualify together before merge; caller activation waits for both qualified merges. No source installation, provider request or native approval fabricated.
+
+- ts: "2026-10-04T01:02:58.474042+00:00"
+  origin: Muse19/native-complete-identity-observation
+  p-efficiency: 0.86
+  p-friction: 0.24
+  p-skill-candidate: 0.34
+  spore: none
+  receipt-refs: Muse19 native complete-identity observation
+  note: Verify a reviewer observation against the compiled host behavior; complete identity alternatives need complete anchoring under JavaScript re-matches. Keep local tests separate from native approval and jointly qualify producer integrity.
