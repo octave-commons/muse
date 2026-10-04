@@ -55,7 +55,7 @@
 
 (deftool begin
   {:id          :review/begin
-   :description "Begin an evidence-first pull-request review. Verifies input-manifest.json and the complete basehead.diff in .opencode/review-evidence, indexes changed lines and returns the bounded-reader contract. Call this first, exactly once."
+   :description "Begin an evidence-first pull-request review. Verifies input-manifest.json and the complete basehead.diff in .opencode/review-evidence, indexes changed lines and returns the bounded-reader contract. Call this first; restore the required input and retry if admission fails. After successful admission, complete one bounded review pass."
    :args        [:map]
    :tags        #{:review}}
   [_params ctx]

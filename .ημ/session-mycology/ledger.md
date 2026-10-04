@@ -42,3 +42,12 @@
   spore: none
   receipt-refs: Muse19 native complete-identity observation
   note: Verify a reviewer observation against the compiled host behavior; complete identity alternatives need complete anchoring under JavaScript re-matches. Keep local tests separate from native approval and jointly qualify producer integrity.
+
+- ts: "2026-10-04T01:52:19.664118+00:00"
+  origin: Muse19/surrogate-boundary-native-observation
+  p-efficiency: 0.9
+  p-friction: 0.2
+  p-skill-candidate: 0.15
+  spore: none
+  receipt-refs: Muse19/surrogate-boundary-native-observation
+  note: Verify numeric limits and baseline behavior before repairing a native claim. Decimal56319 already is the high-surrogate maximum0xDBFF. Independent per-page UTF8 encoding catches a widened-bound mutation that concatenation conceals. Keep mutation RED distinct from actual baseline GREEN; preserve one bounded successful pass while allowing failed input admission recovery. No promotion or global skill write.

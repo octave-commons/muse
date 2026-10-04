@@ -84,8 +84,8 @@
       (if (= start size) chunks
         (let [bound (min size (+ start 8192))
               bound (if (and (< bound size)
-                             (<= 55296 #?(:clj (int (.charAt ^String text (dec bound)))
-                                          :cljs (.charCodeAt text (dec bound))) 56319))
+                             (<= 0xD800 #?(:clj (int (.charAt ^String text (dec bound)))
+                                           :cljs (.charCodeAt text (dec bound))) 0xDBFF))
                       (dec bound) bound)
               page (subs text start bound)
               end (loop [at 0 lines 0]

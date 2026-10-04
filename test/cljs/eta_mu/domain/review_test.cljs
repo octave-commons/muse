@@ -323,8 +323,18 @@
     (is (re-find #"truncated preview" (or (:error result) "")))))
 
 (deftest reader-pages-preserve-unicode-and-long-lines
-  (let [text (str (apply str (repeat 8191 "x")) "😀ημ" (apply str (repeat 400 "\n")))
-        chunks (review/diff-chunks text)]
-    (is (= text (apply str (map :text chunks))))
-    (is (every? #(<= (count (:text %)) 8192) chunks))
-    (is (every? #(<= (count (re-seq #"\n" (:text %))) 128) chunks))))
+  (doseq [padding [8190 8191]
+          astral ["😀" (js/String.fromCodePoint 0x10FFFF)]]
+    ;; Low half at8191 must remain in the first page; high half at8191
+    ;; must move with its low half to the next page. Concatenation alone
+    ;; conceals a split pair, so also encode every page independently.
+    (let [text (str (apply str (repeat padding "x")) astral "ημ" (apply str (repeat 400 "\n")))
+          chunks (review/diff-chunks text)
+          encoder (js/TextEncoder.)]
+      (is (= text (apply str (map :text chunks))))
+      (is (= (if (= padding 8190) 8192 8191) (:end (first chunks))))
+      (is (every? #(<= (count (:text %)) 8192) chunks))
+      (is (every? #(<= (count (re-seq #"\n" (:text %))) 128) chunks))
+      (is (= (vec (.encode encoder text))
+             (vec (mapcat #(vec (.encode encoder (:text %))) chunks)))
+          (str "Independent page UTF-8 encoding changed input at alignment " padding)))))
