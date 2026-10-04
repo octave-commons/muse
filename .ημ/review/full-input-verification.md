@@ -153,21 +153,21 @@ Parent owns source commits, push, native reruns, review settlement and merges.
 
 ## Current native MiMo observation follow-up
 
-Native MiMo review `5403657875` approved exact source `7a8788d` after all15
-changed files, while preserving two needs-human observations. The64-character
+Native MiMo review `5403657875` approved exact source `7a8788d` after all 15
+changed files, while preserving two needs-human observations. The 64-character
 commit-identity case was reproduced against the actual compiled filesystem
-boundary: RED211tests584assertions, one manifest-rejection error. JavaScript
-regular-expression alternation selected the40-character prefix before
+boundary: RED: 211 tests / 584 assertions, one manifest-rejection error. JavaScript
+regular-expression alternation selected the 40-character prefix before
 `re-matches` checked complete equality. Anchoring the full alternative repairs
-this contract without changing accepted identity lengths. GREEN212tests589
+this contract without changing accepted identity lengths. GREEN: 212 tests / 589
 assertions, zero failures/errors; lint zero errors/warnings. The new boundary
-fixture accepts complete64-hex identities and refuses invalid lengths/suffixes.
+fixture accepts complete 64-hex identities and refuses invalid lengths/suffixes.
 Additional domain checks show unknown pages and blank assessment notes supply
 no coverage. The existing marker-mention fixture remains non-truncated, and
-actual eta workflow staging emits the anchored marker grammar at line276.
+actual eta workflow staging emits the anchored marker grammar at line 276.
 
-Native Eta340 `a791f29` compiled the22-tool profile at pinned Muse7a
-(job111329136270), but CodeRabbit finding4175602381 demonstrates that a
+Native Eta340 `a791f29` compiled the 22-tool profile at pinned Muse 7a
+(job 111329136270), but CodeRabbit finding 4175602381 demonstrates that a
 PR-executed deterministic gate can replace both full diff and manifest.
 Independent clean-job Git reconstruction/comparison is being prepared; a
 self-consistent producer artifact alone is not authority. No joint native

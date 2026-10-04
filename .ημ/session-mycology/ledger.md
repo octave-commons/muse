@@ -51,3 +51,12 @@
   spore: none
   receipt-refs: Muse19/surrogate-boundary-native-observation
   note: Verify numeric limits and baseline behavior before repairing a native claim. Decimal56319 already is the high-surrogate maximum0xDBFF. Independent per-page UTF8 encoding catches a widened-bound mutation that concatenation conceals. Keep mutation RED distinct from actual baseline GREEN; preserve one bounded successful pass while allowing failed input admission recovery. No promotion or global skill write.
+
+- ts: "2026-10-04T02:36:08.512369+00:00"
+  origin: Muse19/verification-note-spacing
+  p-efficiency: 0.98
+  p-friction: 0.04
+  p-skill-candidate: 0.05
+  spore: none
+  receipt-refs: Muse19/verification-note-spacing
+  note: Preserve original numeric evidence and immutable receipt bytes while improving the editable narrative. Keep native current-head approval separate from a following documentation-only push.
