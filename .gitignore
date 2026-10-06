@@ -40,6 +40,15 @@ src/gen/
 pseudo/
 .opencode/opencode.json
 .mcp.json
+.muse-host-targets.lock*
+*.muse-host-targets.lock*
+.muse-host-targets-producer-id
+.muse-host-targets-producer-id.*.tmp
+.muse-host-targets-transaction.json
+*.muse-host-targets-transaction.json
+.muse-host-targets-owners.json
+*.muse-host-targets-owners.json
+.muse-host-targets.publish.*
 
 # Generated Claude activation artifacts (npm run build / build:claude)
 .claude/settings.json

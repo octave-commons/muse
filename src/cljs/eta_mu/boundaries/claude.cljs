@@ -168,8 +168,8 @@
 ;; stale/empty adapter -- shadow-cljs's own final write of this target's
 ;; compiled output does not appear to precede that stage's hooks running.
 ;; This runs instead as a second, separate `node` invocation *after*
-;; `shadow-cljs release claude-server` has fully exited (see
-;; scripts/build-claude-target.sh), against this exact process's own,
+;; `scripts/build-host-targets.sh claude-server` has completed Shadow's release
+;; phase (see scripts/build-host-targets.sh), against this exact process's own,
 ;; definitely-complete `adapter` -- no cross-process ordering assumption
 ;; needed.
 ;; ---------------------------------------------------------------------------

@@ -15,6 +15,8 @@ npm test
 npm run lint
 ```
 
+The npm host commands delegate to `scripts/build-host-targets.sh`, which generates each selected entry namespace before starting a fresh Shadow release process. Use `scripts/build-host-targets.sh all` for the supported combined OpenCode, MCP, and Claude build. The wrapper preserves unrelated MCP registrations, coordinates publication under its destination lock, and emits Claude hook configuration after the release completes.
+
 The build compiles all four supported targets:
 
 | Target | Artifact |

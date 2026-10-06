@@ -5,8 +5,8 @@
 
      :emit  {:path \"~/.config/opencode/opencode.jsonc\"}  → render the
             merged :settings fragments to that path
-     :build [\"shadow-cljs\" \"release\" \"opencode-plugin\"] → run the
-            command in the repo root
+     :build [\"bash\" \"scripts/build-host-targets.sh\" \"opencode-plugin\"]
+            → run the generator-first command in the repo root
 
    Effect orchestration only: decisions live in eta-mu.domain.daemon,
    rendering in eta-mu.opencode.settings, host access in boundaries."

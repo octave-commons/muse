@@ -35,12 +35,12 @@
              :root {:emit {:path "~/.config/opencode/opencode.jsonc"}}}))))
   (testing "build execs in the repo root"
     (is (= [{:action :exec
-             :command ["shadow-cljs" "release" "opencode-plugin"]
+             :command ["bash" "scripts/build-host-targets.sh" "opencode-plugin"]
              :cwd "/home/err/spaces/muse"}]
            (daemon/plan-actions
             {:home "/home/err"
              :eta-mu-dir "/home/err/spaces/muse/.ημ"
-             :root {:build ["shadow-cljs" "release" "opencode-plugin"]}}))))
+             :root {:build ["bash" "scripts/build-host-targets.sh" "opencode-plugin"]}}))))
   (testing "no opencode config → no actions"
     (is (= [] (daemon/plan-actions
                {:home "/home/err" :eta-mu-dir "/x/.ημ" :root nil})))))
