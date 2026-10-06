@@ -4,10 +4,62 @@ import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import fs from 'node:fs';
-import {createRequire} from 'node:module';
+import {createRequire, syncBuiltinESMExports} from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
+
+Error.stackTraceLimit = 50;
+
+// A recovery is a different process, never just a new host session id.
+if (process.argv[2] === '--fresh-invocation') {
+  const [bundle, evidence, scenario] = process.argv.slice(3);
+  const {EtaMuActorsPlugin} = await import(pathToFileURL(bundle));
+  const {tool} = await EtaMuActorsPlugin({});
+  const ctx = {sessionID: 'fresh-child', directory: path.dirname(path.dirname(evidence))};
+  const call = async (name, args) => JSON.parse(await tool[name].execute(args, ctx));
+  const begin = await call('review_begin', {});
+  assert.equal(begin['ok?'], true);
+  const count = begin['input-coverage'].chunks;
+  assert.equal((await call('review_read_diff_chunk', {id: 1}))['ok?'], true);
+  assert.equal((await call('review_read_diff_chunk', {id: 1}))['ok?'], true,
+    'rereads before assessment remain permitted');
+  for (let id = 1; id <= count; id++) {
+    if (id !== 1) assert.equal((await call('review_read_diff_chunk', {id}))['ok?'], true);
+    assert.equal((await call('review_assess_diff_chunk',
+      {id, note: `Synthetic changed-hunk assessment of page ${id}`}))['ok?'], true);
+  }
+  for (const stage of ['deterministic', 'map-change', 'generate-candidates', 'adversarial-validate']) {
+    assert.equal((await call('review_record_evidence', {stage, note: 'Complete fresh child fixture'}))['ok?'], true);
+  }
+  assert.equal((await call('review_submit', {summary: 'Complete synthetic child; no native review'}))['ok?'], true);
+  const submission = path.join(evidence, 'submission.json');
+  const envelope = JSON.parse(fs.readFileSync(submission, 'utf8'));
+  assert.equal(envelope.event, 'APPROVE');
+  assert.equal(envelope['input-coverage'].assessed, count);
+  if (scenario === 'cleanup') {
+    assert.equal((await call('review_read_diff_chunk', {id: 1}))['restart-required?'], true);
+    assert.equal(fs.existsSync(submission), false);
+    assert.equal((await call('review_begin', {}))['ok?'], false);
+    assert.equal((await call('review_submit', {summary: 'No stale reuse'}))['ok?'], false);
+  }
+  if (scenario === 'cleanup-fault') {
+    const unlink = fs.unlinkSync;
+    fs.unlinkSync = filename => {
+      if (filename === submission) throw Object.assign(new Error('Synthetic owned unlink failure'), {code: 'EACCES'});
+      return unlink(filename);
+    };
+    syncBuiltinESMExports();
+    try { await assert.rejects(() => call('review_read_diff_chunk', {id: 1}), /Synthetic owned unlink failure/); }
+    finally { fs.unlinkSync = unlink; syncBuiltinESMExports(); }
+    assert.equal(fs.existsSync(submission), true, 'retain the actual surviving artifact in this fault fixture');
+    assert.equal((await call('review_status', {}))['restart-required?'], true);
+    assert.equal((await call('review_submit', {summary: 'Surviving file grants no new submission'}))['ok?'], false);
+  }
+  console.log(JSON.stringify({result: 'pass', pid: process.pid, scenario, envelope,
+    surviving_artifact: fs.existsSync(submission)}));
+  process.exit(0);
+}
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'muse-full-review-'));
@@ -60,7 +112,10 @@ try {
   const config = JSON.parse(fs.readFileSync(path.join(checkout, '.opencode/opencode.json'), 'utf8'));
   assert.deepEqual(Object.keys(config.permission).sort(), [...tools].sort());
   assert.ok(Object.values(config.permission).every(value => value === 'allow'));
-  const call = async (name, args, ctx) => JSON.parse(await tool[name].execute(args, ctx));
+  const call = async (name, args, ctx) => {
+    try { return JSON.parse(await tool[name].execute(args, ctx)); }
+    catch (error) { error.message = `${name} at ${ctx?.directory}: ${error.message}`; throw error; }
+  };
   const evidence = path.join(fixture, 'consumer/.opencode/review-evidence');
   fs.mkdirSync(evidence, {recursive: true});
   const ctx = {sessionID: 'full-input-verification', directory: path.dirname(path.dirname(evidence))};
@@ -82,7 +137,7 @@ try {
   assert.deepEqual(begin['input-source'], manifest);
   const count = begin['input-coverage'].chunks;
   assert.ok(count > 1);
-  await call('review_read_diff_chunk', {id: 1}, ctx);
+  const prefix = await call('review_read_diff_chunk', {id: 1}, ctx);
   await call('review_assess_diff_chunk', {id: 1, note: 'Synthetic assessment of the delivered first page'}, ctx);
   for (const stage of ['deterministic', 'map-change', 'generate-candidates']) {
     assert.equal((await call('review_record_evidence', {stage, note: 'Synthetic stage evidence'}, ctx))['ok?'], true);
@@ -92,8 +147,8 @@ try {
   assert.equal(premature['ok?'], false, 'unassessed tail must keep the candidate stage open');
   assert.equal((await call('review_status', {}, ctx)).stage, 'adversarial-validate');
   assert.equal((await call('review_submit', {summary: 'Prefix alone is insufficient'}, ctx))['ok?'], false);
-  let recovered = '';
-  for (let id = 1; id <= count; id++) {
+  let recovered = prefix.chunk.text;
+  for (let id = 2; id <= count; id++) {
     const page = await call('review_read_diff_chunk', {id}, ctx);
     assert.equal(page['ok?'], true);
     assert.ok(page.chunk.text.length <= 8192);
@@ -116,32 +171,74 @@ try {
   assert.equal((await call('review_propose_finding', {id: 'late', severity: 'low', category: 'test-gap',
     claim: 'Late synthetic candidate', path: 'large', line: 26001, body: 'Must remain forbidden at publish',
     confidence: 0.9, blocking: false}, ctx))['ok?'], false);
-  // A separate complete, clean generation retains the original approval path.
-  assert.equal((await call('review_begin', {}, ctx))['ok?'], true);
-  for (let id = 1; id <= count; id++) {
-    assert.equal((await call('review_read_diff_chunk', {id}, ctx))['ok?'], true);
-    assert.equal((await call('review_assess_diff_chunk',
-      {id, note: `Synthetic changed-hunk assessment of page ${id}`}, ctx))['ok?'], true);
-  }
-  for (const stage of ['deterministic', 'map-change', 'generate-candidates', 'adversarial-validate']) {
-    assert.equal((await call('review_record_evidence', {stage, note: 'Complete clean fixture'}, ctx))['ok?'], true);
-  }
-  const submitted = await call('review_submit', {summary: 'Complete synthetic input fixture; no native review'}, ctx);
-  assert.equal(submitted['ok?'], true);
-  assert.equal(submitted.event, 'APPROVE');
-  const envelope = JSON.parse(fs.readFileSync(path.join(evidence, 'submission.json'), 'utf8'));
-  assert.equal(envelope['input-coverage'].assessed, count);
+  // An admitted invocation cannot discard its healthy prior assessment history.
+  const refusedRestart = await call('review_begin', {}, ctx);
+  assert.equal(refusedRestart['ok?'], false);
+  assert.equal(refusedRestart['restart-required?'], true);
+  assert.equal((await call('review_status', {}, ctx))['restart-required?'], true);
+  assert.equal((await call('review_submit', {summary: 'No reuse after readmission'}, ctx))['ok?'], false);
+  assert.equal(fs.existsSync(path.join(evidence, 'submission.json')), false);
+  const switched = {...ctx, sessionID: 'different-host-session'};
+  assert.equal((await call('review_begin', {}, switched))['ok?'], false,
+    'host session id cannot erase this process and evidence directory history');
+  assert.equal((await call('review_submit', {summary: 'No host-id bypass'}, switched))['ok?'], false);
+
+  const stageInput = name => {
+    const destination = path.join(fixture, name, '.opencode/review-evidence');
+    fs.mkdirSync(destination, {recursive: true});
+    fs.writeFileSync(path.join(destination, 'basehead.diff'), full);
+    fs.writeFileSync(path.join(destination, 'input-manifest.json'), JSON.stringify(manifest));
+    return destination;
+  };
+  const freshProcess = (destination, scenario) => {
+    const result = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--fresh-invocation',
+      bundle, destination, scenario], {encoding: 'utf8', timeout: 60000, maxBuffer: 8 * 1024 * 1024});
+    assert.equal(result.status, 0, result.error?.message || result.stderr);
+    const payload = JSON.parse(result.stdout.trim().split('\n').at(-1));
+    assert.notEqual(payload.pid, process.pid, 'a fresh invocation is an actual separate process');
+    return payload;
+  };
+  const clean = freshProcess(stageInput('clean-consumer'), 'approval');
+  const envelope = clean.envelope;
   assert.deepEqual(envelope['input-source'], manifest);
   assert.equal(envelope['input-assessments'].length, count);
   assert.ok(envelope['input-assessments'].every(page => page.note.includes('changed-hunk assessment')));
   createRequire(import.meta.url)(path.join(checkout, '.ημ/review/publish-opencode-review.cjs'))
     .validateEnvelope(envelope, new Map());
-  fs.writeFileSync(input, full.subarray(0, 300000));
-  assert.equal((await call('review_begin', {}, ctx))['ok?'], false);
-  assert.equal((await call('review_submit', {summary: 'No reuse of the prior complete session'}, ctx))['ok?'], false);
-  assert.equal(fs.existsSync(path.join(evidence, 'submission.json')), false,
-    'a failed new generation must not retain the previous publishable artifact');
+
+  // A stale chronology is an invocation failure, not a new assessment generation.
+  const staleEvidence = stageInput('stale-consumer');
+  const staleCtx = {sessionID: 'stale-assessment-verification',
+    directory: path.dirname(path.dirname(staleEvidence))};
+  assert.equal((await call('review_begin', {}, staleCtx))['ok?'], true);
+  assert.equal((await call('review_read_diff_chunk', {id: 1}, staleCtx))['ok?'], true);
+  assert.equal((await call('review_assess_diff_chunk',
+    {id: 1, note: 'Synthetic assessment before a later reread'}, staleCtx))['ok?'], true);
+  const reread = await call('review_read_diff_chunk', {id: 1}, staleCtx);
+  assert.equal(reread['ok?'], true, 'the reread remains an actual delivery');
+  assert.equal(reread.chunk.text, prefix.chunk.text);
+  assert.equal(reread['restart-required?'], true, 'earlier assessment cannot follow the last read');
+  const stale = await call('review_status', {}, staleCtx);
+  assert.equal(stale['restart-required?'], true);
+  assert.deepEqual(stale['invalidated-chunks'], [1]);
+  assert.equal(stale['input-coverage'].assessed, 0);
+  assert.equal((await call('review_assess_diff_chunk',
+    {id: 1, note: 'Synthetic reassessment cannot erase an earlier call'}, staleCtx))['ok?'], false);
+  assert.equal((await call('review_begin', {}, {...staleCtx, sessionID: 'host-id-bypass'}))['ok?'], false);
+  assert.equal((await call('review_status', {}, staleCtx))['restart-required?'], true);
+  assert.equal((await call('review_submit', {summary: 'Stale input must not approve'}, staleCtx))['ok?'], false);
+  assert.equal(fs.existsSync(path.join(staleEvidence, 'submission.json')), false);
+
+  // Reuse of the same evidence directory succeeds only in an actual fresh process.
+  const recoveredChild = freshProcess(staleEvidence, 'cleanup');
+  assert.equal(recoveredChild.surviving_artifact, false);
+  const faultChild = freshProcess(stageInput('cleanup-fault-consumer'), 'cleanup-fault');
+  assert.equal(faultChild.surviving_artifact, true,
+    'filesystem cleanup failure is a receiver-verification obligation, never assumed absent');
   console.log(JSON.stringify({result: 'pass', tools: tools.length, pages: count,
     missing_tail_refused: true, premature_publish_refused: true, recovered_tail_finding_retained: true,
-    recovered_full_input_accepted: true, native_review: false}));
+    recovered_full_input_accepted: true, stale_chronology_refused: true,
+    same_session_reset_refused: true, host_id_reset_refused: true, healthy_readmission_refused: true,
+    stale_submission_removed: true, fresh_invocation_accepted: true, cleanup_fault_artifact_observed: true,
+    native_review: false}));
 } finally {fs.rmSync(fixture, {recursive: true, force: true});}

@@ -75,3 +75,44 @@ corrected Muse source may eta-mu's three Muse selection sites and their tests
 advance to that immutable commit. Both proposed revisions can qualify together
 before caller activation. Existing callers retain the old compatible pair.
 Parent owns commits, push, GitHub settlement, review requests and merge.
+
+## Recover stale assessment chronology — 2026-10-06
+
+The authorized workflow restoration exposed native Proxx452 review5434690539:
+all hosted jobs succeeded and an approval was published, but seventeen pages
+were reread after their assessments. The literal retained last-read-before-
+assessment audit fails; later reassessment cannot erase that earlier trace.
+The full input also contains29 changed files while the added-lines index
+reported28 because one file is deletion-only. The native review remains failed
+independent qualification and is not repeated or credited.
+
+Repair the existing pure review state and compiled tools so any reread of an
+assessed page permanently invalidates that invocation, removes its publishable
+coverage, prevents a same-session restart from hiding the failure and removes
+a prior owned submission if one exists. A fresh process may make the single
+bounded recovery already supported by the qualified eta-mu runner. Repeated
+reads before assessment and complete recovery of previously unassessed tail
+pages remain permitted. Report all serialized Git diff files, preserving the
+separate added-lines finding index.
+
+Acceptance: reproduce the precise failures on unchanged reviewed Muse19 code;
+pass meaningful pure and actual compiled-tool controls with the candidate;
+retain every old test definition and historical receipt byte; run appropriate
+tests and zero-warning lint. Existing timestamp, assessment, stage, identity,
+quorum and publication laws remain required. This manual card-content addition
+asserts no Rheos transition, hosted result, independent agreement or adoption.
+
+The receiving boundary also needs the complete actual host call history. Add
+portable invocation law and a compiled CJS adapter that prepare canonical page
+geometry from verified full input, reject irreversible last-read violations,
+require five actual successful stage calls and bind the submit call to the
+unchanged artifact. The paired eta-mu supervisor and final Git validation consume
+this same source; they do not implement another review state machine. Actual
+file-deletion failure may leave a prior artifact, so artifact deletion alone
+cannot establish eligibility. Unknown or malformed traces and host tool errors
+remain unestablished. Typed healthy omission and successful stale-read evidence
+may use the existing shared two-invocation bound, never a third attempt.
+
+Only fresh full native qualification and normal protected merges of both source
+repairs permit caller activation. Local compiled and transport fixture results
+provide no native agreement, approval, completed round or source adoption.

@@ -60,3 +60,30 @@
   spore: none
   receipt-refs: Muse19/verification-note-spacing
   note: Preserve original numeric evidence and immutable receipt bytes while improving the editable narrative. Keep native current-head approval separate from a following documentation-only push.
+
+- ts: "2026-10-06T22:56:22.079Z"
+  origin: Muse stale assessment and invocation validation
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: Muse stale assessment and actual invocation integrity validation
+  note: Bind actual host history and unchanged artifact bytes rather than trusting cleanup or a parseable submission. Preserve failed native qualification and all old prefixes; unknown traces supply no recovery credit. Local compiler/test-harness diagnostics remain distinct from provider or source defects. No promotion.
+
+- ts: "2026-10-06T22:56:52.705Z"
+  origin: Muse local reflection timestamp correction
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: Muse local reflection timestamp correction
+  note: The preceding reflection timestamp is the literal expression (:ts record), an owned append-writer diagnostic. This new entry supplies the actual timestamp without editing any prior entry. Verification receipt, compiled test results and native qualification limitations remain unchanged; no promotion.
+
+- ts: "2026-10-06T23:45:04.781Z"
+  origin: Final compiled invocation and stale-session repair
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: Final independently inspected compiled invocation and stale-session repair
+  note: Verify optimized exports and the actual coupled supervisor before publication. Keep literal failed synthetic expectations distinct from a supported completion boundary; preserve strict LAST and stage guards. Retain the unpublished reflection format diagnostic while preserving every historical receipt and pre-task reflection byte. Native qualification remains separate. No promotion.

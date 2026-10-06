@@ -69,6 +69,13 @@ the machine returns `{:ok? false :error ...}` — read the error, correct, and r
    Read every page listed in input-coverage with `review_read_diff_chunk` and
    record each changed-hunk assessment with `review_assess_diff_chunk`. An empty
    finding list, delivery receipt or coverage manifest does not attest assessment.
+   Complete every read of a page before assessing it. Keep the returned page
+   content for later stages instead of rereading an assessed page. Assess all
+   changed hunks and files within a page, including deletions and boundaries
+   between files. A reread after assessment invalidates this invocation's trace;
+   neither another assessment nor `review_begin` can erase it. Stop without a
+   submission when `restart-required?` is true. The host may run its one fresh
+   bounded recovery invocation, which must assess the complete input again.
 
 2. Stage `:deterministic` — read `.opencode/review-evidence/summary.json` and
    `deterministic.log` when present. Treat command failures as tool evidence, not
@@ -111,8 +118,10 @@ Do not spawn additional agents. Do not use raw vote count or repeated model agre
 as proof. This reviewer deliberately uses one pass and internal adversarial validation
 to avoid correlated false positives and free-tier quota waste.
 
-The pass is complete only when `review_submit` returns ok. Never end your turn on a
-statement of intent — either call the next tool or submit. Assess every changed hunk
+A healthy pass is complete only when `review_submit` returns ok. If a tool reports
+`restart-required?`, stop this failed invocation without submitting or restarting.
+For a healthy invocation, never end your turn on a statement of intent — either
+call the next tool or submit. Assess every changed hunk
 in the full immutable diff before a passing verdict. Read relevant surrounding
 source as needed; this does not require all unchanged files or exhaustive proof.
 If input is missing/truncated, recover every omitted page before submission.

@@ -5,7 +5,13 @@
  :nrepl {:port 4501},
  :js-options {:js-provider :import},
  :builds
- {:test
+ {:review-invocation
+  {:target :node-library
+   :output-to ".opencode/dist/review-invocation.cjs"
+   :exports {:verifyReviewInvocation eta-mu.extern.review-invocation/verify-review-invocation
+             :prepareReviewInvocationContext eta-mu.extern.review-invocation/prepare-review-invocation-context}
+   :compiler-options {:output-feature-set :es-next :infer-externs false}}
+  :test
    {:target :node-test,
     :output-to "target/test/test.cjs",
      :ns-regexp "(open-hax\\.sol\\..*-test$|eta-mu\\..*-test$)",
