@@ -55,7 +55,7 @@
      :total (count events)
      :by-type (ledger/count-by-type events)}))
 
-(defn- query [file {:keys [type contains] :as params} limit]
+(defn- query [file {:keys [type contains]} limit]
   (let [events (ledger/parse-lines (bfs/read-lines file))
         matches (ledger/query-events events {:type type :contains contains :limit limit})]
     {:action "query"

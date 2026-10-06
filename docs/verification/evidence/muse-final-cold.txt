@@ -1,0 +1,51 @@
+HISTORICAL PREDECESSOR EVIDENCE: this run tested cc4ed03386af17d39b453fef577bed8e41b58052 plus the uncommitted generated-hook output correction later published in bb28b936cbe49876c7e60a1990e30d06a8a90a9f. It is not an exact-head attestation for a successor. The actual start time and elapsed duration are in muse-final-gates.json. Fresh revision-bound evidence is in muse-provenance-cold.{json,txt}.
+
+
+> test:build-cold
+> node scripts/verify-cold-host-builds.mjs
+
+
+> build:opencode
+> npm run prebuild && shadow-cljs release opencode-plugin
+
+
+> prebuild
+> clojure -M -e "(doseq [generator '[eta-mu.opencode.build/generate-entrypoint eta-mu.mcp.build/generate-entrypoint eta-mu.claude.build/generate-entrypoint]] ((requiring-resolve generator) {}))"
+
+[:opencode-plugin] Compiling ...
+[:opencode-plugin] Build completed. (119 files, 69 compiled, 0 warnings, 39.01s)
+Picked up JAVA_TOOL_OPTIONS: [local sandbox JVM paths and truststore options redacted]
+Picked up JAVA_TOOL_OPTIONS: [local sandbox JVM paths and truststore options redacted]
+shadow-cljs - config: <temporary-cold-opencode>/checkout/shadow-cljs.edn
+shadow-cljs - starting via "clojure"
+Picked up JAVA_TOOL_OPTIONS: [local sandbox JVM paths and truststore options redacted]
+PASS cold declared opencode build with shared dependencies and isolated publish home
+
+> build:mcp
+> npm run prebuild && shadow-cljs release mcp-server
+
+
+> prebuild
+> clojure -M -e "(doseq [generator '[eta-mu.opencode.build/generate-entrypoint eta-mu.mcp.build/generate-entrypoint eta-mu.claude.build/generate-entrypoint]] ((requiring-resolve generator) {}))"
+
+[:mcp-server] Compiling ...
+[:mcp-server] Build completed. (119 files, 67 compiled, 0 warnings, 34.95s)
+Picked up JAVA_TOOL_OPTIONS: [local sandbox JVM paths and truststore options redacted]
+Picked up JAVA_TOOL_OPTIONS: [local sandbox JVM paths and truststore options redacted]
+shadow-cljs - config: <temporary-cold-mcp>/checkout/shadow-cljs.edn
+shadow-cljs - starting via "clojure"
+Picked up JAVA_TOOL_OPTIONS: [local sandbox JVM paths and truststore options redacted]
+PASS cold declared mcp build with shared dependencies and isolated publish home
+
+> prebuild
+> clojure -M -e "(doseq [generator '[eta-mu.opencode.build/generate-entrypoint eta-mu.mcp.build/generate-entrypoint eta-mu.claude.build/generate-entrypoint]] ((requiring-resolve generator) {}))"
+
+[:claude-server] Compiling ...
+[:claude-server] Build completed. (121 files, 69 compiled, 0 warnings, 29.06s)
+[eta-mu.boundaries.claude] wired 1 Claude hook(s): tool/requested
+Picked up JAVA_TOOL_OPTIONS: [local sandbox JVM paths and truststore options redacted]
+Picked up JAVA_TOOL_OPTIONS: [local sandbox JVM paths and truststore options redacted]
+shadow-cljs - config: <temporary-cold-claude>/checkout/shadow-cljs.edn
+shadow-cljs - starting via "clojure"
+Picked up JAVA_TOOL_OPTIONS: [local sandbox JVM paths and truststore options redacted]
+PASS cold declared claude build with shared dependencies and isolated publish home

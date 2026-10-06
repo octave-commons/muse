@@ -1,0 +1,21 @@
+
+> prebuild
+> clojure -M -e "(doseq [generator '[eta-mu.opencode.build/generate-entrypoint eta-mu.mcp.build/generate-entrypoint eta-mu.claude.build/generate-entrypoint]] ((requiring-resolve generator) {}))"
+
+Picked up JAVA_TOOL_OPTIONS: [local sandbox JVM paths and truststore options redacted]
+
+> build
+> shadow-cljs release daemon opencode-plugin mcp-server claude-server && node .claude/dist/claude-server.js --emit-hook-config
+
+shadow-cljs - config: <muse-checkout>/shadow-cljs.edn
+shadow-cljs - starting via "clojure"
+Picked up JAVA_TOOL_OPTIONS: [local sandbox JVM paths and truststore options redacted]
+[:daemon] Compiling ...
+[:daemon] Build completed. (69 files, 0 compiled, 0 warnings, 26.43s)
+[:opencode-plugin] Compiling ...
+[:opencode-plugin] Build completed. (119 files, 0 compiled, 0 warnings, 17.43s)
+[:mcp-server] Compiling ...
+[:mcp-server] Build completed. (119 files, 0 compiled, 0 warnings, 7.99s)
+[:claude-server] Compiling ...
+[:claude-server] Build completed. (121 files, 2 compiled, 0 warnings, 9.36s)
+[eta-mu.boundaries.claude] wired 1 Claude hook(s): tool/requested

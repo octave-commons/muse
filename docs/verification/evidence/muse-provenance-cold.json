@@ -1,0 +1,13 @@
+{
+  "command": [
+    "npm",
+    "run",
+    "test:build-cold"
+  ],
+  "started": "2026-09-12T12:17:53.429Z",
+  "finished": "2026-09-12T12:20:18.705Z",
+  "source_local_head": "2f778e2c30ece4a7d8e4905e1ac9635e4deabfe2",
+  "source_published_head": "571d7778a3c5e00c95e0016748c31ecd4a920f44",
+  "source_tree": "cf84b13d7a0158af0f884091088c19b20611efc4",
+  "exit_code": 0
+}

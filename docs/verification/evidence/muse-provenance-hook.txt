@@ -1,0 +1,6 @@
+Source: published 571d7778a3c5e00c95e0016748c31ecd4a920f44; local 2f778e2c30ece4a7d8e4905e1ac9635e4deabfe2; exact complete tree cf84b13d7a0158af0f884091088c19b20611efc4
+Command: node scripts/verify-claude-hook-wrapper.mjs
+Run: 2026-09-12T12:17:52.399Z through 2026-09-12T12:17:53.424Z; exit 0
+Local JVM options redacted and disposable paths normalized; diagnostic content retained.
+
+PASS compiled emitter and executable PreToolUse wrapper preserve spaces, apostrophes and shell syntax; decision=true

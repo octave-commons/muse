@@ -8,5 +8,16 @@
   },
   "devDependencies": {
     "shadow-cljs": "3.4.4"
+  },
+  "scripts": {
+    "prebuild": "clojure -M -e \"(doseq [generator '[eta-mu.opencode.build/generate-entrypoint eta-mu.mcp.build/generate-entrypoint eta-mu.claude.build/generate-entrypoint]] ((requiring-resolve generator) {}))\"",
+    "build": "shadow-cljs release daemon && bash scripts/build-host-targets.sh all",
+    "build:opencode": "bash scripts/build-host-targets.sh opencode-plugin",
+    "build:mcp": "bash scripts/build-host-targets.sh mcp-server",
+    "build:claude": "bash scripts/build-claude-target.sh",
+    "test": "shadow-cljs compile test && node target/test/test.cjs",
+    "test:build-cold": "node scripts/verify-cold-host-builds.mjs",
+    "test:review-input": "node scripts/verify-full-review-input.mjs",
+    "lint": "clj-kondo --lint src/cljs src/clj test/cljs .ημ --fail-level warning"
   }
 }

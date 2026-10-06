@@ -1,0 +1,3 @@
+.ημ/plugins/edn_ledger.cljs:58:47: warning: unused binding params
+.ημ/plugins/review_pipeline.cljs:10:14: warning: namespace clojure.string is required but never used
+linting took 817ms, errors: 0, warnings: 2

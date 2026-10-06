@@ -1,0 +1,3 @@
+HISTORICAL PREDECESSOR EVIDENCE: this run tested cc4ed03386af17d39b453fef577bed8e41b58052 plus the uncommitted generated-hook output correction later published in bb28b936cbe49876c7e60a1990e30d06a8a90a9f. It is not an exact-head attestation for a successor. The actual start time and elapsed duration are in muse-final-gates.json. Fresh revision-bound evidence is in muse-provenance-hook.{json,txt}.
+
+PASS compiled emitter and executable PreToolUse wrapper preserve spaces, apostrophes and shell syntax; decision=true

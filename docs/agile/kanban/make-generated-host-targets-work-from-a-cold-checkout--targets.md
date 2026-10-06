@@ -2,7 +2,7 @@
 category: "kanban"
 labels: "build, host-targets, recovery"
 type: "task"
-write-id: "1791292242262-0.bt903bstv078d68k3au"
+write-id: "1791292807659-0.yhlyilc4bpqbodenhw1"
 points: "3"
 title: "Make generated host targets work from a cold checkout"
 priority: "P1"
@@ -187,4 +187,6 @@ Hosted fixture-ordering correction evidence: production script remains byte-iden
 Isolated PR #14 repair plan (2026-10-06): use the existing bounded no-follow/nonblocking owner reader for acquired-lock verification, force a fresh Shadow process for OpenCode releases, add focused FIFO substitution and cold-server regressions, and verify before publishing. Worktree is dedicated to this PR; no shared registry or existing checkout will be exercised.
 
 Verification (2026-10-06): predecessor acquired-owner FIFO reproduces an indefinite block, including EXIT cleanup; predecessor cold OpenCode adapter exits 73 without --force-spawn. Successor scripts/test-host-target-boundaries.sh passes FIFO, symlinked FIFO, oversized/malformed/foreign-PID owner refusal with exact public bytes and retained lock, plus generation-before-fresh-OpenCode-release. Bash syntax, shellcheck and actionlint pass. Hosted CI now starts the persistent Shadow server with src/gen absent and runs all supported targets while preserving its authenticated PID/port/start-time and canary; local real Shadow is not started, so no existing server or shared runtime is touched.
+
+Base reconciliation (2026-10-06): merged current main846b47efd1fa5f9e72f6fe8b2cf45cfb347aba0f locally to restore mergeability and hosted checks. Keep main npm command surface, review-input checks, self-contained compiler configuration, generated hook behavior and current docs; route npm build/build:opencode/build:mcp through the supported wrapper. Both ledger histories remain inspectable with original HEAD bytes preserved as a prefix. Seven isolated owner/cold/OpenCode/npm regressions, bash syntax, shellcheck and workflow actionlint expression/YAML checks pass. Real compiled CI evidence is pending on the reconciled head. Native Codex requests on db17fe0 returned account code-review quota exhausted; no paid credits or duplicate request. CodeRabbit remains in progress on predecessor; Kimi has no configured hosted workflow in this repo. Review admission remains BLOCKED until exact-head deterministic checks, actual reviewer evidence and all historical settlements qualify. Direct testing->blocked is the known upstream Rheos#4 gap; retain actual testing status with this comment.
 ---

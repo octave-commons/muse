@@ -49,3 +49,7 @@ pseudo/
 .muse-host-targets-owners.json
 *.muse-host-targets-owners.json
 .muse-host-targets.publish.*
+
+# Generated Claude activation artifacts (npm run build / build:claude)
+.claude/settings.json
+.claude/generated-hooks/

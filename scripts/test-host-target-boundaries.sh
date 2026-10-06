@@ -88,3 +88,11 @@ PATH="$fixture/bin:$PATH" "$fixture/scripts/build-host-targets.sh" opencode-plug
   > "$fixture/build.log" 2>&1
 test -s "$fixture/release-arguments"
 printf 'PASS cold OpenCode: generation precedes fresh-process release\n'
+
+# Exercise the reconciled npm entrypoint, including its actual lifecycle argv.
+cp "$repo_root/package.json" "$fixture/package.json"
+rm -rf "$fixture/src/gen"
+PATH="$fixture/bin:$PATH" npm_config_cache="$fixture/npm-cache" \
+  npm run --prefix "$fixture" build:opencode > "$fixture/npm-build.log" 2>&1
+test -s "$fixture/src/gen/eta_mu/gen/opencode_plugin.cljs"
+printf 'PASS cold npm OpenCode: public command delegates to fresh-process release\n'

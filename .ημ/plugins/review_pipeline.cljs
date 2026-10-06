@@ -2,18 +2,17 @@
   "Evidence-first pull-request review state machine as tools.
 
    The reviewer drives one bounded pass by calling these tools in order:
-   review_begin -> review_record_evidence (per stage) -> review_propose_finding /
+   review_begin -> review_read_diff_chunk / review_assess_diff_chunk (all pages)
+   -> review_record_evidence (per stage) -> review_propose_finding /
    review_classify_finding -> review_submit. Every call is validated by
    eta-mu.domain.review; the final submission is machine-written to
    .opencode/review-evidence/submission.json. Nothing is parsed from model
    output text."
-  (:require [clojure.string :as str]
-            [eta-mu.boundaries.node.fs :as bfs]
+  (:require [eta-mu.boundaries.node.fs :as bfs]
             [eta-mu.domain.review :as review]
             [eta-mu.dsl :refer [deftool defplugin]]))
 
 (def evidence-dir-name ".opencode/review-evidence")
-(def diff-file-name "pr.diff")
 (def context-file-name "pr-context.md")
 (def submission-file-name "submission.json")
 (def events-file-name "review-events.jsonl")
@@ -42,7 +41,9 @@
     (let [result (apply f session args)]
       (if (:ok? result)
         (do (swap! !sessions assoc (session-key ctx) (:session result))
-            (record-event! ctx kind {:ok true})
+            (record-event! ctx kind (merge {:ok true :chunk-id (or (:chunk-id result) (get-in result [:chunk :id]))}
+                                           (select-keys result [:coverage])
+                                           (when (= "assess-diff-chunk" kind) {:note (second args)})))
             (dissoc result :session))
         (do (record-event! ctx kind {:ok false :error (:error result)})
             result)))
@@ -54,24 +55,38 @@
 
 (deftool begin
   {:id          :review/begin
-   :description "Begin an evidence-first pull-request review. Reads the staged diff and pull-request context from .opencode/review-evidence, indexes the changed lines findings may attach to, and returns the review contract. Call this first, exactly once."
+   :description "Begin an evidence-first pull-request review. Verifies input-manifest.json and the complete basehead.diff in .opencode/review-evidence, indexes changed lines and returns the bounded-reader contract. Call this first; restore the required input and retry if admission fails. After successful admission, complete one bounded review pass."
    :args        [:map]
    :tags        #{:review}}
   [_params ctx]
-  (let [diff-file    (bfs/join (evidence-dir ctx) diff-file-name)
-        context-file (bfs/join (evidence-dir ctx) context-file-name)]
-    (if-not (bfs/exists? diff-file)
-      {:ok? false :error (str "Staged diff not found at " diff-file "; the review workflow must stage it before the reviewer runs.")}
-      (let [session (review/begin (bfs/read-text diff-file))
-            context (when (bfs/exists? context-file) (bfs/read-text context-file))]
-        (swap! !sessions assoc (session-key ctx) session)
-        (record-event! ctx "begin" {:files (get-in session [:diff-stats :files])})
-        {:ok?        true
-         :stage      (name (:stage session))
-         :stages     (mapv name review/stages)
-         :diff-stats (:diff-stats session)
-         :pr-context context
-         :contract   "Record one evidence note per stage with review_record_evidence; propose candidates with review_propose_finding at :generate-candidates; classify each as confirmed/rejected/needs-human at :adversarial-validate; finish with review_submit at :publish. Inline findings must attach to added diff lines; the tools reject anything else."}))))
+  (swap! !sessions dissoc (session-key ctx))
+  (try
+    (bfs/remove-file! (bfs/join (evidence-dir ctx) submission-file-name))
+    (let [{:keys [text manifest]} (bfs/read-review-input (evidence-dir ctx))
+          session (assoc (review/begin text) :input-source manifest)
+          context-file (bfs/join (evidence-dir ctx) context-file-name)
+          context (when (bfs/exists? context-file) (bfs/read-text context-file))]
+      (swap! !sessions assoc (session-key ctx) session)
+      (record-event! ctx "begin" {:files (get-in session [:diff-stats :files]) :input-source manifest})
+      {:ok? true :stage (name (:stage session)) :stages (mapv name review/stages)
+       :diff-stats (:diff-stats session) :input-source manifest
+       :input-coverage (review/input-coverage session) :pr-context context
+       :contract "Read every full-input page with review_read_diff_chunk, then assess each with review_assess_diff_chunk. Delivery alone is not assessment. Record stage notes in order, propose/classify candidates and submit only after all changed hunks are assessed. pr.diff is a preview, never complete review input."})
+    (catch :default e {:ok? false :error (str "Full input unavailable: " (.-message e))})))
+
+(deftool read-diff-chunk
+  {:id :review/read_diff_chunk
+   :description "Read one lossless bounded page of the verified immutable full diff. Read every page; this records delivery, not assessment."
+   :args [:map [:id :int]] :tags #{:review}}
+  [{:keys [id]} ctx]
+  (apply-step! ctx "read-diff-chunk" review/read-diff-chunk id))
+
+(deftool assess-diff-chunk
+  {:id :review/assess_diff_chunk
+   :description "Record your changed-hunk assessment of an already delivered page: changed invariants, candidate risks or why no defect is supported. Every page needs assessment before submission."
+   :args [:map [:id :int] [:note [:string {:min 1}]]] :tags #{:review}}
+  [{:keys [id note]} ctx]
+  (apply-step! ctx "assess-diff-chunk" review/assess-diff-chunk id note))
 
 (deftool record-evidence
   {:id          :review/record_evidence
@@ -126,7 +141,7 @@
 
 (deftool submit
   {:id          :review/submit
-   :description "Finish the review. Every candidate must be classified and every stage must have evidence. The review event (APPROVE, COMMENT, REQUEST_CHANGES) is derived from the confirmed findings by law, not asserted. On success the machine-readable submission is written to .opencode/review-evidence/submission.json for the deterministic publisher."
+   :description "Finish the review. Every full-input page must be delivered and assessed, every candidate classified and every stage evidenced. The review event (APPROVE, COMMENT, REQUEST_CHANGES) is derived from confirmed findings by law. On success the machine-readable submission is written to .opencode/review-evidence/submission.json for the deterministic publisher."
    :args        [:map
                  [:summary [:string {:min 1}]]]
    :tags        #{:review}}
@@ -148,6 +163,8 @@
 
 (defplugin plugin {:id :eta-mu/review-pipeline}
   begin
+  read-diff-chunk
+  assess-diff-chunk
   record-evidence
   propose-finding
   classify-finding

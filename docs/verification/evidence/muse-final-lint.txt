@@ -1,0 +1,5 @@
+
+> lint
+> clj-kondo --lint src/cljs src/clj test/cljs .ημ --fail-level warning
+
+linting took 2502ms, errors: 0, warnings: 0
