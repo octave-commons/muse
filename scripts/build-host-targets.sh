@@ -407,8 +407,11 @@ mcp_registry_lock_binding_matches() {
       "$mcp_lock_identity" "$identity" >&2
     return 1
   fi
-  owner=""
-  IFS= read -r owner < "$mcp_lock_owner" 2>/dev/null || true
+  if ! owner="$(read_existing_mcp_lock_owner 2>/dev/null)"; then
+    printf '[muse host build] MCP build lock owner is no longer a bounded regular record: %s\n' \
+      "$mcp_lock_owner" >&2
+    return 1
+  fi
   if [[ "$owner" != "$$" ]]; then
     printf '[muse host build] MCP build lock owner changed after acquisition: expected %s, got %s\n' \
       "$$" "$owner" >&2
@@ -1597,7 +1600,10 @@ build_target() {
         "$shadow" release "$target" --force-spawn
       ;;
     *)
-      "$shadow" release "$target"
+      # A server started before src/gen existed cannot discover the new
+      # OpenCode namespace through its startup classpath. Use a fresh JVM
+      # after generation, just as the MCP-producing releases do.
+      "$shadow" release "$target" --force-spawn
       ;;
   esac
 
