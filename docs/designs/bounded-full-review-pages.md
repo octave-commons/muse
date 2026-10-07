@@ -64,10 +64,14 @@ The response budget includes field names, punctuation, decimal id/start/end,
 boolean encoding when constructing canonical geometry so a chronology flag
 cannot change page boundaries. JSON-escaped quotes, backslashes and controls
 count after escaping; raw character count alone is insufficient. A named pure
-size calculation belongs with page construction; JS encoding/byte measurement
-stays at the existing outer boundary. The actual serialized result is checked
-again before the plugin records a successful delivery. Tests must demonstrate
-agreement between the pure calculation and that encoder, not assume it.
+size calculation belongs with page construction. For the actual check, select a
+read-specific preflight helper in the existing OpenCode boundary: it reuses the
+actual compact result encoder, measures the encoded string's UTF-8 bytes, and
+returns that string only within the limit. The plugin calls this helper **before**
+publishing the candidate session or recording a successful read. Keeping JS
+encoding in the boundary does not mean waiting for the post-handler encoder.
+Tests must demonstrate agreement between the pure calculation and the actual
+encoder, not assume it.
 
 The three limits are upper bounds. Escape-heavy input may produce a page smaller
 than today's 8,192 units. For example, 16,384 U+0001 characters require roughly
@@ -77,14 +81,31 @@ one physical line, distinct from diff newline count.
 
 ## 3. Delivery and compatibility
 
-For a read, calculate the pure candidate transition and full outward response,
-validate its actual encoded byte count, then publish the successful state/event
-and return the same response. Bounds failure is a failed review call, supplies
-no new delivery or assessment credit and ends the invocation under the existing
-failed-call law. It cannot revive an already invalidated invocation, erase
-history, permit a same-process restart, or make a prior artifact eligible. Normal
-reread invalidation and artifact handling stay as currently defined. This is one
-specific read-page check, not a generic replacement tool transport.
+The current [apply-step!](../../.ημ/plugins/review_pipeline.cljs#L38)
+stores the session and records a successful event before returning a response;
+[wrap-execute](../../src/cljs/eta_mu/boundaries/opencode.cljs#L45)
+encodes it afterward. An additional size check only at that latter point would
+be too late. The proposed read path must instead:
+
+1. Calculate the pure candidate transition and full outward response, excluding
+   the internal `:session`, without publishing the candidate.
+2. Call the boundary preflight to compact-encode that response once and check
+   the actual UTF-8 byte count against 49,152.
+3. Only after acceptance, publish the candidate session, perform its existing
+   reread invalidation/artifact handling and record the successful read event.
+4. Return the exact preflighted encoded string. The existing
+   [string pass-through](../../src/cljs/eta_mu/boundaries/opencode.cljs#L34)
+   returns it without another JSON encoding, reconstructed map or added fields.
+
+Encoding or bounds failure publishes neither the candidate session nor a
+successful read event. It is a failed review call, supplies no new delivery or
+assessment credit and ends the invocation under the existing failed-call law.
+It cannot revive an already invalidated invocation, erase history, permit a
+same-process restart, or make a prior artifact eligible. Existing invalidation
+and failure evidence remain authoritative. Other tools retain their current
+path. This is one specific read-page preflight, not a generic transaction hook
+or replacement tool transport; it makes no crash-atomicity guarantee for the
+existing state/event effects.
 
 The supported host contract is an effective UTF-8 output limit **at least 49,152
 bytes** and physical-line limit **at least one**, with the same compact result
@@ -120,7 +141,8 @@ nor any active review process changes in this story.
 | BMP and supplementary Unicode | No surrogate split; independent UTF-8 encoding of concatenated pages equals original bytes. |
 | CRLF and missing final newline | Exact original terminators/end preserved. |
 | Current healthy and invalidated read responses | Extra `restart-required?` field counted; old chronology semantics unchanged. |
-| Encoder/envelope drift beyond budget | Refusal before new delivery credit; current failed-call invocation verifier refuses publication. |
+| Encoder/envelope drift or encoding failure | Actual boundary preflight refuses before candidate session publication or a successful read event; delivered/assessed credit does not advance and the current failed-call invocation verifier refuses publication. |
+| Accepted encoded response | The compiled tool returns exactly the preflighted string, with no post-validation re-encoding or envelope growth; parsed response fields remain unchanged. |
 | Missing, corrupt or unassessed tail | Begin/assessment/publication refuses at its existing boundary; restored full input uses the established fresh-invocation recovery rules. |
 | Confirmed tail finding | All input assessed and the finding remains in the resulting non-approval verdict. |
 | Host lower than contract or unknown | No deployment qualification; never claim lossless delivery from the producer bound alone. |

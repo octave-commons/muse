@@ -141,3 +141,12 @@
   spore: none
   receipt-refs: bounded-review-pages-plan root receipts.edn catalog; c1369c223cf3c57e3e31934a6d746bfcdfe73f5a
   note: Historical native capacity and current source contracts differ. Size the complete encoded response, preserve current chronology, and distinguish producer proof from effective-host release. Retain existing receipt location; no new spore or promotion.
+- ts: 2026-10-07T18:26:40.799383545Z
+  session: /home/err/spaces/foresight/.worktrees/muse-bounded-review-pages-plan
+  task: Specify encoder preflight before review credit
+  p-efficiency: 0.91
+  p-friction: 0.24
+  p-skill-candidate: 0.33
+  spore: none
+  receipt-refs: PR21,5446251550,review-fix-5446251550.json
+  note: A prose claim of pre-credit bounds needs an explicit effect seam. Read real plugin-to-encoder ordering and return the exact validated bytes. Preserve publication failure limits rather than promise generic crash atomicity. No spore.
