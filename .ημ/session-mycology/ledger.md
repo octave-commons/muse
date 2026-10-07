@@ -150,3 +150,12 @@
   spore: none
   receipt-refs: PR21,5446251550,review-fix-5446251550.json
   note: A prose claim of pre-credit bounds needs an explicit effect seam. Read real plugin-to-encoder ordering and return the exact validated bytes. Preserve publication failure limits rather than promise generic crash atomicity. No spore.
+- ts: 2026-10-07T18:52:03.083613498Z
+  session: /home/err/spaces/foresight/.worktrees/muse-bounded-review-pages-plan
+  task: Correct bounded-page size unit after full native review
+  p-efficiency: 0.95
+  p-friction: 0.05
+  p-skill-candidate: 0.0
+  spore: none
+  receipt-refs: review5446820248,unit-correction-5446820248.json
+  note: Preserve exact byte arithmetic and distinguish escaped contents from response envelope. Existing skills suffice; no spore.

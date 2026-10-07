@@ -75,7 +75,7 @@ encoder, not assume it.
 
 The three limits are upper bounds. Escape-heavy input may produce a page smaller
 than today's 8,192 units. For example, 16,384 U+0001 characters require roughly
-98 KiB after JSON escaping and cannot form one page. Split them without omitting
+96 KiB (98,304 bytes) for the escaped contents alone and cannot form one page. Split them without omitting
 bytes. Do not pretty-print successful read responses: their compact encoding has
 one physical line, distinct from diff newline count.
 
