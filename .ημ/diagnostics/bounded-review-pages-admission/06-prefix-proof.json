@@ -1,0 +1,21 @@
+{
+  "at": "2026-10-07T19:22:06.538512+00:00",
+  "append_only_prefixes": {
+    "receipts.edn": {
+      "bytes": 69641,
+      "sha256": "6e9d334a641a8fffa358e0c81bdf76730f19664ee1e88be031099d2d03aca266"
+    },
+    ".\u03b7\u03bc/session-mycology/ledger.md": {
+      "bytes": 9329,
+      "sha256": "46986e4e53ce8fb6a17146cb1f2d8cf58db08c4e3e55569ae79a01f968e86e04"
+    },
+    ".\u03b7\u03bc/kanban-events/ledger.edn": {
+      "bytes": 56033,
+      "sha256": "c718c42d99c2a7529c33042fc48c7332a271e1b18de0325545042103d2ab4d3c"
+    }
+  },
+  "admitted_head": "9cbd37320eaef450deb18355c7758c463897236d",
+  "review": 5447016105,
+  "state": "Ready3",
+  "scope": "Planning admission only; no runtime."
+}
