@@ -1,0 +1,241 @@
+{
+  "at": "2026-10-07T17:34:45.801842+00:00",
+  "scope": "Read-only source/native evidence recovery and offline sizing model; two new root diagnostic artifacts only. No production, board, runtime, review, checkout, or workflow mutation; no model/JVM/native/test execution.",
+  "native": {
+    "repository": "octave-commons/Truth",
+    "pr": 60,
+    "head": "5ce5decae9ab756082d7e693834b4904a4c33e42",
+    "run": 37630384285,
+    "job": 112823239739,
+    "started_at": "2026-10-07T13:41:32Z",
+    "completed_at": "2026-10-07T15:42:03Z",
+    "conclusion": "cancelled",
+    "configured_minutes": 120,
+    "model": "opencode/mimo-v2.6-flash-free",
+    "installed_command": "npm install --global opencode-ai@1.18.18",
+    "install_step_at": "2026-10-07T13:41:56.4055004Z",
+    "native_log_bytes": 9449195,
+    "native_log_sha256": "0b6b152185804d343f7187b94d9d2f739085bee431f2c6f0289e5eb6aa4ddfd0",
+    "native_log_filter": "inputs opencode_version=1.18.18; successful install; REVIEW_MODEL=mimo-v2.6-flash-free",
+    "no_published_verdict": true,
+    "separate_failure_not_capacity": "PR38 run37651983184 reported by root: completed review then GitHub App token publication failure; excluded from sizing evidence."
+  },
+  "archives": [
+    {
+      "id": 11485639091,
+      "name": "review-context-37630384285-1",
+      "bytes": 1911936,
+      "sha256": "a9c3c77ccddab43175d9079c863754d4d03c8d0bf0a52ec142ca5ee1a91155d6"
+    },
+    {
+      "id": 11485224100,
+      "name": "review-evidence-60-37630384285-1",
+      "bytes": 706225,
+      "sha256": "977176fd8c1f40ea235acdf160012dc3b0f2fe8e14973d72f0777386d7b1d23f"
+    }
+  ],
+  "archived_config": {
+    "path": "muse/opencode/opencode.json",
+    "bytes": 774,
+    "sha256": "727c80acf5caf2646a0df4f1daa4cc46fc2d3b49683f25398e28353c459017ce",
+    "keys": [
+      "$schema",
+      "permission"
+    ],
+    "tool_output_override_present": false,
+    "permission_names": 22,
+    "note": "Native host also logged four read and one glob calls; do not claim only the eight review tools were usable."
+  },
+  "release_binding": {
+    "upstream_tag_url": "https://api.github.com/repos/anomalyco/opencode/git/ref/tags/v1.18.18",
+    "upstream_tag_commit": "31406ccc51b4bd2a4e1e086b2bcaa5f7f804f26d",
+    "npm_metadata_url": "https://registry.npmjs.org/opencode-ai/1.18.18",
+    "npm_metadata_sha256": "a01e0e41c50cba02474e38738ecbc30cdeda03d5065011fde0e24b19ac25f0ee",
+    "npm_tarball_integrity": "sha512-J+5HFq8tf+wPBBpBpMPSNjSytF2/EkNWYfFZh4si1d9auFbQriqDyqZv+vFUsLWERfdMU32Eajwuiq3rKBvZLQ==",
+    "limit": "Native log establishes installed requested version, upstream tag establishes matching published source. No installed executable digest/build equivalence claim."
+  },
+  "full_input": {
+    "bytes": 6532456,
+    "utf16_units": 6527158,
+    "sha256": "69e1531063f20141fa6f64c483d7fdcef861fa519597867b0a798b1c76d64aa0",
+    "archive_path": "basehead.diff",
+    "manifest_sha256": "0457aee46ad1908b9fa999181cb93d093b0331eb7b736dc984169dbe81c39451"
+  },
+  "observed_tool_log": {
+    "rows": 2248,
+    "delivered_distinct": 701,
+    "assessed_distinct": 699,
+    "read_assess_outputs_with_truncated_false": 1400,
+    "review_begin": 1,
+    "read": 4,
+    "glob": 1,
+    "review_record_evidence": 1,
+    "first_completed_tool_start_ms": 1791380533289,
+    "last_completed_tool_end_ms": 1791387719517,
+    "native_chunk_and_serialized_json_match_to_offline_baseline": 701
+  },
+  "offline_model": {
+    "status": "Derived sizing calculation, not execution of proposed Muse code or a model benchmark",
+    "method": "Decode exact UTF8 input, operate on UTF16 code units; advance greedily by unit ceiling then newline ceiling; preserve surrogate pairs; for candidate further shrink until complete compact JSON {ok?:true,chunk:{id,start,end,text}} is <=49152 UTF8 bytes. Concatenate pages and compare to original bytes. Match all 701 native baseline chunks and compact response strings exactly.",
+    "baseline": {
+      "utf16_cap": 8192,
+      "newline_cap": 128,
+      "pages": 830,
+      "max_encoded_response_bytes": 9562,
+      "minimum_read_assess_calls": 1660
+    },
+    "candidate": {
+      "utf16_cap": 16384,
+      "newline_cap": 256,
+      "complete_response_utf8_cap": 49152,
+      "pages": 413,
+      "max_encoded_response_bytes": 19043,
+      "minimum_read_assess_calls": 826,
+      "roundtrip_bytes_equal": true
+    },
+    "blind_unit_cap_counterexample": {
+      "text": "U+0001 repeated16384 times",
+      "id": 1,
+      "start": 0,
+      "end": 16384,
+      "complete_encoded_bytes": 98365,
+      "default_host_cap": 51200,
+      "note": "Valid UTF8 and legal JSON-escaped text; no proposed character omission/rejection."
+    },
+    "conditional_capacity": "T = T_fixed + c_bytes*F + c_pages*P + context/provider effects. One timeout cannot identify these terms. Page-call count falls834/1660=50.24%; bytes and required changed-hunk assessment do not shrink. No completion or latency guarantee."
+  },
+  "owner": {
+    "repository": "octave-commons/muse",
+    "canonical_read_worktree": "/home/err/spaces/review-repair/muse-full-review-input",
+    "read_head": "9aa938e74a0e85abd2c0280e81bcbe88f459aef7",
+    "uuid": "0bd45066-9d1c-4cc4-a28e-fcfecf7eac7a",
+    "title": "Require assessment of complete immutable review input",
+    "state": "incoming",
+    "points": "3",
+    "source_path": "docs/agile/kanban/0bd45066-9d1c-4cc4-a28e-fcfecf7eac7a.md",
+    "cli": "Node22.20.0 + reviewed Rheos cli83c6b397 read-task --config openhax.kanban.edn",
+    "authority_limit": "Recovered owner, not admission; canonical scoped continuation/normal gates required before implementation. eta caller integration owner opencode-mimo-evidence-review-agent remains InProgress5 in inspected eta board."
+  },
+  "proposal": {
+    "size": "Proposed3-point bounded Muse follow-up under recovered full-input owner, subject to canonical admission",
+    "caps": [
+      16384,
+      256,
+      49152
+    ],
+    "preserve": [
+      "all full input bytes",
+      "contiguous UTF16 offsets and Unicode pairs",
+      "independent UTF8 reconstruction/hash",
+      "per-page read plus nonblank assessment",
+      "tail finding/publication guard",
+      "existing tool schema",
+      "eta45/120 budgets"
+    ],
+    "transport_boundary": "Size the whole final serialized response; fail closed before delivery credit if an encoder/schema change violates it. Do not disable host truncation or count clipped output as delivery. A lower host configured ceiling requires explicit compatibility refusal or smaller effective bound.",
+    "tests": [
+      "Honest capacity baseline is the preserved830page native timeout; current lossless correctness controls should pass baseline. A naive larger-unit-only candidate must fail the new whole-encoded-response bound; no invented failing correctness claim against oldsource.",
+      "Exact UTF8 reassembly for ASCII, multibyte BMP, astral boundary, quotes, backslashes, C0 controls, long lines, CRLF and no terminal newline.",
+      "Actual compiled result JSON, not raw page alone, stays within49152; exercise pinned host output boundary to establish truncated:false and exact delivered string.",
+      "Coverage refuses prefix-only, withheld/unassessed tail, malformed range, corrupt manifest; recovered tail finding still yields REQUEST_CHANGES.",
+      "Exact PR60 artifact sizing fixture/source hash, all pages represented; native canary only after qualified source and separately authorized caller pin/release."
+    ],
+    "non_goals": [
+      "provider/model swap",
+      "approval inference from coverage",
+      "timeout inflation",
+      "content filtering",
+      "current run resume",
+      "new review engine",
+      "unchanged retry"
+    ]
+  },
+  "source_pins": [
+    {
+      "repository": "muse",
+      "revision": "0b9a91492c8355e6933dc2164d35668cb76d9e60",
+      "path": "src/cljs/eta_mu/domain/review.cljc",
+      "bytes": 15051,
+      "sha256": "61e6a34c225651cb2e123cbfb6cc6be3a9d836d82760347cf583baa4f78dc2d4"
+    },
+    {
+      "repository": "muse",
+      "revision": "0b9a91492c8355e6933dc2164d35668cb76d9e60",
+      "path": "src/cljs/eta_mu/boundaries/opencode.cljs",
+      "bytes": 4116,
+      "sha256": "2e2d9d5fd8b16ae204e2ed1cec9c29a861f078e1c1553f846f9f8db7e0ffc777"
+    },
+    {
+      "repository": "muse",
+      "revision": "0b9a91492c8355e6933dc2164d35668cb76d9e60",
+      "path": ".ημ/plugins/review_pipeline.cljs",
+      "bytes": 8955,
+      "sha256": "e6542a87a8750257de83fe2b5893a56472ff21d827b812f0b033978ea17de6cb"
+    },
+    {
+      "repository": "muse",
+      "revision": "0b9a91492c8355e6933dc2164d35668cb76d9e60",
+      "path": "scripts/verify-full-review-input.mjs",
+      "bytes": 10204,
+      "sha256": "f91ad5425c69330471e347f13b13e57e4c13d7dd22d9bbe33c75d3bafe13daca"
+    },
+    {
+      "repository": "muse",
+      "revision": "0b9a91492c8355e6933dc2164d35668cb76d9e60",
+      "path": "test/cljs/eta_mu/domain/review_test.cljs",
+      "bytes": 19625,
+      "sha256": "aa50e547dae21d00d73c96ec655bb30f973e3e3addcf16c4f35bcf74e7418ea2"
+    },
+    {
+      "repository": "eta-mu",
+      "revision": "a91a73e0e5efa165baf6d7247338f3ef17751752",
+      "path": ".github/workflows/opencode-code-review.yml",
+      "bytes": 87272,
+      "sha256": "6e0dc6e0bd6b3606e84695a398d87ea82beb07f4afa66cbe6af859af26d52a00"
+    },
+    {
+      "repository": "opencode",
+      "revision": "31406ccc51b4bd2a4e1e086b2bcaa5f7f804f26d",
+      "path": "packages/opencode/src/tool/truncate.ts",
+      "bytes": 6152,
+      "sha256": "d3dc9e7402de74a7652ceb9f7796c970efc4958597b51a94fa264697366ccea5"
+    },
+    {
+      "repository": "opencode",
+      "revision": "31406ccc51b4bd2a4e1e086b2bcaa5f7f804f26d",
+      "path": "packages/opencode/src/tool/registry.ts",
+      "bytes": 17300,
+      "sha256": "9e4ac884ada317886a99acabea572d047606f1b4f1e0094efe4bfa82c1477569"
+    },
+    {
+      "repository": "opencode",
+      "revision": "31406ccc51b4bd2a4e1e086b2bcaa5f7f804f26d",
+      "path": "packages/opencode/src/session/compaction.ts",
+      "bytes": 21236,
+      "sha256": "8d478570a7e4ad32b746030d4f86a1c673949b1e2259bd716b3885d99283289a"
+    }
+  ],
+  "preserved_local_raw": [
+    {
+      "path": ".ημ/diagnostics/truth-physical-flight/pr60-mimo-timeout-37630384285-1/input-verification.json",
+      "bytes": 1250,
+      "sha256": "2d7c4a0689f79ffc831874daab5d5de5cbd5a93a466836dc1acdd4e0d8619c37"
+    },
+    {
+      "path": ".ημ/diagnostics/truth-physical-flight/pr60-mimo-timeout-37630384285-1/model-response-attempt-1.txt",
+      "bytes": 9260037,
+      "sha256": "688c16c876a5d6a3e1bf1e1ac46a5519b51e9a2f85d417a662a30b137c4f6e4a"
+    },
+    {
+      "path": ".ημ/diagnostics/truth-physical-flight/pr60-mimo-timeout-37630384285-1/opencode-stderr-attempt-1.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "retrieval_limits": [
+    "Initial gh logs call rejected terminal escapes; subsequent explicit --allow-escape-sequences capture succeeded and filtered output safely.",
+    "Web tool could not open npm registry metadata; Python HTTPS read succeeded.",
+    "No installed binary digest was preserved by the native artifact.",
+    "No claim that token compaction retains all earlier page text or that larger pages improve reviewer quality."
+  ]
+}
