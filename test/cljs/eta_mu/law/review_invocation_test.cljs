@@ -366,3 +366,34 @@
         (is (= :unestablished-review-trace (:reason-kind result)))
         (is (= :stage-order (:code result)))
         (is (nil? (:accepted-invocation result)))))))
+
+(deftest failed-stage-and-submit-cannot-be-repaired-within-one-invocation
+  (let [unassessed (reduce (fn [session stage]
+                            (:session (review/record-evidence session stage "stage evidence")))
+                          (review/begin "diff")
+                          [:deterministic :map-change :generate-candidates])
+        failed-stage (review/record-evidence unassessed :adversarial-validate "stage evidence")
+        failed-submit (review/submission unassessed "fixture summary")]
+    (is (false? (:ok? failed-stage)) "Actual producer refuses completion with unassessed input.")
+    (is (false? (:ok? failed-submit)) "Actual producer refuses submission before publish.")
+    (doseq [[index tool args output code]
+            [[6 "review_record_evidence" {:stage "adversarial-validate" :note "stage evidence"}
+              failed-stage :stage-order]
+             [8 "review_submit" {:summary "fixture summary"} failed-submit :submit-cardinality]]]
+      (testing (str tool " failure followed by its successful call")
+        (let [base (trace)
+              events (ordered-fixture-events
+                      (concat (take index base) [(tool-event 99 tool args output)] (drop index base)))
+              result (verdict events)]
+          (is (false? (:ok? result)))
+          (is (= :unestablished-review-trace (:reason-kind result)))
+          (is (= code (:code result)))
+          (is (= [] (:violations result)) "Healthy LAST does not waive failed-call cardinality.")
+          (is (nil? (:accepted-invocation result))))))
+    (let [base (trace)
+          result (verdict base)]
+      (is (= invocation/stages
+             (mapv #(get-in % [:part :state :input :stage])
+                   (filter #(= "review_record_evidence" (get-in % [:part :tool])) base))))
+      (is (:ok? result))
+      (is (= :verified-review-invocation (:code result))))))

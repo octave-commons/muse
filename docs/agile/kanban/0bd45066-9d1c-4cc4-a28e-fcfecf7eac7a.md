@@ -152,3 +152,33 @@ head requires fresh full native qualification and current hostedCI. The paired
 Eta full-registry custody and strict failed-call prompt repair remains local
 and unpublished until the actual qualified Muse merge. This manual content
 addition records no Rheos transition, native approval or independent agreement.
+
+## Align prompts with strict invocation admission — 2026-10-07
+
+Native Muse20 review5436579674/root4202152173 exposes a real contract mismatch:
+this source's verifier refuses failed review calls and repeated stage/submit
+records while the old prompts explicitly recommend those repair loops. Align
+both source prompts: any failed review call ends that invocation without
+submission, retry or restart. Only the host's verified typed recovery policy
+may admit one fresh bounded complete-input invocation; failure alone supplies
+no retry authority. Preserve every existing law, LAST, coverage and binding guard.
+
+Add one focused existing-law test using actual producer stage/submit refusals,
+then successful calls: both traces remain unestablished; the healthy complete
+five-stage trace passes. Add explicit publish to the fresh-child fixture while
+preserving stdout completion/error handling. The same final test on original
+source and candidate passes266tests1152assertions; no old RED is claimed. Kondo
+and compilation have zero warnings; cold8tool204page and public30assertion
+export checks pass. This is local source evidence, not native qualification.
+
+The actual7f review covers all21pages17paths but contains a refused classification
+call and an older trigger-event PR-body snapshot. Retain all49 original PASS
+predicates and both supplemental failures. The next source description is
+written body-only at the actual old published head before the source push, so
+the new event snapshot carries it; no unpublished SHA is used in that request.
+No later body is credited as model input without actual evidence.
+
+This manual scope/verification content asserts no Rheos state transition.
+Append a new correction receipt and reflection; never edit historical lines.
+Every new native review, current hosted check, genuine finding, quorum and
+separate convergence gate remains required before an actual normal merge.

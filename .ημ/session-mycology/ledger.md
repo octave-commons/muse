@@ -114,3 +114,12 @@
   spore: none
   receipt-refs: Flush fresh-process review fixture JSON before explicit termination
   note: Preserve old failed evidence and use actual callback completion at the transport boundary. Synthetic pipe controls prove the local fix; successor hosted qualification remains required. Historical author request-shape audit failure stays literal. No promotion.
+
+- ts: "2026-10-07T01:58:12.808Z"
+  origin: Muse review prompts and strict invocation contract
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: Native MiMo5436579674/root4202152173 and exact current source repair
+  note: A review tool refusal ends the invocation; a fresh bounded host invocation owns recovery. Align prompts and synthetic five-stage fixtures while preserving strict law guards. Local source tests do not establish native agreement or successor qualification. Preserve every historical receipt byte. No promotion.

@@ -29,7 +29,7 @@ if (process.argv[2] === '--fresh-invocation') {
     assert.equal((await call('review_assess_diff_chunk',
       {id, note: `Synthetic changed-hunk assessment of page ${id}`}))['ok?'], true);
   }
-  for (const stage of ['deterministic', 'map-change', 'generate-candidates', 'adversarial-validate']) {
+  for (const stage of ['deterministic', 'map-change', 'generate-candidates', 'adversarial-validate', 'publish']) {
     assert.equal((await call('review_record_evidence', {stage, note: 'Complete fresh child fixture'}))['ok?'], true);
   }
   assert.equal((await call('review_submit', {summary: 'Complete synthetic child; no native review'}))['ok?'], true);
