@@ -168,3 +168,12 @@
   spore: none
   receipt-refs: PR21,MiMo5447016105,.ημ/diagnostics/bounded-review-pages-admission
   note: Preserve exact-head completed planning admission independently of later successor publication. Native quota is availability evidence only, never approval. Ready does not claim implementation, transport qualification, caller activation or review retry. No new spore.
+- ts: 2026-10-07T20:42:23.146862997Z
+  session: /home/err/spaces/foresight/.worktrees/muse-bounded-review-pages-plan
+  task: Correct current planning status after canonical admission
+  p-efficiency: 0.94
+  p-friction: 0.12
+  p-skill-candidate: 0.0
+  spore: none
+  receipt-refs: review5447391208,comment4211163194
+  note: Use an explicit historical revision for prior planning approval and admission; keep present card status separate from permission to implement or deploy. Full review bodies can expose stale PR prose beyond the inline finding. Existing skills suffice; no spore.

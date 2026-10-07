@@ -2,8 +2,12 @@
 
 **Proposed; not implementation or deployment admission.** New child
 [`5e08a9c7-1c1e-4072-8b44-47043d5f0218`](../agile/kanban/5e08a9c7-1c1e-4072-8b44-47043d5f0218.md)
-is an Incoming / 3-point continuation under the existing complete-input owner.
-It does not change that parent's status or infer readiness from merged code.
+was drafted as an Incoming / 3-point continuation under the existing complete-input
+owner. Canonical Rheos admission recorded in `c9a81e1` moved this child to Ready / 3
+points after planning review of `9cbd373`; that historical review does not approve
+later heads. Ready is its planning status, not authorization to start implementation
+or activate a caller. This amendment changes neither the child's status nor the
+parent's unchanged Incoming / 3-point status.
 
 ## 1. Research and current-source boundary
 
