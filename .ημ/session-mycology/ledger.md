@@ -105,3 +105,12 @@
   spore: none
   receipt-refs: Bind Muse own review caller to qualified complete-input tool source
   note: Inspect actual staged revisions and exposed tools; local parent assumptions are not native execution evidence. Repair the caller pin with an already reviewed merged source while preserving the failed native run and strict qualification. No promotion.
+
+- ts: "2026-10-07T01:14:01.733Z"
+  origin: Child result completion before explicit exit
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: Flush fresh-process review fixture JSON before explicit termination
+  note: Preserve old failed evidence and use actual callback completion at the transport boundary. Synthetic pipe controls prove the local fix; successor hosted qualification remains required. Historical author request-shape audit failure stays literal. No promotion.

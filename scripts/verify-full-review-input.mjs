@@ -56,8 +56,10 @@ if (process.argv[2] === '--fresh-invocation') {
     assert.equal((await call('review_status', {}))['restart-required?'], true);
     assert.equal((await call('review_submit', {summary: 'Surviving file grants no new submission'}))['ok?'], false);
   }
-  console.log(JSON.stringify({result: 'pass', pid: process.pid, scenario, envelope,
-    surviving_artifact: fs.existsSync(submission)}));
+  await new Promise((resolve, reject) => {
+    process.stdout.write(`${JSON.stringify({result: 'pass', pid: process.pid, scenario, envelope,
+      surviving_artifact: fs.existsSync(submission)})}\n`, error => error ? reject(error) : resolve());
+  });
   process.exit(0);
 }
 

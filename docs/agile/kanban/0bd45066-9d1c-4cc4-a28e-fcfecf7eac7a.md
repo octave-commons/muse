@@ -133,3 +133,22 @@ to the actually reviewed and protected-merged Eta342 commit `09a`, whose immutab
 default selects the compatible full-input Muse `0b` tools. Keep caller permissions, named
 secrets, evidence commands and every review gate unchanged. The successor
 needs fresh native full-input qualification; the failed initial run stays failed.
+
+## Flush the fresh-process result — 2026-10-07
+
+CodeRabbit current29 root4201964868 identifies an immediate child exit before
+piped JSON is flushed. Await the stdout write callback and reject callback
+errors, then retain the same explicit exit0 needed by the compiled plugin.
+Three controlled delayed-pipe original-script cases lose their JSON with exit0;
+the three corrected cases deliver every byte and all204 assessed pages. Both
+cold8tool204page smoke runs pass. The150ms delay is synthetic, not an observed
+production outage. No domain, stage, tool or invocation guard changes here.
+
+Current29 nativeMiMo is genuinely APPROVED with independently replayed49 input
+checks passing. Its separate publication34 audit remains33/34 FAILED because
+the historical author request also contained a title; all whole body bytes
+match. Preserve that failed result and every historical receipt byte. The new
+head requires fresh full native qualification and current hostedCI. The paired
+Eta full-registry custody and strict failed-call prompt repair remains local
+and unpublished until the actual qualified Muse merge. This manual content
+addition records no Rheos transition, native approval or independent agreement.
