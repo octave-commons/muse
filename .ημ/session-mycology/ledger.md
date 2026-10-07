@@ -87,3 +87,12 @@
   spore: none
   receipt-refs: Final independently inspected compiled invocation and stale-session repair
   note: Verify optimized exports and the actual coupled supervisor before publication. Keep literal failed synthetic expectations distinct from a supported completion boundary; preserve strict LAST and stage guards. Retain the unpublished reflection format diagnostic while preserving every historical receipt and pre-task reflection byte. Native qualification remains separate. No promotion.
+
+- ts: "2026-10-07T00:13:34.696Z"
+  origin: Optimized CJS export CI coverage
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: Exercise optimized review-invocation CJS through existing CI commands
+  note: Green source tests did not exercise the optimized artifact consumers load. Extend the existing CI commands and prove the same smoke fails the broken optimized export. Preserve every historical byte and keep local evidence distinct from fresh native qualification. No promotion.

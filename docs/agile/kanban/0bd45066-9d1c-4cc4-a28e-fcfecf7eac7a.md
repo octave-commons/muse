@@ -82,8 +82,8 @@ The authorized workflow restoration exposed native Proxx452 review5434690539:
 all hosted jobs succeeded and an approval was published, but seventeen pages
 were reread after their assessments. The literal retained last-read-before-
 assessment audit fails; later reassessment cannot erase that earlier trace.
-The full input also contains29 changed files while the added-lines index
-reported28 because one file is deletion-only. The native review remains failed
+The full input also contains 29 changed files while the added-lines index
+reported 28 because one file is deletion-only. The native review remains failed
 independent qualification and is not repeated or credited.
 
 Repair the existing pure review state and compiled tools so any reread of an
@@ -116,3 +116,11 @@ may use the existing shared two-invocation bound, never a third attempt.
 Only fresh full native qualification and normal protected merges of both source
 repairs permit caller activation. Local compiled and transport fixture results
 provide no native agreement, approval, completed round or source adoption.
+
+The regular build and review-input gate must also exercise the optimized CJS
+exports that eta-mu consumes. Build the review-invocation target alongside the
+existing hosts, then use its public preparation and verification exports to
+check string, Buffer and Uint8Array input plus exact raw artifact digests. The
+old optimized crypto interop failure must fail this same smoke check. Hosted
+CI for the initial b1 source did not run this export gate; that coverage limit
+remains recorded until the successor receives its own hosted qualification.
