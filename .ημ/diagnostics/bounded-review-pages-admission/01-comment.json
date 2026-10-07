@@ -1,0 +1,16 @@
+{
+  "at": "2026-10-07T19:15:31.953646+00:00",
+  "argv": [
+    "/home/err/.volta/tools/image/node/22.20.0/bin/node",
+    "/home/err/spaces/review-repair/rheos-comment-rendering/dist/cli.cjs",
+    "comment",
+    "5e08a9c7-1c1e-4072-8b44-47043d5f0218",
+    "--text",
+    "Planning admission at9cbd37320eaef450deb18355c7758c463897236d: fresh canonicalpr-flowPASS,5checksPASS,currentfullMiMo5447016105 APPROVED32pages198834B13files,zero findings; root read whole review. One available planning cohort. CRquota6044736574 boundrequest6044734253 until19:52:29UTC andCodex6043618137UNKNOWN supply availability evidence, no synthetic approvals. Admit three-point bounded complete-input page child to Ready for separately prepared RED. Preserve16,384UTF16/256LF/49,152UTF8 wholecompactresponse, actualencoder preflight before candidate/success publication, exactstringpass-through, strictchronology/fullcoverage and caller-effective-hostlimit requirement. No runtime release, calleractivation, native retry, merge or parentcompletion.",
+    "--config",
+    "openhax.kanban.edn"
+  ],
+  "exit": 0,
+  "stdout": "{\n  \"ok\": true,\n  \"uuid\": \"5e08a9c7-1c1e-4072-8b44-47043d5f0218\",\n  \"comment\": \"Planning admission at9cbd37320eaef450deb18355c7758c463897236d: fresh canonicalpr-flowPASS,5checksPASS,currentfullMiMo5447016105 APPROVED32pages198834B13files,zero findings; root read whole review. One available planning cohort. CRquota6044736574 boundrequest6044734253 until19:52:29UTC andCodex6043618137UNKNOWN supply availability evidence, no synthetic approvals. Admit three-point bounded complete-input page child to Ready for separately prepared RED. Preserve16,384UTF16/256LF/49,152UTF8 wholecompactresponse, actualencoder preflight before candidate/success publication, exactstringpass-through, strictchronology/fullcoverage and caller-effective-hostlimit requirement. No runtime release, calleractivation, native retry, merge or parentcompletion.\"\n}\n",
+  "stderr": ""
+}

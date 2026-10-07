@@ -1,0 +1,845 @@
+{
+  "at": "2026-10-07T17:43:26.173015+00:00",
+  "base": "c1369c223cf3c57e3e31934a6d746bfcdfe73f5a",
+  "branch": "codex/muse-bounded-review-pages-plan",
+  "child_uuid": "5e08a9c7-1c1e-4072-8b44-47043d5f0218",
+  "parent_read": {
+    "uuid": "0bd45066-9d1c-4cc4-a28e-fcfecf7eac7a",
+    "frontmatter": {
+      "uuid": "0bd45066-9d1c-4cc4-a28e-fcfecf7eac7a",
+      "title": "Require assessment of complete immutable review input",
+      "status": "incoming",
+      "priority": "P1",
+      "points": "3",
+      "labels": "review, full-input, completeness, 3sp",
+      "category": "repair"
+    },
+    "sections": [
+      {
+        "type": "body",
+        "content": "# Require assessment of complete immutable review input\n\n## Outcome\n\nA passing verdict requires assessment of all changed hunks, including input\nbeyond a preview. Missing tail bytes cannot produce an approval; restored full\ninput can complete the existing review state machine.\n\n## Scope\n\nThe user authorized this bounded upstream preparation on 2026-10-03, in an\nisolated worktree based on Muse18 `19456bb4c5f4d5ce1ac52ca854221516302e0c2e`.\nExtend the existing pure review session with lossless reader pages and separate\ndelivery/assessment observations. The filesystem boundary verifies eta-mu's\nfull-input manifest. Expose two read-only review tools, update the existing\nreviewer contract and test actual compiled tools.\n\nThe paired eta-mu worktree starts at merged\n`b18764d47c0b8da0b2d31f02d8bdd889323ee65c` and preserves `basehead.diff` before\ncreating `pr.diff`. Existing caller workflow pin\n`b5b28237c45323cdc1914317260192163d957735` remains historical provenance.\n\n## Non-goals\n\nNo second review engine or board parser, exhaustive proof of unchanged code,\napproval inferred from coverage or empty findings, caller pin update, review\nrequest, provider watcher, commit, push or merge in this preparation.\n\n## Acceptance criteria\n\n- [ ] Invalid manifests, missing bytes and invalid UTF-8 refuse review input.\n- [ ] Every delivered page requires a recorded changed-hunk assessment.\n- [ ] A prefix-only session cannot submit an approval.\n- [ ] Restored complete input, assessed through actual compiled tools, can submit.\n- [ ] Git-quoted Unicode path identity and publisher validation remain intact.\n- [ ] Relevant tests, lint and cold profile compilation pass.\n- [ ] Existing receipt and event history remains unchanged.\n\n## Verification\n\nUse pure review regression tests, filesystem corruption/recovery fixtures and\n`npm run test:review-input` against an isolated cold compiled profile. Fixtures\ndo not invoke a model or publish native reviews. Record actual results and\nsource identities in append-only receipts and the full-input verification note.\n\n## Authority\n\nThis is manual incoming Markdown input. No engine write ID, event, lifecycle\ntransition or hosted qualification is asserted. Parent owns release selection\nand subsequent hosted review and merge qualification. Preparation remains\nuncommitted until the user releases the explicit hold.\n\n## Native Muse19 review follow-up — 2026-10-03\n\nThe parent authorized local repairs of CodeRabbit comments `4175445588` (P2,\nretry after failed input admission) and `4175445601` (P1, retain the candidate\nstage until every full-input page is assessed). Add RED/GREEN coverage for the\npremature publish transition, recovery without restart, and a retained tail\nfinding through the actual compiled tools. Keep submission's defensive guard\nand the existing prohibition on new findings at `:publish`.\n\nComment `4175445594` (P1) identifies the paired eta-mu staging/tool contract.\nThe prepared workflow remains unpublished; only after the parent commits the\ncorrected Muse source may eta-mu's three Muse selection sites and their tests\nadvance to that immutable commit. Both proposed revisions can qualify together\nbefore caller activation. Existing callers retain the old compatible pair.\nParent owns commits, push, GitHub settlement, review requests and merge.\n\n## Recover stale assessment chronology — 2026-10-06\n\nThe authorized workflow restoration exposed native Proxx452 review5434690539:\nall hosted jobs succeeded and an approval was published, but seventeen pages\nwere reread after their assessments. The literal retained last-read-before-\nassessment audit fails; later reassessment cannot erase that earlier trace.\nThe full input also contains 29 changed files while the added-lines index\nreported 28 because one file is deletion-only. The native review remains failed\nindependent qualification and is not repeated or credited.\n\nRepair the existing pure review state and compiled tools so any reread of an\nassessed page permanently invalidates that invocation, removes its publishable\ncoverage, prevents a same-session restart from hiding the failure and removes\na prior owned submission if one exists. A fresh process may make the single\nbounded recovery already supported by the qualified eta-mu runner. Repeated\nreads before assessment and complete recovery of previously unassessed tail\npages remain permitted. Report all serialized Git diff files, preserving the\nseparate added-lines finding index.\n\nAcceptance: reproduce the precise failures on unchanged reviewed Muse19 code;\npass meaningful pure and actual compiled-tool controls with the candidate;\nretain every old test definition and historical receipt byte; run appropriate\ntests and zero-warning lint. Existing timestamp, assessment, stage, identity,\nquorum and publication laws remain required. This manual card-content addition\nasserts no Rheos transition, hosted result, independent agreement or adoption.\n\nThe receiving boundary also needs the complete actual host call history. Add\nportable invocation law and a compiled CJS adapter that prepare canonical page\ngeometry from verified full input, reject irreversible last-read violations,\nrequire five actual successful stage calls and bind the submit call to the\nunchanged artifact. The paired eta-mu supervisor and final Git validation consume\nthis same source; they do not implement another review state machine. Actual\nfile-deletion failure may leave a prior artifact, so artifact deletion alone\ncannot establish eligibility. Unknown or malformed traces and host tool errors\nremain unestablished. Typed healthy omission and successful stale-read evidence\nmay use the existing shared two-invocation bound, never a third attempt.\n\nOnly fresh full native qualification and normal protected merges of both source\nrepairs permit caller activation. Local compiled and transport fixture results\nprovide no native agreement, approval, completed round or source adoption.\n\nThe regular build and review-input gate must also exercise the optimized CJS\nexports that eta-mu consumes. Build the review-invocation target alongside the\nexisting hosts, then use its public preparation and verification exports to\ncheck string, Buffer and Uint8Array input plus exact raw artifact digests. The\nold optimized crypto interop failure must fail this same smoke check. Hosted\nCI for the initial b1 source did not run this export gate; that coverage limit\nremains recorded until the successor receives its own hosted qualification.\n\nThe initial native review staged Muse `05b4` through the old reusable caller `b5b`,\nwhich exposes neither required full-input page tool. Both model invocations\nended without submission. The missing-tool contract is established; the cause\nof omitted submission is not observed. Advance only the reusable workflow pin\nto the actually reviewed and protected-merged Eta342 commit `09a`, whose immutable\ndefault selects the compatible full-input Muse `0b` tools. Keep caller permissions, named\nsecrets, evidence commands and every review gate unchanged. The successor\nneeds fresh native full-input qualification; the failed initial run stays failed.\n\n## Flush the fresh-process result — 2026-10-07\n\nCodeRabbit current29 root4201964868 identifies an immediate child exit before\npiped JSON is flushed. Await the stdout write callback and reject callback\nerrors, then retain the same explicit exit0 needed by the compiled plugin.\nThree controlled delayed-pipe original-script cases lose their JSON with exit0;\nthe three corrected cases deliver every byte and all204 assessed pages. Both\ncold8tool204page smoke runs pass. The150ms delay is synthetic, not an observed\nproduction outage. No domain, stage, tool or invocation guard changes here.\n\nCurrent29 nativeMiMo is genuinely APPROVED with independently replayed49 input\nchecks passing. Its separate publication34 audit remains33/34 FAILED because\nthe historical author request also contained a title; all whole body bytes\nmatch. Preserve that failed result and every historical receipt byte. The new\nhead requires fresh full native qualification and current hostedCI. The paired\nEta full-registry custody and strict failed-call prompt repair remains local\nand unpublished until the actual qualified Muse merge. This manual content\naddition records no Rheos transition, native approval or independent agreement.\n\n## Align prompts with strict invocation admission — 2026-10-07\n\nNative Muse20 review5436579674/root4202152173 exposes a real contract mismatch:\nthis source's verifier refuses failed review calls and repeated stage/submit\nrecords while the old prompts explicitly recommend those repair loops. Align\nboth source prompts: any failed review call ends that invocation without\nsubmission, retry or restart. Only the host's verified typed recovery policy\nmay admit one fresh bounded complete-input invocation; failure alone supplies\nno retry authority. Preserve every existing law, LAST, coverage and binding guard.\n\nAdd one focused existing-law test using actual producer stage/submit refusals,\nthen successful calls: both traces remain unestablished; the healthy complete\nfive-stage trace passes. Add explicit publish to the fresh-child fixture while\npreserving stdout completion/error handling. The same final test on original\nsource and candidate passes266tests1152assertions; no old RED is claimed. Kondo\nand compilation have zero warnings; cold8tool204page and public30assertion\nexport checks pass. This is local source evidence, not native qualification.\n\nThe actual7f review covers all21pages17paths but contains a refused classification\ncall and an older trigger-event PR-body snapshot. Retain all49 original PASS\npredicates and both supplemental failures. The next source description is\nwritten body-only at the actual old published head before the source push, so\nthe new event snapshot carries it; no unpublished SHA is used in that request.\nNo later body is credited as model input without actual evidence.\n\nThis manual scope/verification content asserts no Rheos state transition.\nAppend a new correction receipt and reflection; never edit historical lines.\nEvery new native review, current hosted check, genuine finding, quorum and\nseparate convergence gate remains required before an actual normal merge.\n\n\n## Native026 begin-description correction\n\nActual MiMo review5436874985/root4202400351 identifies a stale model-facing\n`review_begin` description that tells the agent to restore input and retry\ninitial admission. Both reviewed prompts and the strict invocation law require\na failed review call to end that invocation. Input repair belongs to the host.\n\nScope: remove the restore-and-retry instruction from the begin description and\nstate that a failed begin ends the invocation. Preserve every executable tool\nbody, strict law guard, existing test byte, immutable caller pin, and historical\nreceipt/reflection byte. Run the applicable existing compiler/linter, then\nappend a typed correction receipt and reflection. Parent alone publishes an\nordinary successor; fresh full native review, current CI, all finding\nsettlements and the normal merge gate remain required. This card content is\nmanually authored planning; operational status remains unchanged."
+      }
+    ],
+    "source-path": "/home/err/spaces/foresight/.worktrees/muse-bounded-review-pages-plan/docs/agile/kanban/0bd45066-9d1c-4cc4-a28e-fcfecf7eac7a.md"
+  },
+  "canonical_read_command": [
+    "/home/err/.volta/tools/image/node/22.20.0/bin/node",
+    "/home/err/spaces/review-repair/rheos-comment-rendering/dist/cli.cjs",
+    "read-task",
+    "0bd45066-9d1c-4cc4-a28e-fcfecf7eac7a",
+    "--config",
+    "openhax.kanban.edn"
+  ],
+  "parent_read_exit": 0,
+  "fresh_main_remote": "c1369c223cf3c57e3e31934a6d746bfcdfe73f5a",
+  "history": {
+    "19": {
+      "state": "MERGED",
+      "head": "9aa938e74a0e85abd2c0280e81bcbe88f459aef7",
+      "canonical_status": "PASS; 5 successful checks; exact CR/MiMo; 1 available cohort; authenticated Codex quota source5974664917"
+    },
+    "20": {
+      "state": "MERGED",
+      "head": "ecc6810323d456bb309ca24fbb8c8a8aff31fc96",
+      "canonical_status": "PASS; 5 successful checks; exact CR/MiMo; 1 available cohort; authenticated Codex quota source6027588697"
+    }
+  },
+  "existing_open_pr14": "Unrelated cold-generated-host-targets work, not pagination owner; untouched",
+  "searches": {
+    "pagination": [],
+    "review": [
+      "cdfb84f8-1c83-4e0e-a6f5-960427d341dd",
+      "0bd45066-9d1c-4cc4-a28e-fcfecf7eac7a",
+      "c03fcf95-0c6f-4692-a4a4-c924553b2a54",
+      "9f35579b-e522-4445-a022-daa6f07ae3da",
+      "1bc0a6b5-3286-4e43-afc4-8cf8ae0549a0"
+    ]
+  },
+  "tracked_baseline": {
+    ".claude/hooks/audit-mcp-call.sh": {
+      "bytes": 191,
+      "sha256": "eb139a3f3771a3fa13d558c8a45ec6b34de48c2df37146fd70408492bc15e334"
+    },
+    ".claude/hooks/post-edit.sh": {
+      "bytes": 178,
+      "sha256": "cc1308e410c1ba72fd9662de58b81c1f203c3328f87d0c6e04ea9ff81e577582"
+    },
+    ".claude/hooks/reinject-context.sh": {
+      "bytes": 164,
+      "sha256": "4bce3708ef31ea6cb3ddda2977bb91c9d94231a65f43f0afe88473346eadccbb"
+    },
+    ".clj-kondo/config.edn": {
+      "bytes": 434,
+      "sha256": "0103a33d22ebc2f36e862bf642428a630593269b0d78c6cfe5a598833c28e2b4"
+    },
+    ".clj-kondo/imports/funcool/promesa/config.edn": {
+      "bytes": 492,
+      "sha256": "8a4630da65dd79f5ee0a9622506280b8fad96f822bcf4c6320e4219f9e4df6ed"
+    },
+    ".clj-kondo/imports/metosin/malli/config.edn": {
+      "bytes": 114,
+      "sha256": "4adba0583d80d7ffcb98b28583dd4d68069205db26089ddfed49c016d1803bda"
+    },
+    ".clj-kondo/imports/rewrite-clj/rewrite-clj/config.edn": {
+      "bytes": 186,
+      "sha256": "9ad24d29701957b934f64a85d52363b28c8b4bf023d8988d037e8c524b272a0c"
+    },
+    ".github/workflows/ci.yml": {
+      "bytes": 1568,
+      "sha256": "1a7a0842fd1589e77e17c7e0f0b57ddd5f6892c9facb0e528afcfbd664a1e89c"
+    },
+    ".github/workflows/eta-mu-review.yml": {
+      "bytes": 1082,
+      "sha256": "62e748a7ab204159ba375407d41324768f26d53afa79b15febc58c8b00228a3a"
+    },
+    ".github/workflows/sandbox-bundle.yml": {
+      "bytes": 7822,
+      "sha256": "80d72cafb32c1272356bb2f9fb71c651850d6d79171cc4279045bb91c1987f89"
+    },
+    ".gitignore": {
+      "bytes": 645,
+      "sha256": "93dc173d4e1e4fe95d005b46183848373371e96b9f0d72a7eaa60948794164cf"
+    },
+    ".opencode/opencode.json": {
+      "bytes": 589,
+      "sha256": "506163963b6739c3025bfcf3c15486998c40a0aa120493b2f96e3593b1c01499"
+    },
+    ".ημ/PRINCIPLE.edn": {
+      "bytes": 12960,
+      "sha256": "7442436c935c1a65c8c8ff6616b4e43f5422cd1dc45220ab295154bc80cb1fd1"
+    },
+    ".ημ/config/claude/root.edn": {
+      "bytes": 598,
+      "sha256": "290cec1b7042c0210dac5d78c62e4e88dda7d377e3fb100450f93823913fbc2f"
+    },
+    ".ημ/config/mcp/root.edn": {
+      "bytes": 559,
+      "sha256": "a0f84f716eaace959da3c46fcb8edc785aefd56a359bbf549432cf60638c5380"
+    },
+    ".ημ/config/opencode/agents/github-reviewer.md": {
+      "bytes": 10128,
+      "sha256": "1f5f3064004c34329c190b3ef7471e8a92af6f8d37cab6401589ad7446bc620c"
+    },
+    ".ημ/config/opencode/agents/muse.md": {
+      "bytes": 2808,
+      "sha256": "af55e99f5505d3ce647c58a850b59fa3e0208e4227b07e343a48f7c819cac2c4"
+    },
+    ".ημ/config/opencode/agents/phase-discover.md": {
+      "bytes": 1924,
+      "sha256": "da6dc694794eab41121a5d1f6d7087aad3ce49da9deb1411e22490fb3fc201df"
+    },
+    ".ημ/config/opencode/root.edn": {
+      "bytes": 698,
+      "sha256": "2d8bf681a0381375b0c4de6bdc3b017101a9a6cc06e2db507b32a9aef31d9f3b"
+    },
+    ".ημ/config/opencode/settings/agents.edn": {
+      "bytes": 201,
+      "sha256": "785f31473c512418ad73ae4615922b69a8c7197e8f5e4446c152777d8e49ae3d"
+    },
+    ".ημ/config/shared/permissions/default.edn": {
+      "bytes": 333,
+      "sha256": "d411921e5c31f574206ca373f11c1f89f31c1a3a65e9f7fb2fcc085a9ff3bfe8"
+    },
+    ".ημ/config/shared/plugins/actor-watch.edn": {
+      "bytes": 105,
+      "sha256": "c15c7ce2f603d37ffe015e7a7b938885797c9a7eea15676aeeaaa6d34342777d"
+    },
+    ".ημ/config/shared/plugins/actors.edn": {
+      "bytes": 217,
+      "sha256": "eec0a840a934a79412d8d4c51d63a7fd4f45bdea466c326bbaa4aead15a88b75"
+    },
+    ".ημ/config/shared/plugins/apifany.edn": {
+      "bytes": 59,
+      "sha256": "6716c04460b1c40b3ee1c099cf0ff208f04779ab17bce656a0435f6f735cacfd"
+    },
+    ".ημ/config/shared/plugins/edn-ledger.edn": {
+      "bytes": 58,
+      "sha256": "7c8d715e069b3be594a05c46e8b0e06ec04432d69ca272c2a445f4e1e953b1ae"
+    },
+    ".ημ/config/shared/plugins/kanban-gate.edn": {
+      "bytes": 110,
+      "sha256": "c94d547eee251a05e33d4e3201f9a7cca145928fdc9a6bd2eab392a8df3cdf62"
+    },
+    ".ημ/config/shared/plugins/receipt-river.edn": {
+      "bytes": 65,
+      "sha256": "96d1c1127d31b0d642ba530ca1cb5e745e70a60dc98fa6929adc8780e7feb689"
+    },
+    ".ημ/config/shared/plugins/review-pipeline.edn": {
+      "bytes": 66,
+      "sha256": "a2c32123de36ebad9e4b0d90e87b49dc6f7513d9b1586b081b66de548d5a3156"
+    },
+    ".ημ/config/shared/plugins/session-mycology.edn": {
+      "bytes": 68,
+      "sha256": "32fde7731b64044c9e2f3c1e38069d08d4062da71978a5241e338e41b5d032d2"
+    },
+    ".ημ/config/shared/plugins/websearch.edn": {
+      "bytes": 112,
+      "sha256": "51870135bc704b4017e08fce71a4d59c3035fe404b790b78e6cd33e946cd7b66"
+    },
+    ".ημ/config/shared/profiles.edn": {
+      "bytes": 758,
+      "sha256": "f263f89b01cd1a1da53e6df4a538500949284ae78d4becb4f0ef5229e299906c"
+    },
+    ".ημ/kanban-events/ledger.edn": {
+      "bytes": 53541,
+      "sha256": "f521d91816f3131f159ef81369781b998ccf7075fafe7dc2f76834aaf826476b"
+    },
+    ".ημ/plugins/actor_watch.cljs": {
+      "bytes": 3525,
+      "sha256": "0348fe2baaeb346967dcda9267eb3ad9f4687031ee565f0df23fc27214465756"
+    },
+    ".ημ/plugins/actors.cljs": {
+      "bytes": 17391,
+      "sha256": "017cba0b0de307b0564443835e508c433e09846f2b3756a7206768acbf909227"
+    },
+    ".ημ/plugins/apifany.cljs": {
+      "bytes": 4358,
+      "sha256": "ca5623285c2525c97b8c7de9fa3e2ef061e60a8aa40d9ea5b15892d3370c5c25"
+    },
+    ".ημ/plugins/edn_ledger.cljs": {
+      "bytes": 4282,
+      "sha256": "7a59d7cbb29afcc9f771c6c30eb1059a0f03ce5173f9461c2da1df7b46e41f1c"
+    },
+    ".ημ/plugins/kanban_gate.cljs": {
+      "bytes": 8556,
+      "sha256": "9b6cac6bc9739d780d26aaa686f8fdbeac98f78aab34a2301d79cf3d7b3d5e6f"
+    },
+    ".ημ/plugins/receipt_river.cljs": {
+      "bytes": 4054,
+      "sha256": "1b3c0a5bb2896a756f6eeffb1969d2548b38c5b22f48ef79c85490daa61eda2e"
+    },
+    ".ημ/plugins/review_pipeline.cljs": {
+      "bytes": 9953,
+      "sha256": "a042b47f47f9cc32156ff538351f99bc3c7d2a9f635ab37b3bcfa4fd91b20331"
+    },
+    ".ημ/plugins/session_mycology.cljs": {
+      "bytes": 8875,
+      "sha256": "e4840f021c1022332c73faf7f5f317db6db6245bd8afe95fe443f8da6516c3bf"
+    },
+    ".ημ/plugins/websearch.cljs": {
+      "bytes": 2637,
+      "sha256": "2b82cdb1038eb5afaa58aba4058aea9935bcfabfef35781309e68ff8619ebc03"
+    },
+    ".ημ/review/evidence-review.md": {
+      "bytes": 4003,
+      "sha256": "9d81fe355e83c623d7f7739e93aadec3617f8e5f89f68dd0ff78ef0cdf6085af"
+    },
+    ".ημ/review/full-input-verification.md": {
+      "bytes": 10711,
+      "sha256": "2a234a4067388f85259bb3af6425422c96f0ce364fc2c6ba5ddaf7364a38bf91"
+    },
+    ".ημ/review/git-quoted-path-verification.md": {
+      "bytes": 7045,
+      "sha256": "0163e4f05f1761b59e10aba010cc4d957ac37eb85f714f6cec67502819250227"
+    },
+    ".ημ/review/publish-opencode-review.cjs": {
+      "bytes": 6572,
+      "sha256": "bb75bc57d8eeaf7edbd77f34e9a4da2d319617d06809f9aadfb0d94e7ae6c2c9"
+    },
+    ".ημ/review/publish-opencode-review.test.cjs": {
+      "bytes": 7128,
+      "sha256": "3084174dcc5a4c4eb77eefdee01ea74276916845927809ce07789159b74eff22"
+    },
+    ".ημ/session-mycology/ledger.md": {
+      "bytes": 7696,
+      "sha256": "c0f0df022b99d1c3fe7e079284a824b966b27dd23d91b5713e67fcd72ecaf98f"
+    },
+    ".ημ/Π_LAST.md": {
+      "bytes": 1336,
+      "sha256": "2756ea22bb2c90cdf82c2e2d5bb362ea08731c657a7d89c86dce52291a218c2b"
+    },
+    ".ημ/Π_STATE.sexp": {
+      "bytes": 1000,
+      "sha256": "0e197684cc315b7902c23e195a5e4ffe79940dba1005365a1b9c313b10698a3f"
+    },
+    "AGENTS.md": {
+      "bytes": 7029,
+      "sha256": "a63129888eaa3c3834bca3d172cf7139fd0b2056d0b56fb87f993b07a349f7e7"
+    },
+    "CLAUDE.md": {
+      "bytes": 8157,
+      "sha256": "7797ee4a223e8a6066387e942a5b4bb03166eee71c8774ceb4a35ae491adf91b"
+    },
+    "README.md": {
+      "bytes": 7290,
+      "sha256": "dd81ca4ebc176f15a6aa559209bf2dfca8889740131fb4286681a8a0b0c68cb5"
+    },
+    "STYLE.md": {
+      "bytes": 3637,
+      "sha256": "5de5116f0e11707b51d859a1cdfc8a3c14b7c0f564388b87927f9e2e5579ff79"
+    },
+    "deps.edn": {
+      "bytes": 373,
+      "sha256": "ebfda1fbeabef93fdb89863ea5c4b5e812b9103f308560ef9a3d7c7174945f97"
+    },
+    "docs/DEPLOY.md": {
+      "bytes": 2932,
+      "sha256": "e30f35b9c6ce18b08a31442007e21cda1631d66efcd100071fa1be810fa82fd0"
+    },
+    "docs/agile/AGENTS.md": {
+      "bytes": 2953,
+      "sha256": "f621182eb533e8205c2af53abb5e4b36448e083c62f5e3018bc72a9450fe9ea2"
+    },
+    "docs/agile/kanban/0a21b52b-c3bf-42fd-a798-2ed40339f19e.md": {
+      "bytes": 1136,
+      "sha256": "82d23f681985b1712b5f081f1de74ab50aa4fffeeef9cf3e398590d0bcd419eb"
+    },
+    "docs/agile/kanban/0a28e8bf-8b73-4cf5-9112-de80c9637ea2.md": {
+      "bytes": 1617,
+      "sha256": "5dffc5d2d606d08b0958bfdf02eddb3bcd348670e84c51b79005a2a5430d3e43"
+    },
+    "docs/agile/kanban/0bd45066-9d1c-4cc4-a28e-fcfecf7eac7a.md": {
+      "bytes": 11442,
+      "sha256": "c6c15ef7837fbe102dffc28d6b251c8f39de30508af001773d5dd7ff8ffb17f8"
+    },
+    "docs/agile/kanban/45b3e181-d0b6-4c0f-938e-7e03d1805ce3.md": {
+      "bytes": 11201,
+      "sha256": "251814b069c60599fdf8684e04cf72abacc3fe11cf1b6a9a537a5a09cabe1b0a"
+    },
+    "docs/agile/kanban/49ea8e42-ef19-4d4d-a135-3059c08581ba.md": {
+      "bytes": 1288,
+      "sha256": "34518a4e814aa51866e263a056da6d836053d03099cdc1f757572c70961dde1d"
+    },
+    "docs/agile/kanban/bfebbd54-bc0f-4596-93cc-44c1977cf974.md": {
+      "bytes": 1417,
+      "sha256": "47891e896383ceb82562772b45fee7292f8691f74806df4ad2142d8b23570e31"
+    },
+    "docs/agile/kanban/bind-review-summary-claims-to-current-evidence-f07ae3da.md": {
+      "bytes": 2925,
+      "sha256": "593007c6de5c8a0b0c577aad3e66e56a16412431ec476077f7bd51529256b8c4"
+    },
+    "docs/agile/kanban/c03fcf95-0c6f-4692-a4a4-c924553b2a54.md": {
+      "bytes": 1066,
+      "sha256": "1d87ae221fd2c7dc75660813c507451a000a2cb3f132732dbdad6090f3865984"
+    },
+    "docs/agile/kanban/cdfb84f8-1c83-4e0e-a6f5-960427d341dd.md": {
+      "bytes": 3536,
+      "sha256": "5e992bec9b0d4886496c96e0b12df851377f402780c68310b26546a7493bec66"
+    },
+    "docs/agile/kanban/d761ad52-7fd4-48bf-8101-eb836f9d6f95.md": {
+      "bytes": 1171,
+      "sha256": "d7120abe7c2f59d552315888f74b7d7ced2e0c513760f6fa50fc4529d2ebe11e"
+    },
+    "docs/agile/kanban/f856fdbd-e5a9-4229-80f7-183f098b2324.md": {
+      "bytes": 1342,
+      "sha256": "f726a39c64ed8768ad0ae144a6e16bffc913d3429b3ce6ddcf2cd3f73c3fe752"
+    },
+    "docs/agile/kanban/make-self-authored-review-publication-truthful-ae0549a0.md": {
+      "bytes": 2694,
+      "sha256": "aaa63b61cdeaf365ec27348004af9ec1ae84ef429338bdabf1c0a67d76a950d3"
+    },
+    "docs/architecture/compatibility-boundary.md": {
+      "bytes": 6175,
+      "sha256": "aed44f33335e87f3ad058593ce1fb2d65d1d570884eeb3bc51d3c53a533eb9d5"
+    },
+    "docs/inbox/2026.07.11.17.19.10.md": {
+      "bytes": 141100,
+      "sha256": "1374c14185898b97a721d07115bb23f7bf59a08f890864d726f1d4af46f39594"
+    },
+    "docs/inbox/2026.07.11.20.28.09.md": {
+      "bytes": 3665,
+      "sha256": "a8541b90e12990c3797aaae843a39e72438ef9c419821a579c97b523e4d21baf"
+    },
+    "docs/inbox/2026.07.12.07.10.20.md": {
+      "bytes": 11576,
+      "sha256": "3a1dd6009ed015965b8259dd23c746c3eb453b7fda77a7d1a07bbb62086ff985"
+    },
+    "docs/inbox/2026.07.12.21.26.42.md": {
+      "bytes": 32736,
+      "sha256": "18360882b17674c440905b85106daf05b38d55af8e3780f090c67ba857b551b2"
+    },
+    "docs/inbox/2026.07.13.03.08.38.md": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/verification/claude-hook-wrapper.md": {
+      "bytes": 8285,
+      "sha256": "f2561d821c80bc26e3b3243d277b866ce7128a83d3dbc9f383440fa597d3b1b5"
+    },
+    "docs/verification/evidence/muse-final-build.txt": {
+      "bytes": 1093,
+      "sha256": "97076cba9a308beee5d5daefd8cca81da83a1351920a1d2136e1620b44391d95"
+    },
+    "docs/verification/evidence/muse-final-cold.txt": {
+      "bytes": 2980,
+      "sha256": "aa204628428d81df4ca5b636e4d104dfea517efe2fc611e8465eeef760d43455"
+    },
+    "docs/verification/evidence/muse-final-gates.json": {
+      "bytes": 1164,
+      "sha256": "3f28fed3622ef4e6f4949ad465f8e4866f682094c32ce6705fc8b108a40948fa"
+    },
+    "docs/verification/evidence/muse-final-hook.txt": {
+      "bytes": 518,
+      "sha256": "1f179f0383d7fd41faa5bf46781118634b5b2811683dce998542effb026b27b3"
+    },
+    "docs/verification/evidence/muse-final-lint.txt": {
+      "bytes": 126,
+      "sha256": "786b410ed581d80c33b610eb60f7fb1f6512b0afd49e68bf232f54ad530b0e21"
+    },
+    "docs/verification/evidence/muse-final-supervisor.txt": {
+      "bytes": 939,
+      "sha256": "6133ebcb50b599d554ca9a9ee6ca0467cd57b2d5b4c8f5e20eb75992d20e68a0"
+    },
+    "docs/verification/evidence/muse-final-tests.txt": {
+      "bytes": 1283,
+      "sha256": "01afd85f9472a2a3568100a7ca3d4675a26312e5aa0f58e1d7f6980f6cb693ad"
+    },
+    "docs/verification/evidence/muse-plugin-build.json": {
+      "bytes": 358,
+      "sha256": "c7cad1155b190a5ae122f22091962f216d56ecb53c598652565bea81d8bf2a42"
+    },
+    "docs/verification/evidence/muse-plugin-build.txt": {
+      "bytes": 2256,
+      "sha256": "bb6910a3dc75e98c34b246dcc360ff3926f3199963e8fc36ed58738367c6510d"
+    },
+    "docs/verification/evidence/muse-plugin-lint-green.json": {
+      "bytes": 366,
+      "sha256": "c7d2b3ace8ba198d6f777d81b40d9834877cb49b3d4eb2fd5bad2cad5536d471"
+    },
+    "docs/verification/evidence/muse-plugin-lint-green.txt": {
+      "bytes": 125,
+      "sha256": "2798f7281c2997fafc57be1eb9242d3601b50650ad5dc77d9057a5e94c162f1f"
+    },
+    "docs/verification/evidence/muse-plugin-lint-red.json": {
+      "bytes": 455,
+      "sha256": "39aa48dd9574aa31f8c69d7e2e38b518f08e6ee76e687f494fdc7715334cbeb0"
+    },
+    "docs/verification/evidence/muse-plugin-lint-red.txt": {
+      "bytes": 214,
+      "sha256": "e2a706002887257b83306af6ede42b79e26e31ada43f97008c2f43f9933dfb1e"
+    },
+    "docs/verification/evidence/muse-plugin-native-mongo-tests.json": {
+      "bytes": 442,
+      "sha256": "ef3f2fa94bc8d23b5e2370b0831c5c18b20a0606a2c1a3ff572baf4953a052d6"
+    },
+    "docs/verification/evidence/muse-plugin-native-mongo-tests.txt": {
+      "bytes": 1740,
+      "sha256": "e1c064363c7df39ec4b61cc4a29390f30748c0c86f8ed199b51756a91ed9e545"
+    },
+    "docs/verification/evidence/muse-provenance-cold.json": {
+      "bytes": 367,
+      "sha256": "0875b57b25ee67c6114b5463805b102078f684e9b4d5665af4e28173cd7a87dd"
+    },
+    "docs/verification/evidence/muse-provenance-cold.txt": {
+      "bytes": 2535,
+      "sha256": "2d5b622d9c8e80f33cbbb4690dd3053b575237f2b7f0ccf8e624e190737ad208"
+    },
+    "docs/verification/evidence/muse-provenance-hook.json": {
+      "bytes": 380,
+      "sha256": "cb5ab93b4326a80d037700c70864b4e79d54fb184f4a923b4d4a7935a01bb89e"
+    },
+    "docs/verification/evidence/muse-provenance-hook.txt": {
+      "bytes": 500,
+      "sha256": "d2957055ef6606cdf5800d11b4161ab361069a6668e2e4743dfc86f19463f13c"
+    },
+    "docs/verification/evidence/muse-review-cold-ci-command.json": {
+      "bytes": 388,
+      "sha256": "0957da8f974772b19fdda0e92718d13e284f1ee0e26a2908a5e5237761997725"
+    },
+    "docs/verification/evidence/muse-review-cold-ci-command.txt": {
+      "bytes": 6263,
+      "sha256": "274231ea508e062881da899daa1c3c786c796982c76e0e5aeb11f00ec07b1885"
+    },
+    "docs/verification/evidence/muse-review-lint.json": {
+      "bytes": 354,
+      "sha256": "33c4bf1c003a38403635d87785d621fbddd65fe15135b5162505c08107137f68"
+    },
+    "docs/verification/evidence/muse-review-lint.txt": {
+      "bytes": 98,
+      "sha256": "b2e01514d0dff699b8deab3208222e459cce69a3553252dadc7b38a0ef0409f4"
+    },
+    "docs/verification/evidence/muse-sandbox-declared-build.json": {
+      "bytes": 471,
+      "sha256": "771d7cd5aa35a2d4f1e1fe328358770f892979b3dd74f64af11da217f5eacaea"
+    },
+    "docs/verification/evidence/muse-sandbox-declared-build.txt": {
+      "bytes": 2492,
+      "sha256": "bd83b53633a4aa8d8ffde76f075f3e80ee0e6e8d4db05225ac34f932a359dbb6"
+    },
+    "docs/verification/evidence/muse-sandbox-declared-test.json": {
+      "bytes": 434,
+      "sha256": "bb5a972ac74c8b4cb6b2e2c954fe12b20ada34a57b29d90511057e0eec319a5b"
+    },
+    "docs/verification/evidence/muse-sandbox-declared-test.txt": {
+      "bytes": 2175,
+      "sha256": "d12cd03ddea950214f899680bc9a4d155c56e4104036516e33215ccae5af3ddd"
+    },
+    "docs/verification/muse-build-history.md": {
+      "bytes": 4998,
+      "sha256": "e8451005fd4cc2c45c31a7ccba6a87a35ed26b6b5f4b55926626faab2d7edff7"
+    },
+    "docs/verification/resumed-sandbox-gates.md": {
+      "bytes": 4616,
+      "sha256": "7ac0717c0315d5a43181a0723cff237617b25fcdf15b9a462773b4e6bc84362a"
+    },
+    "ecosystem.config.cjs": {
+      "bytes": 302,
+      "sha256": "87540eda65ef9ea640bdfed6c8856cbf181e200d2a0f0d505462450fe88ab313"
+    },
+    "examples/settings-merge/global.edn": {
+      "bytes": 325,
+      "sha256": "ac78170c7dd8b384b9cb0df3121050d89ff1d6729e9bb9b98cb893cc3d27451b"
+    },
+    "examples/settings-merge/project.edn": {
+      "bytes": 727,
+      "sha256": "761fd71ee0e1399ed4d03d84e50ea35681b023adabe7d5c0cacd8de64cfdba54"
+    },
+    "openhax.kanban.edn": {
+      "bytes": 53,
+      "sha256": "d0c04722963d540448c6b60c8e0d6d14e7129cf747a2b057f0ed63612b262d86"
+    },
+    "openhax.kanban.json": {
+      "bytes": 63,
+      "sha256": "1bc6c217180601964638c8ea0647a7c2f3c4e72bdc05cf6412b39ddfb2f5c1e6"
+    },
+    "package-lock.json": {
+      "bytes": 53167,
+      "sha256": "37c370b8be3c2588f516557c4f7094178fdbc6118dd59b11d42541e1751445fa"
+    },
+    "package.json": {
+      "bytes": 1350,
+      "sha256": "af93d13cba4c05e85af526c60ec290867474978e6ba3cd685ab32115000d4b23"
+    },
+    "receipts.edn": {
+      "bytes": 66604,
+      "sha256": "c7724f820f5a76792aae0fa3d3c42b21c3f6c5af0912a65be9fd45281c8dfa40"
+    },
+    "scripts/bootstrap.sh": {
+      "bytes": 774,
+      "sha256": "723ceaa8e26f3b6392229dcec4918a808c94f7bcb3d4006f659001a62a5a049d"
+    },
+    "scripts/build-claude-target.sh": {
+      "bytes": 1002,
+      "sha256": "a46452195b373ddf86260c79ba0bd0bfdff8c556f85c7e1aa293bfa90f02f217"
+    },
+    "scripts/verify-claude-hook-wrapper.mjs": {
+      "bytes": 3218,
+      "sha256": "646b8ea96621f35b55456f66100cd3dff52835057fad9ba5e9d70c46c3fe2afa"
+    },
+    "scripts/verify-cold-host-builds.mjs": {
+      "bytes": 4055,
+      "sha256": "0220fcf131b9f4365679a61d3d8cba01543aca91db3df859f9d275015155f16f"
+    },
+    "scripts/verify-full-review-input.mjs": {
+      "bytes": 16242,
+      "sha256": "d56e1b95b7cee461b4cda32ee881512ee539a92e43911f84c197e1e00d88b2fd"
+    },
+    "scripts/verify-review-invocation.mjs": {
+      "bytes": 6064,
+      "sha256": "ba9828e5090334acffafcb1447992b189ebf622a66629f83819bf6f784a1eae0"
+    },
+    "shadow-cljs.edn": {
+      "bytes": 3453,
+      "sha256": "466b7a641e4c3057e4baef567a4699630da606ca76a8db85597bcea356e8376a"
+    },
+    "src/clj/eta_mu/claude/build.clj": {
+      "bytes": 6265,
+      "sha256": "8ba0d2752645768f37689dca16847ba0c8b2935b5598b0be8ce9a48618100c14"
+    },
+    "src/clj/eta_mu/daemon/build.clj": {
+      "bytes": 551,
+      "sha256": "2ed8e1739f7880c4eefb09e488ba751d102b18a804b37d432f1bffc59264b529"
+    },
+    "src/clj/eta_mu/mcp/build.clj": {
+      "bytes": 4506,
+      "sha256": "e08a16d9546a0d20c8cdb926e2fb6955844d61de47aef84e3fc09ea01a7bf432"
+    },
+    "src/clj/eta_mu/opencode/build.clj": {
+      "bytes": 8191,
+      "sha256": "c3da0117c72f22a1a47da89b92ede65370e8e6b1024a2dd5117f7966f914c783"
+    },
+    "src/cljs/eta_mu/actor.cljc": {
+      "bytes": 3269,
+      "sha256": "3a8e9a1c1a79b40cdca3b216a7bf561a3249394a1c13b6f241fc55107d6bf400"
+    },
+    "src/cljs/eta_mu/actor/backend.cljs": {
+      "bytes": 3188,
+      "sha256": "324fe7f9cb42366ef58f00488b5279eddc79aa7bd0e56dcc766363d70c9dc1ba"
+    },
+    "src/cljs/eta_mu/actor/envelope.cljc": {
+      "bytes": 2510,
+      "sha256": "2b3d240361fe9804dc88c81200cd8a27d52fda5f14a7382f86525204d2a0463c"
+    },
+    "src/cljs/eta_mu/actor/memory.cljc": {
+      "bytes": 3015,
+      "sha256": "47337d1b8ceb7ae74fdbb8d1216ab76b51d4483f487ab7ce30f3936604d2a96a"
+    },
+    "src/cljs/eta_mu/actor/monitor.cljs": {
+      "bytes": 3131,
+      "sha256": "19a16696b6bff0d6b15d1c72462f8cb06452e9865d7b61a5cd13f444b485b97a"
+    },
+    "src/cljs/eta_mu/actor/muse.cljc": {
+      "bytes": 4131,
+      "sha256": "0627271c7b12e738fbf712a72bbb7e9c5a33d11955d5839a1e6336eed903c961"
+    },
+    "src/cljs/eta_mu/actor/store.cljc": {
+      "bytes": 2217,
+      "sha256": "f64471cebf5ee0167a3346e1922c6fddc6bb665fa495e7e83517e4e0289d8c1e"
+    },
+    "src/cljs/eta_mu/actor/task.cljs": {
+      "bytes": 7578,
+      "sha256": "f053af01f11d013d3d8c2b73db94cf7110fec551d07e9dbc87311e3e64bf1c17"
+    },
+    "src/cljs/eta_mu/actor/watch.cljs": {
+      "bytes": 12507,
+      "sha256": "eca3e6f7b46dec68955391909b7bd93dfc5894182d913edfe892b0cca16f5395"
+    },
+    "src/cljs/eta_mu/boundaries/claude.cljs": {
+      "bytes": 11274,
+      "sha256": "84a7c06f2a7d4480d4fa68841f4aa39e8a245e7a93169c6e715bddc483c81aac"
+    },
+    "src/cljs/eta_mu/boundaries/fetch.cljs": {
+      "bytes": 1396,
+      "sha256": "12f33d2db6b875967a385d0594e15e988aa66ae28d8cde4162c69171c86c9df5"
+    },
+    "src/cljs/eta_mu/boundaries/mcp.cljs": {
+      "bytes": 2920,
+      "sha256": "774304169b06a61398626182292434839d3294b0cd3dbc608f680e60301aa44e"
+    },
+    "src/cljs/eta_mu/boundaries/mongo/client.cljs": {
+      "bytes": 1399,
+      "sha256": "0d69cb86f11f5f358f53378cf998d1adf8e3e6bc059b76d91acec1b4ebfb3475"
+    },
+    "src/cljs/eta_mu/boundaries/mongo/ledger.cljs": {
+      "bytes": 7440,
+      "sha256": "03d3c8c4cd43a6aae5dac0c4a7d7d8a0e389203d1a99b0c30294a7c9d68ff0d4"
+    },
+    "src/cljs/eta_mu/boundaries/node/fs.cljs": {
+      "bytes": 5710,
+      "sha256": "7397a4f1e7c129ba5157749e5c8291f1dd13a1d8b34cc50675cd03695fd2fd1c"
+    },
+    "src/cljs/eta_mu/boundaries/node/import.cljs": {
+      "bytes": 494,
+      "sha256": "405d819a8fd893c4943eabc800a07775e45dd472f95d334b83d0980a00e417c4"
+    },
+    "src/cljs/eta_mu/boundaries/node/ledger.cljs": {
+      "bytes": 5061,
+      "sha256": "0d55aa9ed3fef31236b27dd219ddba601d79fd72c0d86fd27fcc322c89d2b21a"
+    },
+    "src/cljs/eta_mu/boundaries/node/proc.cljs": {
+      "bytes": 3148,
+      "sha256": "360106c08ad009414986f59b70affbbc42d9b2fc77829c5679040dd610e542cf"
+    },
+    "src/cljs/eta_mu/boundaries/node/watch.cljs": {
+      "bytes": 1031,
+      "sha256": "ee5a0eaef6419766fc23cf10986740a6647033200f79fb5d9694508b78f561de"
+    },
+    "src/cljs/eta_mu/boundaries/opencode.cljs": {
+      "bytes": 4116,
+      "sha256": "2e2d9d5fd8b16ae204e2ed1cec9c29a861f078e1c1553f846f9f8db7e0ffc777"
+    },
+    "src/cljs/eta_mu/daemon/core.cljs": {
+      "bytes": 7354,
+      "sha256": "f47d7899cee19a4fad79883711972eac9ff1391c12a4826cdacbb6cfbb83626b"
+    },
+    "src/cljs/eta_mu/domain/agent.cljc": {
+      "bytes": 995,
+      "sha256": "eeae808b72f59a7684efff82d53ff58c711cd1dd97472588fb841cae094923b7"
+    },
+    "src/cljs/eta_mu/domain/daemon.cljc": {
+      "bytes": 2387,
+      "sha256": "9450b63b480e7fc749998f6a9331b820e67dafbe1ee9764c2afec8adf0d998a4"
+    },
+    "src/cljs/eta_mu/domain/edn_ledger.cljc": {
+      "bytes": 2342,
+      "sha256": "7bac0307a787e9050edd281a4b74fb3607bcb32c5b358dffadb77506e7640d44"
+    },
+    "src/cljs/eta_mu/domain/mailbox.cljc": {
+      "bytes": 2384,
+      "sha256": "ccf157bb966aa90836740546bfc96832cc5d49b340dbd2fde8523e5d9dbd74f0"
+    },
+    "src/cljs/eta_mu/domain/mycology.cljc": {
+      "bytes": 5849,
+      "sha256": "229e252f68f00f40c7c1b172c1f97b5e2bc5aab8dd44670163d2bc629750c774"
+    },
+    "src/cljs/eta_mu/domain/receipts.cljc": {
+      "bytes": 5733,
+      "sha256": "5e6846fdeb6297569f96208b5ce0e6744a91beb0ae2b7bf836c300c5bf093d6c"
+    },
+    "src/cljs/eta_mu/domain/repo.cljc": {
+      "bytes": 3290,
+      "sha256": "f5487e61f0b001e5a6daea49aa7d3b192f20c7ae7d8bde3d0a7efb24df0454a4"
+    },
+    "src/cljs/eta_mu/domain/review.cljc": {
+      "bytes": 16650,
+      "sha256": "0df06e46f9307f9a80f4dd70013d6fb8f869a99ddff99fc00cf66c0e4810b466"
+    },
+    "src/cljs/eta_mu/domain/task.cljc": {
+      "bytes": 4736,
+      "sha256": "0c83bfd334e0b9bd8fdda536f340f418961817b045610159c6c9adbe7f0c88fd"
+    },
+    "src/cljs/eta_mu/domain/watch.cljc": {
+      "bytes": 2682,
+      "sha256": "4a6edbc5128fb6d6c13fd477cba3b00c8221fc18cf4787cd1fa52d449029b4b0"
+    },
+    "src/cljs/eta_mu/domain/websearch.cljc": {
+      "bytes": 3338,
+      "sha256": "f5edadb9c6f0faef0550300a1933ada3bddbe751c313184f0318f0e8424c38fb"
+    },
+    "src/cljs/eta_mu/dsl.cljc": {
+      "bytes": 9612,
+      "sha256": "97561f811dd57a068676ae191e4feb2ebf8dcdd4d3e02b20224f9f7d25456a7f"
+    },
+    "src/cljs/eta_mu/dsl/compile.cljc": {
+      "bytes": 3428,
+      "sha256": "2f19603647cc9d928a7ed35ca8d40d37508a9aff4b2e7617598da61f6227dc4d"
+    },
+    "src/cljs/eta_mu/dsl/events.cljc": {
+      "bytes": 2764,
+      "sha256": "7703c57bd6d645b718b76d9b1caedcbf8991b838b475059786c1b39dde2d4d2e"
+    },
+    "src/cljs/eta_mu/dsl/normalize.cljc": {
+      "bytes": 8171,
+      "sha256": "842671399e6a0a01eadeeaefa4724bae0a7a284c73e7bebc51d2cebe9d244bce"
+    },
+    "src/cljs/eta_mu/dsl/profile.cljc": {
+      "bytes": 2358,
+      "sha256": "d703bb97ec309cac17311c1563fc900a567724c85975fc3406d3985b12032102"
+    },
+    "src/cljs/eta_mu/dsl/schema.cljc": {
+      "bytes": 6261,
+      "sha256": "dd4f22dc9d4b046568c963d6a0b90fe57364be1828c53bfa9582e0f6c7e60f5d"
+    },
+    "src/cljs/eta_mu/dsl/zod.cljs": {
+      "bytes": 1991,
+      "sha256": "aec93b6b220ba1617f446467125114ce5092228cdae4194d94877fe3773d2383"
+    },
+    "src/cljs/eta_mu/extern/review_invocation.cljs": {
+      "bytes": 10639,
+      "sha256": "17dda3b9121e4ab96829a5f3ab3d181ca267ca95bd1aba6c2ac33ce47ef3a0ae"
+    },
+    "src/cljs/eta_mu/law/review_invocation.cljc": {
+      "bytes": 16075,
+      "sha256": "7a97ff024da488b6b847d1af5053508b18c6d135ad19841bf0faa4ea3dafd133"
+    },
+    "src/cljs/eta_mu/opencode/config.cljc": {
+      "bytes": 5995,
+      "sha256": "417ba2ab1e1dd7056064d98104bcec84f443917677323cc5eb8017bfd874820c"
+    },
+    "src/cljs/eta_mu/opencode/settings.cljc": {
+      "bytes": 3843,
+      "sha256": "d0e8d65a1777587d432ec5c83a6bba74b0e7d5c07ff20a5e9fb72907926a9db1"
+    },
+    "src/cljs/eta_mu/shape/git_diff_path.cljc": {
+      "bytes": 3522,
+      "sha256": "168a2ab5e16cdd377e1749fbb1278ce6cb82ecd0676968dc69e8e38d83e9dfba"
+    },
+    "src/cljs/eta_mu/util/prompt_section.cljc": {
+      "bytes": 1375,
+      "sha256": "56a91d29e1446efdd1ef855edb9fdd0143d330cd23b65ebd62d4f7fb85e5dabc"
+    },
+    "test/cljs/eta_mu/actor/monitor_test.cljs": {
+      "bytes": 2334,
+      "sha256": "b71d0fad362ed37730cd16b1bc3a4573e41e669ab33af75bdeea48e7fdb0e0ec"
+    },
+    "test/cljs/eta_mu/actor/muse_test.cljs": {
+      "bytes": 5588,
+      "sha256": "bce1f0c7ae57a1d3827cd53b1fca9742913cd5cbbdcc50e4f9a998a8a6563474"
+    },
+    "test/cljs/eta_mu/actor/task_test.cljs": {
+      "bytes": 3815,
+      "sha256": "699e09a71755a0f7b817447f24ab1664808766d77999b45c00a02f1521037a35"
+    },
+    "test/cljs/eta_mu/actor/watch_test.cljs": {
+      "bytes": 6602,
+      "sha256": "97b761d2077e173ccc1dfe05e788bb2813029a110ddea8fb451465bce33ddd0f"
+    },
+    "test/cljs/eta_mu/actor_test.cljs": {
+      "bytes": 5565,
+      "sha256": "a76d624ae42b578775be37f9aa3585a8cb2bf51036a7512baecc4d138b62235b"
+    },
+    "test/cljs/eta_mu/boundaries/claude_test.cljs": {
+      "bytes": 1587,
+      "sha256": "a80f496738418c172e150c70133ba104b44c4358b659192ac95638c0c07148fe"
+    },
+    "test/cljs/eta_mu/boundaries/mongo/ledger_test.cljs": {
+      "bytes": 2360,
+      "sha256": "eb7611a35079975428ba085476bd28a422f1b6226e72cdebcb7dae7601fd0864"
+    },
+    "test/cljs/eta_mu/boundaries/node/fs_test.cljs": {
+      "bytes": 3928,
+      "sha256": "da958e56aeb3f51cc88aad3ddc49c72bad1913a6074e43d5ae7d1a2926e6f237"
+    },
+    "test/cljs/eta_mu/boundaries/node/ledger_test.cljs": {
+      "bytes": 5906,
+      "sha256": "11d886edbfc2e5a85405f12ccd7f84cbdb35c805b25333e6097ceca1de28dc35"
+    },
+    "test/cljs/eta_mu/domain/agent_test.cljs": {
+      "bytes": 911,
+      "sha256": "c2ab0f3da3711a268b9510c7a0cc911e3eebdada854dc1c3fbf02eed75aad03d"
+    },
+    "test/cljs/eta_mu/domain/daemon_test.cljs": {
+      "bytes": 2078,
+      "sha256": "67b6bcca4b386036ef634fa52adde978f7d978540df8f5144ec997dbc72ceb13"
+    },
+    "test/cljs/eta_mu/domain/mailbox_test.cljs": {
+      "bytes": 2014,
+      "sha256": "1112be1da60274ff85d6695c31b7f7a473a9d5566efefc4701a9d802a1727839"
+    },
+    "test/cljs/eta_mu/domain/mycology_test.cljs": {
+      "bytes": 3263,
+      "sha256": "7a77aec67a17b6f641c448d60a958d9cfb0228db01c49eae7b8899a7f9cc5977"
+    },
+    "test/cljs/eta_mu/domain/receipts_test.cljs": {
+      "bytes": 4259,
+      "sha256": "387313d03bc6b6b9736c2dd656e0e2e80984d0d58e475b67a81909dfd2d86446"
+    },
+    "test/cljs/eta_mu/domain/repo_test.cljs": {
+      "bytes": 4268,
+      "sha256": "3009d891e652faace67f14d9d677f68182cbc43bc9d58916a590f83702b33b20"
+    },
+    "test/cljs/eta_mu/domain/review_test.cljs": {
+      "bytes": 39178,
+      "sha256": "94e70ca6a212c07a24870390f623901f1b82f7e46a5ca011601f1185b0570ac8"
+    },
+    "test/cljs/eta_mu/domain/task_test.cljs": {
+      "bytes": 3042,
+      "sha256": "d6cdfae5de440a441379f1ee9b53f451ee79581b6d626c33cf754598137aa422"
+    },
+    "test/cljs/eta_mu/domain/watch_test.cljs": {
+      "bytes": 2556,
+      "sha256": "e43785a9a06896217762739c484b536e84d9d4477f94b8ce413ab7a20b5d96c7"
+    },
+    "test/cljs/eta_mu/domain/websearch_test.cljs": {
+      "bytes": 1946,
+      "sha256": "de9b0280caf2004050944905de28c98759501e09d23c39059c872893d256dd77"
+    },
+    "test/cljs/eta_mu/dsl/normalize_test.cljs": {
+      "bytes": 7861,
+      "sha256": "19a834847fc59b8b373249358d534da4f357f36e549c29bd22301e53017253ec"
+    },
+    "test/cljs/eta_mu/dsl/schema_test.cljs": {
+      "bytes": 7701,
+      "sha256": "c0e179993cfaa6e6331e9458db915877b196a41c48cc90ffcef069e78357605a"
+    },
+    "test/cljs/eta_mu/dsl_test.cljs": {
+      "bytes": 4811,
+      "sha256": "1c39b0d484c16b77cc07deacb83043e94d023b27ea3edd330b94d55b2380075d"
+    },
+    "test/cljs/eta_mu/extern/review_invocation_test.cljs": {
+      "bytes": 11494,
+      "sha256": "397f92f9415fc084a1725ef5f08ce95d69eba918f231bc863b63bea5d535b342"
+    },
+    "test/cljs/eta_mu/law/review_invocation_test.cljs": {
+      "bytes": 25487,
+      "sha256": "78e854897b6d18105d50ad4a32e3d4407dbffeb25d0f26d2aa694222b8470d0e"
+    },
+    "test/cljs/eta_mu/opencode/agents_test.cljs": {
+      "bytes": 13700,
+      "sha256": "fab786df41e05aaecbba00f45dc53e376f1a527cba351363588cfb7f292fe08c"
+    },
+    "test/cljs/eta_mu/opencode/config_test.cljs": {
+      "bytes": 5393,
+      "sha256": "a94b77af06d904451200257504a29405a80ccf02d1c9b98600a6494ccda87981"
+    },
+    "test/cljs/eta_mu/opencode/settings_test.cljs": {
+      "bytes": 2727,
+      "sha256": "c8d8b5387d6f3be3af39d463304eda5d84a425b965457f1f8c45df57149573ad"
+    },
+    "test/cljs/eta_mu/util/prompt_section_test.cljs": {
+      "bytes": 1405,
+      "sha256": "8698d4bc9437dafadbf45560dd9ce9ad181e34e1bd3d0406e0063f7a3673e501"
+    }
+  },
+  "limits": "No runtime/test/build or card transition. New card is first-class Markdown, not an engine creation event. Parent operational status is not inferred from merged code."
+}

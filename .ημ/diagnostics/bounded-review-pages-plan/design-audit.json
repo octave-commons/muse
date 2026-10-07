@@ -1,0 +1,416 @@
+{
+  "at": "2026-10-07T17:47:42.960557+00:00",
+  "status": "Frozen planning draft for root review; not implementation admission",
+  "base": "c1369c223cf3c57e3e31934a6d746bfcdfe73f5a",
+  "branch": "codex/muse-bounded-review-pages-plan",
+  "card": {
+    "uuid": "5e08a9c7-1c1e-4072-8b44-47043d5f0218",
+    "canonical_state": {
+      "uuid": "5e08a9c7-1c1e-4072-8b44-47043d5f0218",
+      "title": "Bound larger complete-input pages by their encoded tool response",
+      "status": "incoming",
+      "priority": "P1",
+      "points": "3",
+      "labels": "review, full-input, transport, capacity, 3sp",
+      "category": "repair",
+      "parent": "0bd45066-9d1c-4cc4-a28e-fcfecf7eac7a"
+    },
+    "manual_markdown": true,
+    "operational_event_created": false
+  },
+  "parent_unchanged": true,
+  "historical_runtime_ancestor": {
+    "revision": "0b9a91492c8355e6933dc2164d35668cb76d9e60",
+    "git_merge_base_exit": 0
+  },
+  "unchanged_tracked_files": [
+    ".claude/hooks/audit-mcp-call.sh",
+    ".claude/hooks/post-edit.sh",
+    ".claude/hooks/reinject-context.sh",
+    ".clj-kondo/config.edn",
+    ".clj-kondo/imports/funcool/promesa/config.edn",
+    ".clj-kondo/imports/metosin/malli/config.edn",
+    ".clj-kondo/imports/rewrite-clj/rewrite-clj/config.edn",
+    ".github/workflows/ci.yml",
+    ".github/workflows/eta-mu-review.yml",
+    ".github/workflows/sandbox-bundle.yml",
+    ".gitignore",
+    ".opencode/opencode.json",
+    ".ημ/PRINCIPLE.edn",
+    ".ημ/config/claude/root.edn",
+    ".ημ/config/mcp/root.edn",
+    ".ημ/config/opencode/agents/github-reviewer.md",
+    ".ημ/config/opencode/agents/muse.md",
+    ".ημ/config/opencode/agents/phase-discover.md",
+    ".ημ/config/opencode/root.edn",
+    ".ημ/config/opencode/settings/agents.edn",
+    ".ημ/config/shared/permissions/default.edn",
+    ".ημ/config/shared/plugins/actor-watch.edn",
+    ".ημ/config/shared/plugins/actors.edn",
+    ".ημ/config/shared/plugins/apifany.edn",
+    ".ημ/config/shared/plugins/edn-ledger.edn",
+    ".ημ/config/shared/plugins/kanban-gate.edn",
+    ".ημ/config/shared/plugins/receipt-river.edn",
+    ".ημ/config/shared/plugins/review-pipeline.edn",
+    ".ημ/config/shared/plugins/session-mycology.edn",
+    ".ημ/config/shared/plugins/websearch.edn",
+    ".ημ/config/shared/profiles.edn",
+    ".ημ/kanban-events/ledger.edn",
+    ".ημ/plugins/actor_watch.cljs",
+    ".ημ/plugins/actors.cljs",
+    ".ημ/plugins/apifany.cljs",
+    ".ημ/plugins/edn_ledger.cljs",
+    ".ημ/plugins/kanban_gate.cljs",
+    ".ημ/plugins/receipt_river.cljs",
+    ".ημ/plugins/review_pipeline.cljs",
+    ".ημ/plugins/session_mycology.cljs",
+    ".ημ/plugins/websearch.cljs",
+    ".ημ/review/evidence-review.md",
+    ".ημ/review/full-input-verification.md",
+    ".ημ/review/git-quoted-path-verification.md",
+    ".ημ/review/publish-opencode-review.cjs",
+    ".ημ/review/publish-opencode-review.test.cjs",
+    ".ημ/Π_LAST.md",
+    ".ημ/Π_STATE.sexp",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "README.md",
+    "STYLE.md",
+    "deps.edn",
+    "docs/DEPLOY.md",
+    "docs/agile/AGENTS.md",
+    "docs/agile/kanban/0a21b52b-c3bf-42fd-a798-2ed40339f19e.md",
+    "docs/agile/kanban/0a28e8bf-8b73-4cf5-9112-de80c9637ea2.md",
+    "docs/agile/kanban/0bd45066-9d1c-4cc4-a28e-fcfecf7eac7a.md",
+    "docs/agile/kanban/45b3e181-d0b6-4c0f-938e-7e03d1805ce3.md",
+    "docs/agile/kanban/49ea8e42-ef19-4d4d-a135-3059c08581ba.md",
+    "docs/agile/kanban/bfebbd54-bc0f-4596-93cc-44c1977cf974.md",
+    "docs/agile/kanban/bind-review-summary-claims-to-current-evidence-f07ae3da.md",
+    "docs/agile/kanban/c03fcf95-0c6f-4692-a4a4-c924553b2a54.md",
+    "docs/agile/kanban/cdfb84f8-1c83-4e0e-a6f5-960427d341dd.md",
+    "docs/agile/kanban/d761ad52-7fd4-48bf-8101-eb836f9d6f95.md",
+    "docs/agile/kanban/f856fdbd-e5a9-4229-80f7-183f098b2324.md",
+    "docs/agile/kanban/make-self-authored-review-publication-truthful-ae0549a0.md",
+    "docs/architecture/compatibility-boundary.md",
+    "docs/inbox/2026.07.11.17.19.10.md",
+    "docs/inbox/2026.07.11.20.28.09.md",
+    "docs/inbox/2026.07.12.07.10.20.md",
+    "docs/inbox/2026.07.12.21.26.42.md",
+    "docs/inbox/2026.07.13.03.08.38.md",
+    "docs/verification/claude-hook-wrapper.md",
+    "docs/verification/evidence/muse-final-build.txt",
+    "docs/verification/evidence/muse-final-cold.txt",
+    "docs/verification/evidence/muse-final-gates.json",
+    "docs/verification/evidence/muse-final-hook.txt",
+    "docs/verification/evidence/muse-final-lint.txt",
+    "docs/verification/evidence/muse-final-supervisor.txt",
+    "docs/verification/evidence/muse-final-tests.txt",
+    "docs/verification/evidence/muse-plugin-build.json",
+    "docs/verification/evidence/muse-plugin-build.txt",
+    "docs/verification/evidence/muse-plugin-lint-green.json",
+    "docs/verification/evidence/muse-plugin-lint-green.txt",
+    "docs/verification/evidence/muse-plugin-lint-red.json",
+    "docs/verification/evidence/muse-plugin-lint-red.txt",
+    "docs/verification/evidence/muse-plugin-native-mongo-tests.json",
+    "docs/verification/evidence/muse-plugin-native-mongo-tests.txt",
+    "docs/verification/evidence/muse-provenance-cold.json",
+    "docs/verification/evidence/muse-provenance-cold.txt",
+    "docs/verification/evidence/muse-provenance-hook.json",
+    "docs/verification/evidence/muse-provenance-hook.txt",
+    "docs/verification/evidence/muse-review-cold-ci-command.json",
+    "docs/verification/evidence/muse-review-cold-ci-command.txt",
+    "docs/verification/evidence/muse-review-lint.json",
+    "docs/verification/evidence/muse-review-lint.txt",
+    "docs/verification/evidence/muse-sandbox-declared-build.json",
+    "docs/verification/evidence/muse-sandbox-declared-build.txt",
+    "docs/verification/evidence/muse-sandbox-declared-test.json",
+    "docs/verification/evidence/muse-sandbox-declared-test.txt",
+    "docs/verification/muse-build-history.md",
+    "docs/verification/resumed-sandbox-gates.md",
+    "ecosystem.config.cjs",
+    "examples/settings-merge/global.edn",
+    "examples/settings-merge/project.edn",
+    "openhax.kanban.edn",
+    "openhax.kanban.json",
+    "package-lock.json",
+    "package.json",
+    "scripts/bootstrap.sh",
+    "scripts/build-claude-target.sh",
+    "scripts/verify-claude-hook-wrapper.mjs",
+    "scripts/verify-cold-host-builds.mjs",
+    "scripts/verify-full-review-input.mjs",
+    "scripts/verify-review-invocation.mjs",
+    "shadow-cljs.edn",
+    "src/clj/eta_mu/claude/build.clj",
+    "src/clj/eta_mu/daemon/build.clj",
+    "src/clj/eta_mu/mcp/build.clj",
+    "src/clj/eta_mu/opencode/build.clj",
+    "src/cljs/eta_mu/actor.cljc",
+    "src/cljs/eta_mu/actor/backend.cljs",
+    "src/cljs/eta_mu/actor/envelope.cljc",
+    "src/cljs/eta_mu/actor/memory.cljc",
+    "src/cljs/eta_mu/actor/monitor.cljs",
+    "src/cljs/eta_mu/actor/muse.cljc",
+    "src/cljs/eta_mu/actor/store.cljc",
+    "src/cljs/eta_mu/actor/task.cljs",
+    "src/cljs/eta_mu/actor/watch.cljs",
+    "src/cljs/eta_mu/boundaries/claude.cljs",
+    "src/cljs/eta_mu/boundaries/fetch.cljs",
+    "src/cljs/eta_mu/boundaries/mcp.cljs",
+    "src/cljs/eta_mu/boundaries/mongo/client.cljs",
+    "src/cljs/eta_mu/boundaries/mongo/ledger.cljs",
+    "src/cljs/eta_mu/boundaries/node/fs.cljs",
+    "src/cljs/eta_mu/boundaries/node/import.cljs",
+    "src/cljs/eta_mu/boundaries/node/ledger.cljs",
+    "src/cljs/eta_mu/boundaries/node/proc.cljs",
+    "src/cljs/eta_mu/boundaries/node/watch.cljs",
+    "src/cljs/eta_mu/boundaries/opencode.cljs",
+    "src/cljs/eta_mu/daemon/core.cljs",
+    "src/cljs/eta_mu/domain/agent.cljc",
+    "src/cljs/eta_mu/domain/daemon.cljc",
+    "src/cljs/eta_mu/domain/edn_ledger.cljc",
+    "src/cljs/eta_mu/domain/mailbox.cljc",
+    "src/cljs/eta_mu/domain/mycology.cljc",
+    "src/cljs/eta_mu/domain/receipts.cljc",
+    "src/cljs/eta_mu/domain/repo.cljc",
+    "src/cljs/eta_mu/domain/review.cljc",
+    "src/cljs/eta_mu/domain/task.cljc",
+    "src/cljs/eta_mu/domain/watch.cljc",
+    "src/cljs/eta_mu/domain/websearch.cljc",
+    "src/cljs/eta_mu/dsl.cljc",
+    "src/cljs/eta_mu/dsl/compile.cljc",
+    "src/cljs/eta_mu/dsl/events.cljc",
+    "src/cljs/eta_mu/dsl/normalize.cljc",
+    "src/cljs/eta_mu/dsl/profile.cljc",
+    "src/cljs/eta_mu/dsl/schema.cljc",
+    "src/cljs/eta_mu/dsl/zod.cljs",
+    "src/cljs/eta_mu/extern/review_invocation.cljs",
+    "src/cljs/eta_mu/law/review_invocation.cljc",
+    "src/cljs/eta_mu/opencode/config.cljc",
+    "src/cljs/eta_mu/opencode/settings.cljc",
+    "src/cljs/eta_mu/shape/git_diff_path.cljc",
+    "src/cljs/eta_mu/util/prompt_section.cljc",
+    "test/cljs/eta_mu/actor/monitor_test.cljs",
+    "test/cljs/eta_mu/actor/muse_test.cljs",
+    "test/cljs/eta_mu/actor/task_test.cljs",
+    "test/cljs/eta_mu/actor/watch_test.cljs",
+    "test/cljs/eta_mu/actor_test.cljs",
+    "test/cljs/eta_mu/boundaries/claude_test.cljs",
+    "test/cljs/eta_mu/boundaries/mongo/ledger_test.cljs",
+    "test/cljs/eta_mu/boundaries/node/fs_test.cljs",
+    "test/cljs/eta_mu/boundaries/node/ledger_test.cljs",
+    "test/cljs/eta_mu/domain/agent_test.cljs",
+    "test/cljs/eta_mu/domain/daemon_test.cljs",
+    "test/cljs/eta_mu/domain/mailbox_test.cljs",
+    "test/cljs/eta_mu/domain/mycology_test.cljs",
+    "test/cljs/eta_mu/domain/receipts_test.cljs",
+    "test/cljs/eta_mu/domain/repo_test.cljs",
+    "test/cljs/eta_mu/domain/review_test.cljs",
+    "test/cljs/eta_mu/domain/task_test.cljs",
+    "test/cljs/eta_mu/domain/watch_test.cljs",
+    "test/cljs/eta_mu/domain/websearch_test.cljs",
+    "test/cljs/eta_mu/dsl/normalize_test.cljs",
+    "test/cljs/eta_mu/dsl/schema_test.cljs",
+    "test/cljs/eta_mu/dsl_test.cljs",
+    "test/cljs/eta_mu/extern/review_invocation_test.cljs",
+    "test/cljs/eta_mu/law/review_invocation_test.cljs",
+    "test/cljs/eta_mu/opencode/agents_test.cljs",
+    "test/cljs/eta_mu/opencode/config_test.cljs",
+    "test/cljs/eta_mu/opencode/settings_test.cljs",
+    "test/cljs/eta_mu/util/prompt_section_test.cljs"
+  ],
+  "unchanged_count": 194,
+  "append_only_proofs": [
+    {
+      "path": ".ημ/session-mycology/ledger.md",
+      "before": {
+        "bytes": 7696,
+        "sha256": "c0f0df022b99d1c3fe7e079284a824b966b27dd23d91b5713e67fcd72ecaf98f"
+      },
+      "appended_bytes": 626,
+      "prefix_equal": true
+    },
+    {
+      "path": "receipts.edn",
+      "before": {
+        "bytes": 66604,
+        "sha256": "c7724f820f5a76792aae0fa3d3c42b21c3f6c5af0912a65be9fd45281c8dfa40"
+      },
+      "appended_bytes": 1225,
+      "prefix_equal": true
+    }
+  ],
+  "copied_research": [
+    {
+      "path": ".ημ/diagnostics/bounded-review-pages-plan/2026-10-07-mimo-pagination-capacity.md",
+      "root_source": "/home/err/spaces/foresight/.ημ/diagnostics/truth-physical-flight/2026-10-07-mimo-pagination-capacity.md",
+      "sha256": "d7b229518d5833e37de191ab89d09fd6c12591b2d9b863239d1f62de98ff9f74",
+      "byte_equal": true,
+      "scope": "Archived local root research. Native remote archive/version facts described inside; local root paths are not remotely published evidence."
+    },
+    {
+      "path": ".ημ/diagnostics/bounded-review-pages-plan/2026-10-07-mimo-pagination-capacity.json",
+      "root_source": "/home/err/spaces/foresight/.ημ/diagnostics/truth-physical-flight/2026-10-07-mimo-pagination-capacity.json",
+      "sha256": "ee88ae2792784a99c20d3f1b7d3e15459761480698a6dbd7318a9cfa203f8f6e",
+      "byte_equal": true,
+      "scope": "Archived local root research. Native remote archive/version facts described inside; local root paths are not remotely published evidence."
+    }
+  ],
+  "local_links": [
+    {
+      "from": "docs/designs/bounded-full-review-pages.md",
+      "target": "../agile/kanban/5e08a9c7-1c1e-4072-8b44-47043d5f0218.md",
+      "exists": true
+    },
+    {
+      "from": "docs/designs/bounded-full-review-pages.md",
+      "target": "../../.ημ/diagnostics/bounded-review-pages-plan/2026-10-07-mimo-pagination-capacity.md",
+      "exists": true
+    },
+    {
+      "from": "docs/designs/bounded-full-review-pages.md",
+      "target": "../../.ημ/diagnostics/bounded-review-pages-plan/2026-10-07-mimo-pagination-capacity.json",
+      "exists": true
+    },
+    {
+      "from": "docs/designs/bounded-full-review-pages.md",
+      "target": "../../src/cljs/eta_mu/domain/review.cljc#L78",
+      "exists": true
+    },
+    {
+      "from": "docs/designs/bounded-full-review-pages.md",
+      "target": "../../src/cljs/eta_mu/domain/review.cljc#L139",
+      "exists": true
+    },
+    {
+      "from": "docs/designs/bounded-full-review-pages.md",
+      "target": "../../.ημ/plugins/review_pipeline.cljs#L38",
+      "exists": true
+    },
+    {
+      "from": "docs/designs/bounded-full-review-pages.md",
+      "target": "../../.ημ/plugins/review_pipeline.cljs#L85",
+      "exists": true
+    },
+    {
+      "from": "docs/designs/bounded-full-review-pages.md",
+      "target": "../../src/cljs/eta_mu/boundaries/opencode.cljs#L28",
+      "exists": true
+    },
+    {
+      "from": "docs/designs/bounded-full-review-pages.md",
+      "target": "../../src/cljs/eta_mu/extern/review_invocation.cljs#L110",
+      "exists": true
+    },
+    {
+      "from": "docs/designs/bounded-full-review-pages.md",
+      "target": "../../src/cljs/eta_mu/law/review_invocation.cljc",
+      "exists": true
+    },
+    {
+      "from": "docs/designs/bounded-full-review-pages.md",
+      "target": "../../scripts/verify-full-review-input.mjs",
+      "exists": true
+    },
+    {
+      "from": "docs/designs/bounded-full-review-pages.md",
+      "target": "../../scripts/verify-review-invocation.mjs",
+      "exists": true
+    },
+    {
+      "from": "docs/agile/kanban/5e08a9c7-1c1e-4072-8b44-47043d5f0218.md",
+      "target": "../../../.ημ/diagnostics/bounded-review-pages-plan/2026-10-07-mimo-pagination-capacity.md",
+      "exists": true
+    },
+    {
+      "from": "docs/agile/kanban/5e08a9c7-1c1e-4072-8b44-47043d5f0218.md",
+      "target": "../../designs/bounded-full-review-pages.md",
+      "exists": true
+    },
+    {
+      "from": ".ημ/diagnostics/bounded-review-pages-plan/2026-10-07-mimo-pagination-capacity.md",
+      "target": "2026-10-07-mimo-pagination-capacity.json",
+      "exists": true
+    }
+  ],
+  "git_diff_check_exit": 0,
+  "owned_files": [
+    {
+      "path": "docs/designs/bounded-full-review-pages.md",
+      "bytes": 10371,
+      "sha256": "dbe0fb51ebbce896666d79309eaf808a7e4d4ab646645ef1b205936b83b923e5"
+    },
+    {
+      "path": "docs/agile/kanban/5e08a9c7-1c1e-4072-8b44-47043d5f0218.md",
+      "bytes": 4672,
+      "sha256": "3c322777185e443d89961a192219381a1f6fad1709c878569675826ccafbb14b"
+    },
+    {
+      "path": ".ημ/diagnostics/bounded-review-pages-plan/2026-10-07-mimo-pagination-capacity.md",
+      "bytes": 9137,
+      "sha256": "d7b229518d5833e37de191ab89d09fd6c12591b2d9b863239d1f62de98ff9f74"
+    },
+    {
+      "path": ".ημ/diagnostics/bounded-review-pages-plan/2026-10-07-mimo-pagination-capacity.json",
+      "bytes": 11304,
+      "sha256": "ee88ae2792784a99c20d3f1b7d3e15459761480698a6dbd7318a9cfa203f8f6e"
+    },
+    {
+      "path": ".ημ/diagnostics/bounded-review-pages-plan/initial-state.json",
+      "bytes": 44846,
+      "sha256": "073a1a1c5fa22a0abdc2fb7796cc9c9f409a43bd28cd49611bd2b25417175190"
+    },
+    {
+      "path": ".ημ/diagnostics/bounded-review-pages-plan/child-read.json",
+      "bytes": 5106,
+      "sha256": "be65ee7bb77cef5cd3f32e8430143d2a6044304f64784fff750bfc25c5c010c5"
+    },
+    {
+      "path": "receipts.edn",
+      "bytes": 67829,
+      "sha256": "94c2d03f6c910f87caf5ed54b522564f06140282f87ffe0b9ba139f89e0db3ea"
+    },
+    {
+      "path": ".ημ/session-mycology/ledger.md",
+      "bytes": 8322,
+      "sha256": "a82f5368b000cd946608816103ef1eb1516d1e309b3ac0aee3efc7ebd405ec98"
+    }
+  ],
+  "self_path": ".ημ/diagnostics/bounded-review-pages-plan/design-audit.json",
+  "exact_owned_inventory": [
+    "docs/designs/bounded-full-review-pages.md",
+    "docs/agile/kanban/5e08a9c7-1c1e-4072-8b44-47043d5f0218.md",
+    ".ημ/diagnostics/bounded-review-pages-plan/2026-10-07-mimo-pagination-capacity.md",
+    ".ημ/diagnostics/bounded-review-pages-plan/2026-10-07-mimo-pagination-capacity.json",
+    ".ημ/diagnostics/bounded-review-pages-plan/initial-state.json",
+    ".ημ/diagnostics/bounded-review-pages-plan/child-read.json",
+    "receipts.edn",
+    ".ημ/session-mycology/ledger.md",
+    ".ημ/diagnostics/bounded-review-pages-plan/design-audit.json"
+  ],
+  "receipt_tool_limits": [
+    {
+      "command": "eta-mu receipt status",
+      "reported_exit": 0,
+      "actual_result": "Unknown command routed to unconfigured agent; no receipt capability and no mutation."
+    },
+    {
+      "command": "nbb direct Muse receipt builder plus fs namespace",
+      "reported_exit": 1,
+      "actual_result": "NBB analysis refused unchecked-get before evaluation/writes."
+    },
+    {
+      "command": "nbb canonical Muse domain.receipts build-record/edn-event/validate-event plus direct Node append",
+      "reported_exit": 0,
+      "actual_result": "One complete :catalog receipt with :repo at existing root receipts.edn; no duplicate schema, parser or repository helper."
+    }
+  ],
+  "non_actions": [
+    "No source/test/config edit",
+    "No JVM/native/model/build/test execution",
+    "No transition or parent-card mutation",
+    "No commit/push/PR creation/request",
+    "No effective-host runtime compatibility claim",
+    "No unchanged review retry"
+  ]
+}

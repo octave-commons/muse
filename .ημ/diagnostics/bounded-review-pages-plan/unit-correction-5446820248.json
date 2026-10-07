@@ -1,0 +1,10 @@
+{
+  "at": "2026-10-07T18:52:02.560954+00:00",
+  "native_review": 5446820248,
+  "scope": "Correct cosmetic binary-unit example only; no limits, source, board state or implementation admission changes.",
+  "before_sha256": "582751d8fd11c84c6dd5cac444eb29746e20198975fba2957a692bbf5f2a0a86",
+  "after_sha256": "0009c564cb3a05c7b8ac223182af394343294e0219aca170b760ffe55f2e8d06",
+  "verification": "16384 U+0001 characters encode as six ASCII bytes each: 98304 bytes = exactly 96 KiB before JSON string delimiters and response envelope.",
+  "prior_current_head": "093729e6039dc8813a58ad70512b36ef3316eb87",
+  "raw_review_root": ".\u03b7\u03bc/diagnostics/truth-physical-flight/pr21-native-readback-1849.json"
+}

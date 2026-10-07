@@ -1,0 +1,15 @@
+{
+  "at": "2026-10-07T17:51:17.914096+00:00",
+  "base": "c1369c223cf3c57e3e31934a6d746bfcdfe73f5a",
+  "audit_sha256": "6831f847e8e524eef43c0dc9081a8308041c148c0f7751407f0c4a016568cc80",
+  "reviewer": "codex-root",
+  "status": "PASS for planning publication only",
+  "source_read": [
+    "src/cljs/eta_mu/domain/review.cljc:78-165",
+    ".\u03b7\u03bc/plugins/review_pipeline.cljs:24-105",
+    "AGENTS.md"
+  ],
+  "findings": [],
+  "assessment": "Current restart-required envelope and chronology retained; wholeencodedresponse49152B guard before successfuldelivery; samepaginator suppliescompiledpublicverification; hosteffectivelimits preactivation prerequisite explicit. Threepointproducer scope excludescallerpin/hostoverride/nativecanary. HistoricalPR60model413pages notcurrentcandidateexecution. NewIncomingchildunderexistingowner; noimplementationadmission.",
+  "limits": "No tests or runtime execution; hosted review required"
+}

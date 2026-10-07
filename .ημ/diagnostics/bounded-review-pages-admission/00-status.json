@@ -1,0 +1,20 @@
+{
+  "at": "2026-10-07T19:15:30.890254+00:00",
+  "argv": [
+    "env",
+    "-u",
+    "GH_TOKEN",
+    "-u",
+    "GITHUB_TOKEN",
+    "nbb",
+    "-cp",
+    "/home/err/.agents/skills/pr-flow/scripts",
+    "/home/err/.agents/skills/pr-flow/scripts/pr.cljs",
+    "status",
+    "octave-commons/muse",
+    "21"
+  ],
+  "exit": 0,
+  "stdout": "octave-commons/muse#21  head 9cbd373\n  coderabbit: rate-limited   checks: {:pass 5}\n  threads: 1 total, 0 unresolved; by severity {}; informational 0\n  exact-head approvals: #{\"mimo\"}  observed commit binding: {\"mimo\" #{\"9cbd37320eaef450deb18355c7758c463897236d\"}, \"coderabbit\" #{\"9cbd37320eaef450deb18355c7758c463897236d\"}}\n  completed planning rounds: 1 / soft minimum 5  participants: #{\"mimo\"}\n  coderabbit quota-unavailable: native source 6044736574 request 6044734253 scope current-head observed 2026-10-07T18:58:29Z retry-at-ms 1791402749000\n  codex quota-unavailable: native source 6043618137 request  scope account observed 2026-10-07T17:51:25Z retry-at-ms UNKNOWN\n  gate: PASS\n",
+  "stderr": ""
+}

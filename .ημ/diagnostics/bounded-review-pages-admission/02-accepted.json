@@ -1,0 +1,16 @@
+{
+  "at": "2026-10-07T19:15:32.599667+00:00",
+  "argv": [
+    "/home/err/.volta/tools/image/node/22.20.0/bin/node",
+    "/home/err/spaces/review-repair/rheos-comment-rendering/dist/cli.cjs",
+    "move",
+    "5e08a9c7-1c1e-4072-8b44-47043d5f0218",
+    "--to",
+    "accepted",
+    "--config",
+    "openhax.kanban.edn"
+  ],
+  "exit": 0,
+  "stdout": "moved 5e08a9c7-1c1e-4072-8b44-47043d5f0218: incoming -> accepted\n",
+  "stderr": ""
+}
