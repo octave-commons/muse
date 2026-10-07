@@ -182,3 +182,20 @@ This manual scope/verification content asserts no Rheos state transition.
 Append a new correction receipt and reflection; never edit historical lines.
 Every new native review, current hosted check, genuine finding, quorum and
 separate convergence gate remains required before an actual normal merge.
+
+
+## Native026 begin-description correction
+
+Actual MiMo review5436874985/root4202400351 identifies a stale model-facing
+`review_begin` description that tells the agent to restore input and retry
+initial admission. Both reviewed prompts and the strict invocation law require
+a failed review call to end that invocation. Input repair belongs to the host.
+
+Scope: remove the restore-and-retry instruction from the begin description and
+state that a failed begin ends the invocation. Preserve every executable tool
+body, strict law guard, existing test byte, immutable caller pin, and historical
+receipt/reflection byte. Run the applicable existing compiler/linter, then
+append a typed correction receipt and reflection. Parent alone publishes an
+ordinary successor; fresh full native review, current CI, all finding
+settlements and the normal merge gate remain required. This card content is
+manually authored planning; operational status remains unchanged.

@@ -123,3 +123,12 @@
   spore: none
   receipt-refs: Native MiMo5436579674/root4202152173 and exact current source repair
   note: A review tool refusal ends the invocation; a fresh bounded host invocation owns recovery. Align prompts and synthetic five-stage fixtures while preserving strict law guards. Local source tests do not establish native agreement or successor qualification. Preserve every historical receipt byte. No promotion.
+
+- ts: "2026-10-07T02:39:43.052Z"
+  origin: Muse begin description and strict invocation contract
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: Native MiMo5436874985/root4202400351 and exact current source repair
+  note: A review tool refusal ends the invocation; a fresh bounded host invocation owns recovery. Remove the stale model-facing retry clause while preserving every executable byte and existing test. Local source tests do not establish native agreement or successor qualification. Preserve every historical receipt byte. No promotion.
