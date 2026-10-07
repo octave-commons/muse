@@ -124,3 +124,12 @@ check string, Buffer and Uint8Array input plus exact raw artifact digests. The
 old optimized crypto interop failure must fail this same smoke check. Hosted
 CI for the initial b1 source did not run this export gate; that coverage limit
 remains recorded until the successor receives its own hosted qualification.
+
+The initial native review staged Muse `05b4` through the old reusable caller `b5b`,
+which exposes neither required full-input page tool. Both model invocations
+ended without submission. The missing-tool contract is established; the cause
+of omitted submission is not observed. Advance only the reusable workflow pin
+to the actually reviewed and protected-merged Eta342 commit `09a`, whose immutable
+default selects the compatible full-input Muse `0b` tools. Keep caller permissions, named
+secrets, evidence commands and every review gate unchanged. The successor
+needs fresh native full-input qualification; the failed initial run stays failed.

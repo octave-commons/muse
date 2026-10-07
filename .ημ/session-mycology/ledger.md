@@ -96,3 +96,12 @@
   spore: none
   receipt-refs: Exercise optimized review-invocation CJS through existing CI commands
   note: Green source tests did not exercise the optimized artifact consumers load. Extend the existing CI commands and prove the same smoke fails the broken optimized export. Preserve every historical byte and keep local evidence distinct from fresh native qualification. No promotion.
+
+- ts: "2026-10-07T00:30:10.116Z"
+  origin: Qualified native full-input caller source
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: Bind Muse own review caller to qualified complete-input tool source
+  note: Inspect actual staged revisions and exposed tools; local parent assumptions are not native execution evidence. Repair the caller pin with an already reviewed merged source while preserving the failed native run and strict qualification. No promotion.

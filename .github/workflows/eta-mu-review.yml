@@ -14,7 +14,7 @@ jobs:
   review:
     if: ${{ github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository }}
     name: Evidence-first review (eta-mu)
-    uses: open-hax/eta-mu/.github/workflows/opencode-code-review.yml@b5b28237c45323cdc1914317260192163d957735
+    uses: open-hax/eta-mu/.github/workflows/opencode-code-review.yml@09a4454480baa67f6fdc40f6f73f5e48ef0457d1
     with:
       pr_head_sha: ${{ github.event.pull_request.head.sha }}
       setup_eta_mu_toolchain: false
