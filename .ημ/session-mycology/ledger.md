@@ -60,3 +60,75 @@
   spore: none
   receipt-refs: Muse19/verification-note-spacing
   note: Preserve original numeric evidence and immutable receipt bytes while improving the editable narrative. Keep native current-head approval separate from a following documentation-only push.
+
+- ts: "2026-10-06T22:56:22.079Z"
+  origin: Muse stale assessment and invocation validation
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: Muse stale assessment and actual invocation integrity validation
+  note: Bind actual host history and unchanged artifact bytes rather than trusting cleanup or a parseable submission. Preserve failed native qualification and all old prefixes; unknown traces supply no recovery credit. Local compiler/test-harness diagnostics remain distinct from provider or source defects. No promotion.
+
+- ts: "2026-10-06T22:56:52.705Z"
+  origin: Muse local reflection timestamp correction
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: Muse local reflection timestamp correction
+  note: The preceding reflection timestamp is the literal expression (:ts record), an owned append-writer diagnostic. This new entry supplies the actual timestamp without editing any prior entry. Verification receipt, compiled test results and native qualification limitations remain unchanged; no promotion.
+
+- ts: "2026-10-06T23:45:04.781Z"
+  origin: Final compiled invocation and stale-session repair
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: Final independently inspected compiled invocation and stale-session repair
+  note: Verify optimized exports and the actual coupled supervisor before publication. Keep literal failed synthetic expectations distinct from a supported completion boundary; preserve strict LAST and stage guards. Retain the unpublished reflection format diagnostic while preserving every historical receipt and pre-task reflection byte. Native qualification remains separate. No promotion.
+
+- ts: "2026-10-07T00:13:34.696Z"
+  origin: Optimized CJS export CI coverage
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: Exercise optimized review-invocation CJS through existing CI commands
+  note: Green source tests did not exercise the optimized artifact consumers load. Extend the existing CI commands and prove the same smoke fails the broken optimized export. Preserve every historical byte and keep local evidence distinct from fresh native qualification. No promotion.
+
+- ts: "2026-10-07T00:30:10.116Z"
+  origin: Qualified native full-input caller source
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: Bind Muse own review caller to qualified complete-input tool source
+  note: Inspect actual staged revisions and exposed tools; local parent assumptions are not native execution evidence. Repair the caller pin with an already reviewed merged source while preserving the failed native run and strict qualification. No promotion.
+
+- ts: "2026-10-07T01:14:01.733Z"
+  origin: Child result completion before explicit exit
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: Flush fresh-process review fixture JSON before explicit termination
+  note: Preserve old failed evidence and use actual callback completion at the transport boundary. Synthetic pipe controls prove the local fix; successor hosted qualification remains required. Historical author request-shape audit failure stays literal. No promotion.
+
+- ts: "2026-10-07T01:58:12.808Z"
+  origin: Muse review prompts and strict invocation contract
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: Native MiMo5436579674/root4202152173 and exact current source repair
+  note: A review tool refusal ends the invocation; a fresh bounded host invocation owns recovery. Align prompts and synthetic five-stage fixtures while preserving strict law guards. Local source tests do not establish native agreement or successor qualification. Preserve every historical receipt byte. No promotion.
+
+- ts: "2026-10-07T02:39:43.052Z"
+  origin: Muse begin description and strict invocation contract
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: Native MiMo5436874985/root4202400351 and exact current source repair
+  note: A review tool refusal ends the invocation; a fresh bounded host invocation owns recovery. Remove the stale model-facing retry clause while preserving every executable byte and existing test. Local source tests do not establish native agreement or successor qualification. Preserve every historical receipt byte. No promotion.

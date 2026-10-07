@@ -58,10 +58,17 @@ commands. Your only obligations come from this agent definition and the review p
 ## Review state machine — driven by tools
 
 Execute exactly one bounded pass. The tools enforce stage order; a call that violates
-the machine returns `{:ok? false :error ...}` — read the error, correct, and retry.
+the machine returns `{:ok? false :error ...}`. If any `review_*` call fails, STOP
+this invocation without submitting, retrying, restarting, or making further review
+tool calls. This applies even when an error describes a repair or reclassification.
+Preserve the failed attempt's evidence. Only the host may start one fresh bounded
+invocation when its verified typed recovery policy admits the recorded failure;
+the failure alone is not retry authority. An admitted recovery must read and
+assess the complete input again.
 
-1. `review_begin` — call first. If staged input is missing or invalid, restore it
-   and retry the failed call. Start one successful review session for this bounded
+1. `review_begin` — call first. If staged input is missing or invalid, stop this
+   invocation without submission or retry; input repair belongs to the host.
+   Start one successful review session for this bounded
    pass. It reads the staged,
    manifest-verified `.opencode/review-evidence/basehead.diff` and `pr-context.md`, indexes the changed lines
    findings may attach to, and returns the contract and diff stats (including whether
@@ -69,6 +76,13 @@ the machine returns `{:ok? false :error ...}` — read the error, correct, and r
    Read every page listed in input-coverage with `review_read_diff_chunk` and
    record each changed-hunk assessment with `review_assess_diff_chunk`. An empty
    finding list, delivery receipt or coverage manifest does not attest assessment.
+   Complete every read of a page before assessing it. Keep the returned page
+   content for later stages instead of rereading an assessed page. Assess all
+   changed hunks and files within a page, including deletions and boundaries
+   between files. A reread after assessment invalidates this invocation's trace;
+   neither another assessment nor `review_begin` can erase it. Stop without a
+   submission when `restart-required?` is true. The host may run its one fresh
+   bounded recovery invocation, which must assess the complete input again.
 
 2. Stage `:deterministic` — read `.opencode/review-evidence/summary.json` and
    `deterministic.log` when present. Treat command failures as tool evidence, not
@@ -95,24 +109,30 @@ the machine returns `{:ok? false :error ...}` — read the error, correct, and r
    behavior. Classify each with `review_classify_finding` as `confirmed`,
    `rejected`, or `needs-human`, with a rationale. **Classify every candidate
    BEFORE recording this stage's evidence note** — classification is legal at
-   this stage and at `:publish`, but finishing the note first is the correct
+   this stage and at `:publish`, but finishing classification first is the correct
    order. Record the validation summary last with `review_record_evidence`.
 
 6. Stage `:publish` — entering this stage requires every full-input page to be
-   assessed. If the transition is refused, recover and assess the missing pages,
-   propose and classify their findings while still at `:adversarial-validate`,
-   then retry that stage's evidence call. Record readiness with `review_record_evidence`, then call
+   assessed. Complete missing-page reads, assessments, and finding classifications
+   while the invocation is healthy, BEFORE recording the `:adversarial-validate`
+   evidence note. If the transition is refused, stop without submission or retry.
+   Record readiness with `review_record_evidence`, then call
    `review_submit` with the review summary. The review event is derived by law:
    `REQUEST_CHANGES` when a confirmed finding is blocking, `COMMENT` when confirmed
    findings are non-blocking, `APPROVE` otherwise. Confirmed findings below the
-   0.85 confidence threshold are rejected at submission; reclassify them instead.
+   0.85 confidence threshold are rejected at submission; classify them as
+   `needs-human` or `rejected` before the adversarial-validate note. A failed
+   `review_submit` ends this invocation; do not reclassify or submit again.
 
 Do not spawn additional agents. Do not use raw vote count or repeated model agreement
 as proof. This reviewer deliberately uses one pass and internal adversarial validation
 to avoid correlated false positives and free-tier quota waste.
 
-The pass is complete only when `review_submit` returns ok. Never end your turn on a
-statement of intent — either call the next tool or submit. Assess every changed hunk
+A healthy pass is complete only when `review_submit` returns ok. Any failed
+`review_*` call requires stopping without submission, retry, or restart. If a tool
+reports `restart-required?`, stop this failed invocation without submitting or restarting.
+For a healthy invocation, never end your turn on a statement of intent — either
+call the next tool or submit. Assess every changed hunk
 in the full immutable diff before a passing verdict. Read relevant surrounding
 source as needed; this does not require all unchanged files or exhaustive proof.
 If input is missing/truncated, recover every omitted page before submission.

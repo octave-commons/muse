@@ -106,8 +106,9 @@
      :diff-chunks (diff-chunks diff-text)
      :delivered-chunks #{}
      :assessed-chunks {}
+     :invalidated-chunks #{}
      :changed-lines changed
-     :diff-stats    {:files          (count changed)
+     :diff-stats    {:files          (count (re-seq #"(?m)^diff --git " (or diff-text "")))
                      :bytes          (count (or diff-text ""))
                      :truncated?     (boolean (and diff-text (re-find #"(?m)^\[eta-mu review\] diff truncated at [0-9]+ bytes \(was [0-9]+\)\.$" diff-text)))}}))
 
@@ -123,17 +124,43 @@
      :assessed (count (:assessed-chunks session))
      :missing (vec (sort (remove #(contains? (:assessed-chunks session) %) ids)))}))
 
+(defn restart-required?
+  "Whether an admitted session has a latched restart or reread violation."
+  [session]
+  (boolean (or (:restart-error session) (seq (:invalidated-chunks session)))))
+
+(defn reject-restart
+  "Latch refusal of a second admission without discarding session history."
+  [session]
+  (let [message "A review session has already been admitted in this invocation. Start a fresh invocation; this session cannot be restarted."]
+    {:ok? false :session (assoc session :restart-error message)
+     :restart-required? true :error message}))
+
 (defn read-diff-chunk
-  "Deliver one immutable input page through the existing review session."
+  "Deliver one immutable input page. A read after assessment permanently
+   invalidates that page and requires a fresh invocation."
   [session id]
   (if-let [chunk (when (and (integer? id) (pos? id)) (get (:diff-chunks session) (dec id)))]
-    {:ok? true :session (update session :delivered-chunks conj id) :chunk chunk}
+    (let [invalidate? (or (contains? (:assessed-chunks session) id)
+                          (contains? (:invalidated-chunks session) id))
+          session (cond-> (update session :delivered-chunks conj id)
+                    invalidate? (update :invalidated-chunks conj id)
+                    invalidate? (update :assessed-chunks dissoc id))]
+      {:ok? true :session session :chunk chunk
+       :restart-required? (restart-required? session)})
     (err "Unknown diff chunk; use the chunk count returned by review_begin.")))
 
+(defn- chronology-error [session]
+  (or (:restart-error session)
+      (when (seq (:invalidated-chunks session))
+        "A diff chunk was read after assessment. Start a fresh invocation; this session's chronology cannot be restored.")))
+
 (defn assess-diff-chunk
-  "Record a substantive model assessment only after that page was delivered."
+  "Record a substantive model assessment only after delivery, while the
+   session has no latched restart or read-after-assessment violation."
   [session id note]
   (cond
+    (restart-required? session) (err (chronology-error session))
     (not (contains? (:delivered-chunks session) id)) (err "Read the diff chunk before assessing it.")
     (not (non-blank note)) (err "Explain the changed-hunk assessment in a non-empty note.")
     :else {:ok? true :session (assoc-in session [:assessed-chunks id] note)
@@ -141,6 +168,9 @@
 
 (defn- full-input-error [session]
   (cond
+    (restart-required? session)
+    (chronology-error session)
+
     (get-in session [:diff-stats :truncated?])
     "The staged input is a truncated preview. Recover the full immutable diff before publishing."
 
@@ -348,5 +378,7 @@
    :evidence-count   (count (:evidence session))
    :diff-stats       (:diff-stats session)
    :input-coverage   (input-coverage session)
+   :restart-required? (restart-required? session)
+   :invalidated-chunks (vec (sort (:invalidated-chunks session)))
    :candidates       (mapv #(select-keys % [:id :severity :category :path :line :status :confidence])
                            (ordered-candidates session))})

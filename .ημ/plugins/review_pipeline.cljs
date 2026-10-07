@@ -17,15 +17,16 @@
 (def submission-file-name "submission.json")
 (def events-file-name "review-events.jsonl")
 
-;; Session state is in-process: the review workflow runs one bounded review per
-;; opencode invocation. Keyed by session id when the host provides one.
+;; Session state is in-process. The host-controlled evidence directory binds
+;; one admitted review to this invocation; changing a host session id cannot
+;; discard the calls already made against that input and output artifact.
 (defonce !sessions (atom {}))
-
-(defn- session-key [ctx]
-  (or (:session/id ctx) :default))
 
 (defn- evidence-dir [ctx]
   (bfs/join (or (:worktree ctx) (:directory ctx)) evidence-dir-name))
+
+(defn- session-key [ctx]
+  (evidence-dir ctx))
 
 (defn- record-event! [ctx kind data]
   (bfs/append-jsonl! (bfs/join (evidence-dir ctx) events-file-name)
@@ -41,8 +42,10 @@
     (let [result (apply f session args)]
       (if (:ok? result)
         (do (swap! !sessions assoc (session-key ctx) (:session result))
+            (when (:restart-required? result)
+              (bfs/remove-file! (bfs/join (evidence-dir ctx) submission-file-name)))
             (record-event! ctx kind (merge {:ok true :chunk-id (or (:chunk-id result) (get-in result [:chunk :id]))}
-                                           (select-keys result [:coverage])
+                                           (select-keys result [:coverage :restart-required?])
                                            (when (= "assess-diff-chunk" kind) {:note (second args)})))
             (dissoc result :session))
         (do (record-event! ctx kind {:ok false :error (:error result)})
@@ -55,28 +58,33 @@
 
 (deftool begin
   {:id          :review/begin
-   :description "Begin an evidence-first pull-request review. Verifies input-manifest.json and the complete basehead.diff in .opencode/review-evidence, indexes changed lines and returns the bounded-reader contract. Call this first; restore the required input and retry if admission fails. After successful admission, complete one bounded review pass."
+   :description "Begin an evidence-first pull-request review. Verifies input-manifest.json and the complete basehead.diff in .opencode/review-evidence, indexes changed lines and returns the bounded-reader contract. Call this first. Input repair belongs to the host; a failed begin ends this invocation without submission, retry or restart. After successful admission, complete one bounded review pass. A second begin requires a fresh model process."
    :args        [:map]
    :tags        #{:review}}
   [_params ctx]
-  (swap! !sessions dissoc (session-key ctx))
-  (try
-    (bfs/remove-file! (bfs/join (evidence-dir ctx) submission-file-name))
-    (let [{:keys [text manifest]} (bfs/read-review-input (evidence-dir ctx))
-          session (assoc (review/begin text) :input-source manifest)
-          context-file (bfs/join (evidence-dir ctx) context-file-name)
-          context (when (bfs/exists? context-file) (bfs/read-text context-file))]
-      (swap! !sessions assoc (session-key ctx) session)
-      (record-event! ctx "begin" {:files (get-in session [:diff-stats :files]) :input-source manifest})
-      {:ok? true :stage (name (:stage session)) :stages (mapv name review/stages)
-       :diff-stats (:diff-stats session) :input-source manifest
-       :input-coverage (review/input-coverage session) :pr-context context
-       :contract "Read every full-input page with review_read_diff_chunk, then assess each with review_assess_diff_chunk. Delivery alone is not assessment. Record stage notes in order, propose/classify candidates and submit only after all changed hunks are assessed. pr.diff is a preview, never complete review input."})
-    (catch :default e {:ok? false :error (str "Full input unavailable: " (.-message e))})))
+  (if-let [session (require-session ctx)]
+    (let [result (review/reject-restart session)]
+      (swap! !sessions assoc (session-key ctx) (:session result))
+      (bfs/remove-file! (bfs/join (evidence-dir ctx) submission-file-name))
+      (record-event! ctx "begin" (merge {:ok false} (select-keys result [:restart-required? :error])))
+      (dissoc result :session))
+    (try
+        (bfs/remove-file! (bfs/join (evidence-dir ctx) submission-file-name))
+        (let [{:keys [text manifest]} (bfs/read-review-input (evidence-dir ctx))
+              session (assoc (review/begin text) :input-source manifest)
+              context-file (bfs/join (evidence-dir ctx) context-file-name)
+              context (when (bfs/exists? context-file) (bfs/read-text context-file))]
+          (swap! !sessions assoc (session-key ctx) session)
+          (record-event! ctx "begin" {:files (get-in session [:diff-stats :files]) :input-source manifest})
+          {:ok? true :stage (name (:stage session)) :stages (mapv name review/stages)
+           :diff-stats (:diff-stats session) :input-source manifest
+           :input-coverage (review/input-coverage session) :pr-context context
+           :contract "Read every full-input page with review_read_diff_chunk, then assess each with review_assess_diff_chunk. Delivery alone is not assessment. Finish all reads of a page before assessing it; a later reread permanently invalidates this invocation and requires one fresh bounded invocation. Record stage notes in order, propose/classify candidates and submit only after all changed hunks are assessed. pr.diff is a preview, never complete review input."})
+      (catch :default e {:ok? false :error (str "Full input unavailable: " (.-message e))}))))
 
 (deftool read-diff-chunk
   {:id :review/read_diff_chunk
-   :description "Read one lossless bounded page of the verified immutable full diff. Read every page; this records delivery, not assessment."
+   :description "Read one lossless bounded page of the verified immutable full diff. Read every page; this records delivery, not assessment. Finish all reads of a page before assessing it. Rereading an assessed page invalidates this invocation; same-session restart or reassessment cannot repair its history."
    :args [:map [:id :int]] :tags #{:review}}
   [{:keys [id]} ctx]
   (apply-step! ctx "read-diff-chunk" review/read-diff-chunk id))
