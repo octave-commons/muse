@@ -177,3 +177,88 @@
       ;; trusted-context authority inferred from this test's submission data.
       (is (:ok result))
       (is (= 11 (get-in result [:acceptedInvocation :pageCount]))))))
+
+;; Candidate controls append without changing any original fixture/assertion.
+(defn length-context-js []
+  (let [ctx (extern/prepare-review-invocation-context "diff" (json fixture/manifest)
+                                                    (clj->js (:review-tools fixture/context))
+                                                    (:submission-file fixture/context))]
+    (js/Object.assign ctx #js {:fullDiff "diff" :sessionID "session-fixture"})))
+
+(defn length-custody-js [raw ctx]
+  (let [digest (-> (js-invoke crypto "createHash" "sha256")
+                   (js-invoke "update" raw) (js-invoke "digest" "hex"))]
+    #js {:invocationState "completed" :exitCode 0 :submissionState "missing"
+         :responseSha256Before digest :responseSha256After digest
+         :contextBefore ctx :contextAfter ctx}))
+
+(defn classify-length
+  ([raw] (let [ctx (length-context-js)]
+           (classify-length raw nil ctx (length-custody-js raw ctx))))
+  ([raw sub ctx custody]
+   (js->clj (extern/classify-length-ended-review raw sub ctx custody) :keywordize-keys true)))
+
+(deftest length-boundary-binds-actual-bytes-and-has-no-acceptance-fields
+  (let [raw (response (fixture/length-events)) ctx (length-context-js)]
+    (doseq [bytes [raw (.encode (js/TextEncoder.) raw)]
+            raw-context [ctx (js/JSON.stringify ctx)]
+            custody [identity js/JSON.stringify]]
+      (let [result (classify-length bytes nil raw-context (custody (length-custody-js bytes ctx)))
+            strict (js->clj (extern/verify-review-invocation bytes nil ctx) :keywordize-keys true)]
+        (is (:eligible result))
+        (is (= "length-ended-unfinished-review" (:classification result)))
+        (is (= "new-complete-review-invocation" (:requiredAction result)))
+        (is (= 5 (:terminalPosition result)))
+        (is (= "length" (:terminalReason result)))
+        (is (= (aget (length-custody-js bytes ctx) "responseSha256Before") (:responseSha256 result)))
+        (is (every? #(not (contains? result %)) [:ok :acceptedInvocation :approval :maxAttempts]))
+        (is (false? (:ok strict)))
+        (is (= "unterminated-host-trace" (:code strict)))))))
+
+(deftest length-boundary-refuses-untrusted-or-changing-custody-and-full-input
+  (let [raw (response (fixture/length-events)) ctx (length-context-js)
+        c (js->clj (length-custody-js raw ctx) :keywordize-keys true)]
+    (doseq [custody [nil "{}" "{\"exitCode\":0,\"exitCode\":1}"
+                    (json (assoc c :exitCode 1))
+                    (json (assoc c :invocationState "started"))
+                    (json (assoc c :submissionState "unknown"))
+                    (json (assoc c :responseSha256After (apply str (repeat 64 "f"))))
+                    (json (assoc-in c [:contextAfter :submissionFile] "/changed"))
+                    (json (assoc-in c [:contextBefore :sessionID] "other"))
+                    (json (assoc-in c [:contextAfter :inputSource :head_sha] (apply str (repeat 40 "f"))))]]
+      (is (false? (:eligible (classify-length raw nil ctx custody)))))
+    (doseq [context [(context-json) "{}"
+                    (json (assoc (js->clj ctx :keywordize-keys true) :fullDiff "dirt"))
+                    (json (assoc-in (js->clj ctx :keywordize-keys true) [:pages 0 :end] 3))
+                    (json (assoc-in (js->clj ctx :keywordize-keys true) [:inputSource :full_diff :bytes] 5))]]
+      (is (false? (:eligible (classify-length raw nil context (json c))))))
+    (doseq [sub ["{}" "false" (json fixture/submission) "malformed" "null"]]
+      (is (false? (:eligible (classify-length raw sub ctx (json c))))))))
+
+(deftest length-boundary-never-recovers-from-prose-malformed-events-or-failed-HOST
+  (doseq [raw ["" "not JSON" "[]" "{}" "{\"type\":\"error\",\"timestamp\":1}"
+               "{\"type\":\"step_finish\",\"type\":\"step_finish\"}"
+               "{\"timestamp\":1e309}" (js/Uint8Array. #js [255])
+               (response [(fixture/terminal 1)])
+               (str (response (fixture/length-events)) "model prose\n")]]
+    (is (false? (:eligible (classify-length raw)))))
+  (let [events (mapv host-event (fixture/length-events))
+        bad (assoc-in events [1 :part :state] {:status "error" :input {:id 1} :error "EACCES"})]
+    (is (false? (:eligible (classify-length (str/join "\n" (map json bad)))))))
+  (let [raw (response (fixture/length-events))
+        nested (json {:type "text" :timestamp 1 :sessionID "session-fixture"
+                      :part {:id "text-only" :type "text" :sessionID "session-fixture" :text raw}})]
+    (is (false? (:eligible (classify-length nested)))))
+  (let [events (mapv host-event (fixture/length-events))
+        dup (assoc-in events [2 :part :state :output] "{\"ok?\":true,\"ok?\":false}")]
+    (is (false? (:eligible (classify-length (str/join "\n" (map json dup))))))))
+
+(deftest length-boundary-preserves-earlier-stop-but-requires-the-actual-final-length
+  (let [events (fixture/ordered-fixture-events
+                (concat (pop (fixture/length-events)) [(fixture/terminal 6)
+                                                       (assoc-in (fixture/terminal 7) [:part :reason] "length")]))
+        raw (response events)]
+    (is (:eligible (classify-length raw)))
+    (is (= "length" (:terminalReason (classify-length raw))))
+    (is (false? (:eligible (classify-length (response (pop events))))))
+    (is (false? (:eligible (classify-length (response (assoc-in events [4 :part :reason] "length"))))))))

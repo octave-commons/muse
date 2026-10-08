@@ -79,7 +79,7 @@
           {:ok? true :stage (name (:stage session)) :stages (mapv name review/stages)
            :diff-stats (:diff-stats session) :input-source manifest
            :input-coverage (review/input-coverage session) :pr-context context
-           :contract "Read every full-input page with review_read_diff_chunk, then assess each with review_assess_diff_chunk. Delivery alone is not assessment. Finish all reads of a page before assessing it; a later reread permanently invalidates this invocation and requires one fresh bounded invocation. Record stage notes in order, propose/classify candidates and submit only after all changed hunks are assessed. pr.diff is a preview, never complete review input."})
+           :contract "Read every full-input page with review_read_diff_chunk, then assess each with review_assess_diff_chunk BEFORE the first deterministic stage note. Delivery alone is not assessment. Finish every page read and assessment before recording any stage evidence; retain the returned content for later stages. A later reread permanently invalidates this invocation. Record all five stage notes in order, propose/classify candidates and submit only after complete input assessment. Any failed review call ends this invocation; the host alone owns verified bounded recovery. pr.diff is a preview, never complete review input."})
       (catch :default e {:ok? false :error (str "Full input unavailable: " (.-message e))}))))
 
 (deftool read-diff-chunk
@@ -91,14 +91,14 @@
 
 (deftool assess-diff-chunk
   {:id :review/assess_diff_chunk
-   :description "Record your changed-hunk assessment of an already delivered page: changed invariants, candidate risks or why no defect is supported. Every page needs assessment before submission."
+   :description "Record your changed-hunk assessment of an already delivered page: changed invariants, candidate risks or why no defect is supported. Complete all page reads and assessments before the FIRST deterministic stage note; do not reassess after stage evidence."
    :args [:map [:id :int] [:note [:string {:min 1}]]] :tags #{:review}}
   [{:keys [id note]} ctx]
   (apply-step! ctx "assess-diff-chunk" review/assess-diff-chunk id note))
 
 (deftool record-evidence
   {:id          :review/record_evidence
-   :description "Record the evidence note for the current review stage and advance to the next stage. Stages: deterministic, map-change, generate-candidates, adversarial-validate, publish."
+   :description "Record the evidence note for the current review stage and advance to the next stage. Complete every full-input page read and assessment BEFORE the first deterministic note; incomplete input refuses advancement. Retain page content without rereading or reassessing after stage evidence. Stages: deterministic, map-change, generate-candidates, adversarial-validate, publish. Any refusal ends this invocation; only the host owns verified bounded recovery."
    :args        [:map
                  [:stage [:enum "deterministic" "map-change" "generate-candidates" "adversarial-validate" "publish"]]
                  [:note [:string {:min 1}]]]

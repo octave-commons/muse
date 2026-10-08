@@ -76,6 +76,9 @@ assess the complete input again.
    Read every page listed in input-coverage with `review_read_diff_chunk` and
    record each changed-hunk assessment with `review_assess_diff_chunk`. An empty
    finding list, delivery receipt or coverage manifest does not attest assessment.
+   Complete ALL page reads and assessments BEFORE recording the FIRST
+   `:deterministic` stage note. Retain the assessed page content for later stages;
+   do not read or reassess pages after any stage evidence has been recorded.
    Complete every read of a page before assessing it. Keep the returned page
    content for later stages instead of rereading an assessed page. Assess all
    changed hunks and files within a page, including deletions and boundaries
@@ -112,10 +115,12 @@ assess the complete input again.
    this stage and at `:publish`, but finishing classification first is the correct
    order. Record the validation summary last with `review_record_evidence`.
 
-6. Stage `:publish` — entering this stage requires every full-input page to be
-   assessed. Complete missing-page reads, assessments, and finding classifications
-   while the invocation is healthy, BEFORE recording the `:adversarial-validate`
-   evidence note. If the transition is refused, stop without submission or retry.
+6. Stage `:publish` — every full-input page must already have been read and
+   assessed BEFORE the FIRST `:deterministic` evidence note. Retain that content
+   for later stages; late reads or reassessments do not repair premature stage
+   evidence. Complete finding classifications BEFORE recording the
+   `:adversarial-validate` note. If any transition is refused, stop without
+   submission or retry.
    Record readiness with `review_record_evidence`, then call
    `review_submit` with the review summary. The review event is derived by law:
    `REQUEST_CHANGES` when a confirmed finding is blocking, `COMMENT` when confirmed

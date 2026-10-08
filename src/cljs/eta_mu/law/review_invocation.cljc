@@ -51,8 +51,9 @@
          (every? (set review-tools) eta-mu.law.review-invocation/review-tools)
          (nonblank? submission-file))))
 
-(defn- event-error [events expected-session]
-  (let [sessions (set (map :session-id events))
+(defn- event-error ([events expected-session] (event-error events expected-session "stop"))
+  ([events expected-session terminal-reason]
+   (let [sessions (set (map :session-id events))
         calls (filter #(= "tool_use" (:type %)) events)
         call-ids (map #(get-in % [:part :call-id]) calls)
         part-ids (map #(get-in % [:part :id]) calls)]
@@ -74,8 +75,8 @@
                         (nonblank? (tool %)) (= "completed" (get-in % [:part :state :status]))
                         (map? (input %)) (not (get-in % [:part :state :error])))) calls) :host-tool-schema
       (not (and (= "step_finish" (:type (last events)))
-                (= "stop" (get-in (last events) [:part :reason])))) :unterminated-host-trace
-      :else nil)))
+                (= terminal-reason (get-in (last events) [:part :reason])))) :unterminated-host-trace
+      :else nil))))
 
 (defn- call-error [calls {:keys [pages review-tools]}]
   (let [page-by-id (into {} (map (juxt :id identity) pages))]
@@ -173,22 +174,14 @@
          (= (:submission-file context) (:file result))
          (= (count (:comments submission)) (:inline-comments result)))))
 
-(defn verify
-  "Consume shaped host events, optional actual submission, trusted full-input
-   context. :stale-review-coverage is an observed cause, never retry authority.
-   Missing/malformed/session/source/cardinality evidence is unestablished."
-  [events submission context]
-  (let [calls (vec (keep-indexed #(when (= "tool_use" (:type %2)) (assoc %2 :position (inc %1))) events))
-        review-calls (filterv #(contains? review-tools (tool %)) calls)
-        begins (filterv #(= "review_begin" (tool %)) review-calls)
-        submits (filterv #(= "review_submit" (tool %)) review-calls)
-        stage-calls (filterv #(= "review_record_evidence" (tool %)) review-calls)
-        stage-names (mapv #(get (input %) :stage) stage-calls)
-        violations (last-read-violations calls)
-        begin (first (filter success? begins)) began (output begin)
-        code (cond
+(defn- invocation-error
+  "Shared canonical guards; the caller selects a terminal reason without
+   rewriting any event. Full-review verify still requires stop."
+  [events submission context calls review-calls begins submits stage-calls
+   stage-names violations begin began terminal-reason]
+  (cond
                (not (context-valid? context)) :trusted-context-unestablished
-               :else (or (event-error events (:session-id context))
+               :else (or (event-error events (:session-id context) terminal-reason)
                          (call-error calls context)
                          (when (and (seq review-calls) (not (begin-admitted? calls review-calls begins))) :begin-cardinality)
                          (when (and begin (not (and (= "deterministic" (:stage began)) (= stages (:stages began))
@@ -204,13 +197,44 @@
                          (when (and (some #(true? (:restart-required? (output %))) review-calls)
                                     (not (witnessed-stale? calls violations))) :restart-without-host-witness)
                          (serialized-error submission context calls)
-                         (when (and submission (not (submit-bound? submission context submits))) :actual-submit-binding)))
+                         (when (and submission (not (submit-bound? submission context submits))) :actual-submit-binding))))
+
+(defn- input-before-first-stage?
+  "All expected pages and every observed input call must precede stage one.
+   No recorded stage is an unfinished prefix; empty verified input is vacuous."
+  [review-calls stage-calls context]
+  (if-let [first-stage (first stage-calls)]
+    (let [reads (filterv #(= "review_read_diff_chunk" (tool %)) review-calls)
+          assessed (filterv #(= "review_assess_diff_chunk" (tool %)) review-calls)
+          ids (set (map :id (:pages context)))]
+      (and (= ids (set (map #(get (input %) :id) reads)))
+           (= ids (set (map #(get (input %) :id) assessed)))
+           (every? #(< (:position %) (:position first-stage)) (concat reads assessed))))
+    true))
+
+(defn verify
+  "Consume shaped host events, optional actual submission, trusted full-input
+   context. :stale-review-coverage is an observed cause, never retry authority.
+   Missing/malformed/session/source/cardinality evidence is unestablished."
+  [events submission context]
+  (let [calls (vec (keep-indexed #(when (= "tool_use" (:type %2)) (assoc %2 :position (inc %1))) events))
+        review-calls (filterv #(contains? review-tools (tool %)) calls)
+        begins (filterv #(= "review_begin" (tool %)) review-calls)
+        submits (filterv #(= "review_submit" (tool %)) review-calls)
+        stage-calls (filterv #(= "review_record_evidence" (tool %)) review-calls)
+        stage-names (mapv #(get (input %) :stage) stage-calls)
+        violations (last-read-violations calls)
+        begin (first (filter success? begins)) began (output begin)
+        code (invocation-error events submission context calls review-calls begins
+                               submits stage-calls stage-names violations begin began "stop")
         refuse (fn [kind reason] {:ok? false :reason-kind kind :code reason :violations violations})]
     (cond
       code (refuse :unestablished-review-trace code)
       (and (seq violations) (witnessed-stale? calls violations)) (refuse :stale-review-coverage :last-read-order)
       (seq violations) (refuse :unestablished-review-trace :read-assessment-not-established)
       (not (every? success? review-calls)) (refuse :unestablished-review-trace :failed-review-tool)
+      (not (input-before-first-stage? review-calls stage-calls context))
+      (refuse :unestablished-review-trace :stage-chronology)
       (and (nil? submission) (empty? submits))
       (refuse :missing-review-submit :healthy-unfinished-review)
       (not begin) (refuse :unestablished-review-trace :begin-not-established)
@@ -226,9 +250,6 @@
           (not (and (= ids (set (map #(get (input %) :id) reads)))
                     (= ids (set (map #(get (input %) :id) assessed))))) (refuse :unestablished-review-trace :incomplete-page-calls)
           (not (and (< (:position begin) (:position (first stage-calls)))
-                    ;; The producer requires full coverage when adversarial
-                    ;; validation completes and admits the publish stage.
-                    (or (empty? assessed) (< (apply max (map :position assessed)) (:position (nth stage-calls 3))))
                     (< (:position (last stage-calls)) (:position submit)))) (refuse :unestablished-review-trace :stage-chronology)
           (not (submit-bound? submission context submits)) (refuse :unestablished-review-trace :actual-submit-binding)
           :else {:ok? true :reason-kind nil :code :verified-review-invocation
@@ -240,3 +261,84 @@
                                        :submission-file (:submission-file context)
                                        :full-input-sha256 (:full-input-sha256 context)
                                        :page-count (count ids)}})))))
+
+(defn classify-length-ended-review
+  "Classify ONLY eligibility for a new complete invocation, never acceptance.
+   Context includes boundary-verified :full-input-text. Custody is caller-trusted
+   completed-child evidence and response/context snapshots before/after checking;
+   data cannot authenticate the caller or independently establish native source.
+   No attempt bound, invocation, retention or old review credit is granted."
+  [events submission context custody]
+  (if-not (and (vector? events) (context-valid? context))
+    {:eligible? false :classification :unestablished-length-ended-review
+     :code (if (vector? events) :trusted-context-unestablished :missing-host-events)
+     :violations []}
+    (let [calls (vec (keep-indexed #(when (= "tool_use" (:type %2))
+                                    (assoc %2 :position (inc %1))) events))
+          review-calls (filterv #(contains? review-tools (tool %)) calls)
+          begins (filterv #(= "review_begin" (tool %)) review-calls)
+          submits (filterv #(= "review_submit" (tool %)) review-calls)
+          stage-calls (filterv #(= "review_record_evidence" (tool %)) review-calls)
+          stage-names (mapv #(get (input %) :stage) stage-calls)
+          violations (last-read-violations calls)
+          begin (first (filter success? begins))
+          reads (filterv #(= "review_read_diff_chunk" (tool %)) review-calls)
+          assessed (filterv #(= "review_assess_diff_chunk" (tool %)) review-calls)
+          ids (set (map :id (:pages context)))
+          text (:full-input-text context)
+          code (or (invocation-error events submission context calls review-calls
+                                     begins submits stage-calls stage-names violations
+                                     begin (output begin) "length")
+                   (when-not (and (= "completed" (:invocation-state custody))
+                                  (= 0 (:exit-code custody))
+                                  (= "missing" (:submission-state custody)))
+                     :completed-missing-submit-child-not-established)
+                   (when-not (and (sha? 64 (:response-sha256 custody))
+                                  (= (:response-sha256 custody)
+                                     (:response-sha256-before custody)
+                                     (:response-sha256-after custody))
+                                  (= context (:context-before custody) (:context-after custody)))
+                     :invocation-custody-changed)
+                   (when (or (some? submission) (:submission-present? custody) (seq submits))
+                     :submission-present)
+                   (when-not (= (count events) (count (set (map #(get-in % [:part :id]) events))))
+                     :host-part-cardinality)
+                   (when-not (and (= 1 (count (filter #(and (= "step_finish" (:type %))
+                                                          (= "length" (get-in % [:part :reason]))) events)))
+                                  (every? #(contains? #{"stop" "tool-calls" "length"}
+                                                     (get-in % [:part :reason]))
+                                          (filter #(= "step_finish" (:type %)) events)))
+                     :host-finish-reason)
+                   (when (seq violations) :last-read-order)
+                   (when-not (every? success? review-calls) :failed-review-tool)
+                   (when-not begin :begin-not-established)
+                   (when-not (false? (get-in (output begin) [:diff-stats :truncated?]))
+                     :full-input-not-established)
+                   (when-not (and (seq ids) (string? text)
+                                  (= (count text) (:end (last (:pages context)))))
+                     :full-input-not-established)
+                   (when-not (and (= ids (set (map #(get (input %) :id) reads)))
+                                  (= ids (set (map #(get (input %) :id) assessed))))
+                     :incomplete-page-calls)
+                   (when-not (every? #(let [{:keys [start end text]} (:chunk (output %))]
+                                       (= text (subs (:full-input-text context) start end))) reads)
+                     :returned-page-content)
+                   (when-not (seq stage-calls) :first-stage-not-established)
+                   (when-not (and (< (:position begin) (:position (first stage-calls)))
+                                  (every? #(< (:position %) (:position (first stage-calls)))
+                                          (concat reads assessed)))
+                     :input-after-first-stage)
+                   (when-not (= {:chunks (count ids) :delivered (count ids)
+                                 :assessed (count ids) :missing []}
+                                (:coverage (output (last assessed))))
+                     :complete-assessment-coverage-not-established))]
+      (if code
+        {:eligible? false :classification :unestablished-length-ended-review
+         :code code :violations violations}
+        {:eligible? true :classification :length-ended-unfinished-review
+         :code :new-complete-invocation-required :violations []
+         :required-action :new-complete-review-invocation
+         :session-id (:session-id (first events)) :page-count (count ids)
+         :recorded-stages stage-names :terminal-position (count events)
+         :terminal-reason "length" :response-sha256 (:response-sha256 custody)
+         :full-input-sha256 (:full-input-sha256 context)}))))

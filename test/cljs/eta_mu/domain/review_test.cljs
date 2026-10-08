@@ -3,6 +3,48 @@
             [clojure.string :as str]
             [eta-mu.domain.review :as review]))
 
+(deftest deterministic-requires-complete-input-without-advancing
+  (let [diff (str "diff --git a/tail b/tail\n--- a/tail\n+++ b/tail\n@@ -0,0 +1,130 @@\n"
+                  (apply str (repeat 130 "+line\n")))
+        initial (review/begin diff)
+        delivered (review/read-diff-chunk initial 1)
+        assessed (review/assess-diff-chunk (:session delivered) 1 "Prefix only.")]
+    (is (= 2 (count (:diff-chunks initial))))
+    (doseq [session [initial (:session delivered) (:session assessed)]]
+      (let [result (review/record-evidence session :deterministic "Premature stage evidence.")]
+        (is (false? (:ok? result)))
+        (is (nil? (:session result)) "Refusal supplies no advanced state.")
+        (is (= :deterministic (:stage session)))
+        (is (= [] (:evidence session)))
+        (is (re-find #"Unassessed full-input chunks" (or (:error result) "")))))))
+
+(deftest complete-input-and-empty-input-admit-deterministic
+  (doseq [diff ["" "diff"]]
+    (let [initial (review/begin diff)
+          assessed (reduce (fn [session {:keys [id]}]
+                             (let [read (review/read-diff-chunk session id)]
+                               (:session (review/assess-diff-chunk (:session read) id "Complete input."))))
+                           initial (:diff-chunks initial))
+          result (review/record-evidence assessed :deterministic "All pages assessed first.")]
+      (is (:ok? result))
+      (is (= :map-change (get-in result [:session :stage])))
+      (is (= [{:stage :deterministic :note "All pages assessed first."}]
+             (get-in result [:session :evidence]))))))
+
+(deftest deterministic-preserves-truncation-and-restart-refusals
+  (let [truncated (review/begin "diff\n[eta-mu review] diff truncated at 4 bytes (was 8).\n")
+        assessed (reduce (fn [session {:keys [id]}]
+                           (:session (review/assess-diff-chunk
+                                      (:session (review/read-diff-chunk session id)) id "Preview assessed.")))
+                         truncated (:diff-chunks truncated))
+        refused (review/record-evidence assessed :deterministic "Preview is insufficient.")
+        restarted (:session (review/reject-restart (review/begin "diff")))
+        restart (review/record-evidence restarted :deterministic "Restart is insufficient.")]
+    (is (false? (:ok? refused)))
+    (is (re-find #"truncated preview" (or (:error refused) "")))
+    (is (false? (:ok? restart)))
+    (is (re-find #"fresh invocation" (or (:error restart) "")))))
+
 (def sample-diff
   (str/join
    "\n"
@@ -40,6 +82,48 @@
       (let [result (review/record-evidence s (:stage s) (str "note for " (name (:stage s))))]
         (assert (:ok? result) (:error result))
         (recur (:session result))))))
+
+(deftest assessment-refuses-after-first-evidence-at-every-later-stage
+  (doseq [stage (rest review/stages)]
+    (let [session (through-stage (begun) stage)
+          result (review/assess-diff-chunk session 1 "Too late to revise the assessed input.")]
+      (is (false? (:ok? result)))
+      (is (nil? (:session result)) "Refusal supplies no replacement session.")
+      (is (re-find #"before recording deterministic evidence" (or (:error result) "")))
+      (is (= stage (:stage session)))
+      (is (= "Fixture assessed the full changed hunk." (get-in session [:assessed-chunks 1])))
+      (is (= (count (take-while #(not= stage %) review/stages)) (count (:evidence session)))))))
+
+(deftest pre-stage-assessment-remains-idempotent-and-revisable
+  (let [read (review/read-diff-chunk (begun) 1)
+        first-assessment (review/assess-diff-chunk (:session read) 1 "Initial input assessment.")
+        repeated (review/assess-diff-chunk (:session first-assessment) 1 "Initial input assessment.")
+        revised (review/assess-diff-chunk (:session repeated) 1 "Revised before first evidence.")
+        final-session (through-stage (:session revised) :publish)
+        submitted (review/submission final-session "All assessments precede first evidence.")]
+    (is (:ok? first-assessment))
+    (is (:ok? repeated))
+    (is (= (:session first-assessment) (:session repeated)))
+    (is (:ok? revised))
+    (is (= :deterministic (get-in revised [:session :stage])))
+    (is (= [] (get-in revised [:session :evidence])))
+    (is (= "Revised before first evidence." (get-in revised [:session :assessed-chunks 1])))
+    (is (:ok? submitted))
+    (is (= "Revised before first evidence." (get-in submitted [:envelope :input-assessments 0 :note])))))
+
+(deftest post-stage-assessment-preserves-restart-and-LAST-error-precedence
+  (let [advanced (through-stage (begun) :map-change)
+        reread (:session (review/read-diff-chunk advanced 1))
+        rejected (:session (review/reject-restart advanced))
+        both (:session (review/reject-restart reread))]
+    (doseq [session [reread rejected both]]
+      (let [result (review/assess-diff-chunk session 1 "Cannot repair either latched refusal.")]
+        (is (false? (:ok? result)))
+        (is (nil? (:session result)))
+        (is (= (or (:restart-error session)
+                   "A diff chunk was read after assessment. Start a fresh invocation; this session's chronology cannot be restored.")
+               (:error result)))
+        (is (not (re-find #"before recording deterministic evidence" (or (:error result) ""))))))))
 
 (def quoted-receipt-diff
   ;; Git-emitted header from the isolated red fixture, with quotePath=true.
@@ -134,7 +218,7 @@
         out-of-order (review/record-evidence session :map-change "nope")]
     (is (false? (:ok? out-of-order)))
     (is (re-find #"deterministic" (:error out-of-order))))
-  (let [session (begun)
+  (let [session (assess-all (begun))
         ok (review/record-evidence session :deterministic "gates read")]
     (is (:ok? ok))
     (is (= :map-change (get-in ok [:session :stage])))))
@@ -255,7 +339,7 @@
         ;; Native failure shape: stage notes exist, but the omitted tail was
         ;; never supplied or assessed. No findings is not full-input review.
         ;; Forged stage state still cannot bypass submission's defensive guard.
-        session (assoc (through-stage (review/begin diff) :adversarial-validate) :stage :publish)
+        session (assoc (assess-all (review/begin diff)) :stage :publish)
         result (review/submission session "Only the preview/risk zones were assessed.")]
     (is (false? (:ok? result)))
     (is (not= "APPROVE" (get-in result [:envelope :event])))))
@@ -269,8 +353,10 @@
     (is (> (count (:diff-chunks begun)) 1))
     (is (false? (:ok? (review/submission publish "The delivered prefix had no findings."))))
     (is (false? (:ok? (review/assess-diff-chunk begun 1 "Not actually delivered."))))
-    (is (:ok? (review/submission (assess-all publish) "All changed hunks assessed; full input recovered.")))
-    (is (= "APPROVE" (get-in (review/submission (assess-all publish) "Complete review.") [:envelope :event])))))
+    ;; The successful fixture completes assessment before actual stage admission.
+    (let [publish (through-stage partial :publish)]
+      (is (:ok? (review/submission (assess-all publish) "All changed hunks assessed; full input recovered.")))
+      (is (= "APPROVE" (get-in (review/submission (assess-all publish) "Complete review.") [:envelope :event]))))))
 
 (deftest invalid-page-or-empty-assessment-cannot-supply-coverage
   (let [begun (review/begin sample-diff)
@@ -287,18 +373,20 @@
         begun (review/begin diff)
         prefix (:session (review/read-diff-chunk begun 1))
         prefix (:session (review/assess-diff-chunk prefix 1 "Assessed the prefix, not the missing tail."))
-        adversarial (reduce (fn [session stage]
-                              (:session (review/record-evidence session stage "Stage evidence without tail coverage.")))
-                            prefix [:deterministic :map-change :generate-candidates])
+        ;; Explicit fixture for the existing adversarial guard, not admitted
+        ;; stage history: the new deterministic guard refuses this prefix.
+        adversarial (assoc prefix :stage :adversarial-validate
+                          :evidence (mapv (fn [stage] {:stage stage :note "Stage evidence without tail coverage."})
+                                          [:deterministic :map-change :generate-candidates]))
         refused (review/record-evidence adversarial :adversarial-validate "Ready to publish the prefix.")]
     (is (> (count (:diff-chunks begun)) 1))
     (is (false? (:ok? refused)))
     (is (re-find #"Unassessed full-input chunks" (or (:error refused) "")))
     (is (= :adversarial-validate (:stage adversarial)))
     (is (= 3 (count (:evidence adversarial))))
-    ;; Recovery retains this session so the omitted tail can still supply a
-    ;; finding; no restart or relaxation of the :publish restriction is needed.
-    (let [recovered (assess-all adversarial)
+    ;; Recover the remaining input before actual first-stage admission. The
+    ;; synthetic adversarial refusal fixture supplies no admitted stage history.
+    (let [recovered (through-stage prefix :adversarial-validate)
           proposed (review/propose-finding recovered
                                           {:id "tail" :severity "high" :category "semantic-regression"
                                            :claim "Synthetic tail finding" :path "large" :line 300
@@ -317,7 +405,7 @@
 
 (deftest truncated-input-cannot-enter-publish
   (let [diff (str sample-diff "\n[eta-mu review] diff truncated at 300000 bytes (was 400000).\n")
-        session (through-stage (review/begin diff) :adversarial-validate)
+        session (assoc (assess-all (review/begin diff)) :stage :adversarial-validate)
         result (review/record-evidence session :adversarial-validate "Every supplied preview page assessed.")]
     (is (false? (:ok? result)))
     (is (re-find #"truncated preview" (or (:error result) "")))))
@@ -447,7 +535,7 @@
 
 (deftest chronology-error-precedes-truncation-and-missing-coverage
   (let [diff (str sample-diff "\n[eta-mu review] diff truncated at 300000 bytes (was 400000).\n")
-        assessed (through-stage (review/begin diff) :adversarial-validate)
+        assessed (assoc (assess-all (review/begin diff)) :stage :adversarial-validate)
         invalidated (:session (review/read-diff-chunk assessed 1))
         transition (review/record-evidence invalidated :adversarial-validate "Cannot recover by filling the preview.")
         submit (review/submission (assoc invalidated :stage :publish) "Latched chronology has priority.")]
@@ -618,7 +706,7 @@
 
 (deftest rejected-restart-error-precedes-reread-truncation-and-missing-input
   (let [diff (str sample-diff "\n[eta-mu review] diff truncated at 300000 bytes (was 400000).\n")
-        assessed (through-stage (review/begin diff) :adversarial-validate)
+        assessed (assoc (assess-all (review/begin diff)) :stage :adversarial-validate)
         invalidated (:session (review/read-diff-chunk assessed 1))
         latched (assoc invalidated :restart-error restart-refusal-message)
         assessment (review/assess-diff-chunk latched 1 "Attempted repair.")
@@ -633,9 +721,9 @@
 
 (deftest rejected-restart-latch-survives-other-pure-transitions
   (let [latched (assoc (begun) :restart-error restart-refusal-message)
-        advanced (reduce (fn [session stage]
-                           (:session (review/record-evidence session stage "Stage note cannot clear admission history.")))
-                         latched [:deterministic :map-change :generate-candidates])
+        ;; Isolate preservation across the other pure transitions. A latched
+        ;; invocation no longer advances through deterministic admission.
+        advanced (assoc latched :stage :adversarial-validate)
         proposed (review/propose-finding advanced
                                         {:id "preserved" :severity "low" :category "contract"
                                          :claim "Synthetic history fixture" :path "src/example.js" :line 11

@@ -194,3 +194,49 @@
       #js {:ok false :reason "unestablished-review-trace" :reasonKind "unestablished-review-trace"
            :acceptedInvocation nil
            :code "structured-input-unestablished" :violations #js []})))
+
+(defn- decode-length-context [raw]
+  (let [ctx (if (or (string? raw) (instance? js/Uint8Array raw))
+              (strict-json (raw-text raw)) (js->clj raw :keywordize-keys true))]
+    ;; Unlike generic verify, this narrow classifier requires the actual full
+    ;; bytes/text as well as a prepared context. decode-context revalidates its
+    ;; digest, byte count and canonical pages via context-from-input.
+    (when-not (contains? ctx :fullDiff) (invalid!))
+    (assoc (decode-context raw) :full-input-text (raw-text (:fullDiff ctx)))))
+
+(defn classify-length-ended-review
+  "UNPUBLISHED candidate boundary. Raw response/submission/context have the
+   verify API's syntax, but context MUST include fullDiff for exact revalidation.
+   rawCustody is caller-trusted JSON or JS data with invocationState, exitCode,
+   submissionState, responseSha256Before/After and contextBefore/After (each with
+   fullDiff). Actual response digest is derived here; all admission policy is law.
+   Returns {eligible, classification, code, violations,...}, with no full-review
+   ok, acceptedInvocation or approval fields. Caller independently authenticates
+   source and custody, retains the first failure, composes the shared MAX2 bound,
+   and runs a fresh complete review normally. This API invokes nothing."
+  [raw-response raw-submission expected-context raw-custody]
+  (try
+    (let [events (mapv #(decode-event (strict-json %))
+                       (remove str/blank? (str/split-lines (raw-text raw-response))))
+          submission (when (some? raw-submission) (strict-json (raw-text raw-submission)))
+          ctx (decode-length-context expected-context)
+          c (if (or (string? raw-custody) (instance? js/Uint8Array raw-custody))
+              (strict-json (raw-text raw-custody)) (js->clj raw-custody :keywordize-keys true))
+          custody {:invocation-state (:invocationState c) :exit-code (:exitCode c)
+                   :submission-present? (some? raw-submission)
+                   :submission-state (:submissionState c) :response-sha256 (raw-sha256 raw-response)
+                   :response-sha256-before (:responseSha256Before c)
+                   :response-sha256-after (:responseSha256After c)
+                   :context-before (decode-length-context (clj->js (:contextBefore c)))
+                   :context-after (decode-length-context (clj->js (:contextAfter c)))}
+          result (law/classify-length-ended-review events submission ctx custody)]
+      (clj->js {:eligible (:eligible? result) :classification (name (:classification result))
+                :code (name (:code result)) :violations (:violations result)
+                :requiredAction (some-> (:required-action result) name)
+                :sessionID (:session-id result) :pageCount (:page-count result)
+                :recordedStages (:recorded-stages result) :terminalPosition (:terminal-position result)
+                :terminalReason (:terminal-reason result) :responseSha256 (:response-sha256 result)
+                :fullInputSha256 (:full-input-sha256 result)}))
+    (catch :default _
+      #js {:eligible false :classification "unestablished-length-ended-review"
+           :code "structured-input-unestablished" :violations #js []})))
