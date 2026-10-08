@@ -106,3 +106,34 @@ review5456759586, without claiming a production bug or changing recovery authori
 The source-built suite completed 113 tests and 1,357 assertions with zero failures,
 errors or compiler warnings. Fresh current-head hosted checks and full native
 review qualification remain required after publication.
+
+
+## Consume the reviewed bounded review caller
+
+The actual 5d7 review run37783256844 was cancelled before submission. GitHub's
+authenticated model-job annotation identifies its maximum execution time of
+45 minutes; the old reusable caller09a4454480baa67f6fdc40f6f73f5e48ef0457d1
+does not run the already merged bounded supervisor. Preserve the cancelled run,
+whole terminal data and the failed tool calls as evidence; do not rerun it or
+claim a passing review from its ten diff reads and assessments.
+
+The scoped integration plan is to update only the existing caller to the actual
+protected-merged Eta345 workflowd98ab446d56ddfd24542df49b102b851f2a767fa and
+explicitly select actual protected-merged Muse22 tools
+ba7f47dc6db26096a2a821d7a3c7ef62cb00c879. This consumes the existing reviewed
+MAX2 supervisor, shell/grep instructions and healthy-before-FIRST guards. The
+60-minute model-job limit is supplied by that reviewed workflow; no new workflow,
+provider, recovery class or additional model-attempt budget is introduced.
+
+Preserve the caller's permissions, same-repository/draft gate, exact-head input,
+deterministic diff evidence and explicitly forwarded secrets. Preserve every
+production Clojure/test byte and the whole current93592-byte receipt and
+13132-byte reflection prefixes. Append a typed observation and reflection.
+Actionlint must pass for the final caller, and raw Git/tree/two-parent merge
+proofs must bind both selected revisions. No operational card state is changed.
+
+Publish an ordinary source commit without force, retaining 5d7 as its sole
+parent. Declare its code stage at the actual publication time. Fresh exact-head
+hosted CI, full native reviews, all genuine findings and canonical convergence
+are required before protected merge. Prior-head reviews and CI supply no credit,
+and this caller repair supplies no settlement of the open public-test finding.

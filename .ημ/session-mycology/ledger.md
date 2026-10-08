@@ -200,3 +200,14 @@
 ### Public selected-profile parsing coverage
 
 Friction .83; recovery .29; confidence .51. The current ED native approval exposed a direct test gap for the fifth preparation argument. Added two tests/33 assertions for object, JSON, UTF-8 and safe malformed-profile refusal. Actual existing production already passes; offline source-built113/1357 passed with zero errors/warnings. Four genuine HOST failures remain a separate qualification failure under unchanged canonical source, while FIRST/LAST pass. Preserve the full old receipt/reflection and all failed evidence; claim neither production repair nor native credit from synthetic controls. No spore or promotion.
+
+
+### Reviewed caller restoration after native deadline
+
+p-efficiency0.83; p-friction0.29; p-skill-candidate0.51. An old consumer can keep
+executing obsolete review machinery after its replacement was protected-merged.
+Bind the consumer to the actual qualified merge and explicit tool revision,
+preserve terminal cancellation and failed-tool evidence, and obtain new native
+qualification for the changed caller. Source inspection and syntax validation
+are preparation, not runtime proof. The whole historical receipt/reflection
+remains byte exact; no spore, promotion, fabricated approval or healthy rerun.
