@@ -168,3 +168,12 @@
   spore: none
   receipt-refs: muse-host-read-closure-parent-source-20261008T1000Z/source-verification-record.edn
   note: Keep actual native approval separate from mandatory supporting-read closure. The selected canonical profile refuses the identical incomplete EBF trace while unselected behavior and old test bytes remain. Both future Eta adapters need the new export, exact returned profile, source-policy and whole-context binding. Supporting reads close at terminal without a new BEFORE FIRST timing rule. Preserve all prior bytes and genuine failures; local controls confer no review or approval credit. Fresh native qualification, checks, all-gates normal merge and exact source/history adoption remain required. No promotion.
+
+- ts: "2026-10-08T11:24:45.123Z"
+  origin: Public selected-profile round-trip regression tests
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: muse-host-read-closure-parent-source-20261008T1000Z/selected-public-roundtrip-test-successor/source-verification-record.edn
+  note: Actual published producer key was already correct. Protect its public round trip with a separate repository test namespace; preserve every old test/production/history byte. Baseline107/1293 and proposed111/1324 PASS, synthetic wrong-key mutant16FAIL0ERROR. Native CHANGES_REQUESTED/root remains open; local evidence is not native withdrawal, independent agreement, settlement, approval or merge. Fresh successor qualification is required. Append correction evidence rather than rewrite prior receipts. No spore or promotion.

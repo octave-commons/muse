@@ -75,3 +75,14 @@ callbacks run offline; native artifact programs are never executed. This manual
 card is candidate content only: no operational status or engine event is created,
 and no Rheos validation is claimed. Parent retains normal canonical all-gates
 review and merge authority. Branch protection was not inspected by this worker.
+
+## Public boundary regression verification
+
+Native review5455536592 requests a repository prepare-to-verify round-trip test.
+The published producer already emits the camel-case `sourceSha256` key at
+extern line168. Add a separate extern test namespace to exercise that actual
+public JSON boundary, completed and abandoned supporting read chains, malformed
+selected-context keys, and length classification. Preserve all existing tests
+and every production byte. Current D0E is expected to pass the new tests; a
+synthetic wrong-key control demonstrates refusal without claiming a prior
+production defect. The review finding remains open pending native disposition.
