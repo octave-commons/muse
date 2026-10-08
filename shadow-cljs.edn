@@ -10,7 +10,8 @@
    :output-to ".opencode/dist/review-invocation.cjs"
    :exports {:verifyReviewInvocation eta-mu.extern.review-invocation/verify-review-invocation
              :prepareReviewInvocationContext eta-mu.extern.review-invocation/prepare-review-invocation-context
-             :classifyLengthEndedReview eta-mu.extern.review-invocation/classify-length-ended-review}
+             :classifyLengthEndedReview eta-mu.extern.review-invocation/classify-length-ended-review
+             :prepareReviewInvocationContextWithHostReadProfile eta-mu.extern.review-invocation/prepare-review-invocation-context-with-host-read-profile}
    :compiler-options {:output-feature-set :es-next :infer-externs false}}
   :test
    {:target :node-test,

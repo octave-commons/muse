@@ -159,3 +159,12 @@
   spore: none
   receipt-refs: muse22-post-stage-parent-source-20261008T0350Z/source-verification-record.edn
   note: Preserve every original assertion and whole source history. Genuine post-stage reassessment gap now refused; compiled cold204-page smoke and96tests1118assertions pass. Retain failed missing-dependency capture separately. Existing06c terminal MiMo custody is history, no successor credit. Fresh native qualification required. No spore or promotion.
+
+- ts: "2026-10-08T10:26:47.031Z"
+  origin: Explicit source-bound restricted supporting-read admission
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: muse-host-read-closure-parent-source-20261008T1000Z/source-verification-record.edn
+  note: Keep actual native approval separate from mandatory supporting-read closure. The selected canonical profile refuses the identical incomplete EBF trace while unselected behavior and old test bytes remain. Both future Eta adapters need the new export, exact returned profile, source-policy and whole-context binding. Supporting reads close at terminal without a new BEFORE FIRST timing rule. Preserve all prior bytes and genuine failures; local controls confer no review or approval credit. Fresh native qualification, checks, all-gates normal merge and exact source/history adoption remain required. No promotion.

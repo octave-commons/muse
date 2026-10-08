@@ -101,6 +101,7 @@
      :part {:type (:type part) :id (:id part) :session-id (:sessionID part)
             :call-id (:callID part) :tool name :reason (:reason part)
             :state {:status (:status state) :input (:input state) :error (:error state)
+                    :metadata (:metadata state)
                     :output (if review?
                               (let [s (:output state)]
                                 (when-not (and (string? s) (not (str/blank? s))) (invalid!))
@@ -140,6 +141,34 @@
     (catch :default _
       (throw (js/Error. "unestablished-review-trace: invalid full-input context")))))
 
+(defn- decode-host-read-profile [raw]
+  (let [profile (if (or (string? raw) (instance? js/Uint8Array raw))
+                  (strict-json (raw-text raw)) (js->clj raw :keywordize-keys true))
+        shaped {:id (:id profile) :source-sha256 (:sourceSha256 profile)}]
+    (when-not (and (map? profile) (= #{:id :sourceSha256} (set (keys profile)))
+                   (law/host-read-profile-valid? shaped))
+      (invalid!))
+    shaped))
+
+(defn prepare-review-invocation-context-with-host-read-profile
+  "CJS prepareReviewInvocationContextWithHostReadProfile takes the original four
+   prepare arguments plus trusted {id, sourceSha256}. Only the exact reviewed
+   profile/source pair is admitted by law. Adds hostReadProfile to the prepared
+   context; the original prepare export and default JSON bytes stay unchanged.
+   Supervisor and publisher must select this API from source-bound captures,
+   hash its complete output, and independently verify the profile source. This
+   does not authenticate the caller, invoke a tool or authorize recovery."
+  [raw-full-diff raw-manifest raw-review-tools submission-file raw-profile]
+  (try
+    (let [profile (decode-host-read-profile raw-profile)
+          context (js->clj (prepare-review-invocation-context
+                            raw-full-diff raw-manifest raw-review-tools submission-file)
+                           :keywordize-keys true)]
+      (clj->js (assoc context :hostReadProfile
+                     {:id (:id profile) :sourceSha256 (:source-sha256 profile)})))
+    (catch :default _
+      (throw (js/Error. "unestablished-review-trace: invalid restricted HOST read context")))))
+
 (defn- decode-context [raw]
   (let [ctx (if (or (string? raw) (instance? js/Uint8Array raw))
               (strict-json (raw-text raw)) (js->clj raw :keywordize-keys true))
@@ -153,10 +182,12 @@
       (when-not (= prepared (context-from-input (:fullDiff ctx) (:inputSource ctx)
                                                (:reviewTools ctx) (:submissionFile ctx)))
         (invalid!)))
-    {:input-source (:inputSource ctx) :pages (:pages ctx)
+    (cond-> {:input-source (:inputSource ctx) :pages (:pages ctx)
      :page-count (:pageCount ctx) :full-input-sha256 (:fullInputSha256 ctx)
      :review-tools (:reviewTools ctx) :submission-file (:submissionFile ctx)
-     :session-id (:sessionID ctx)}))
+     :session-id (:sessionID ctx)}
+      (contains? ctx :hostReadProfile)
+      (assoc :host-read-profile (decode-host-read-profile (clj->js (:hostReadProfile ctx)))))))
 
 (defn verify-review-invocation
   "CJS API: rawResponseText/rawSubmission accept strings or UTF8 byte arrays;
