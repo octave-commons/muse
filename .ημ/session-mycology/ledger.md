@@ -177,3 +177,21 @@
   spore: none
   receipt-refs: muse-host-read-closure-parent-source-20261008T1000Z/selected-public-roundtrip-test-successor/source-verification-record.edn
   note: Actual published producer key was already correct. Protect its public round trip with a separate repository test namespace; preserve every old test/production/history byte. Baseline107/1293 and proposed111/1324 PASS, synthetic wrong-key mutant16FAIL0ERROR. Native CHANGES_REQUESTED/root remains open; local evidence is not native withdrawal, independent agreement, settlement, approval or merge. Fresh successor qualification is required. Append correction evidence rather than rewrite prior receipts. No spore or promotion.
+
+- ts: "2026-10-08T12:05:41.927725Z"
+  origin: Record completed public extern coverage in the manual card
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: receipts.edn (native-CodeRabbit4218508495-doc-wording-correction)
+  note: Keep plans and delivered behavior coherent. A documentation request is a real finding even when production and tests are already correct. Change only the stale coverage paragraph, preserve every historical receipt and reflection byte, and append verification. Local test evidence, native model review, hosted checks and settlement remain separate; no prior-head credit transfers. No spore or promotion.
+
+- ts: "2026-10-08T12:13:22.210Z"
+  origin: Append-only prepared receipt status correction
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: receipts.edn (append-only-current05C-native-custody-status-correction)
+  note: Prepared status can become stale before append. Preserve the original receipt and append a scoped correction with the exact original hash and actual native custody IDs. Native approval remains distinct from full qualification. No history rewrite, spore or promotion.

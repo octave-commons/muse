@@ -79,10 +79,16 @@ review and merge authority. Branch protection was not inspected by this worker.
 ## Public boundary regression verification
 
 Native review5455536592 requests a repository prepare-to-verify round-trip test.
-The published producer already emits the camel-case `sourceSha256` key at
-extern line168. Add a separate extern test namespace to exercise that actual
-public JSON boundary, completed and abandoned supporting read chains, malformed
-selected-context keys, and length classification. Preserve all existing tests
-and every production byte. Current D0E is expected to pass the new tests; a
-synthetic wrong-key control demonstrates refusal without claiming a prior
-production defect. The review finding remains open pending native disposition.
+The existing `eta-mu.extern.review-invocation-host-read-test` namespace exercises
+that public JSON boundary, including the camel-case `sourceSha256` key, completed
+and abandoned supporting read chains, malformed selected-context keys, and length
+classification. All original test files and every production byte are preserved.
+The original D0E producer passes these new tests; a synthetic wrong-key control
+demonstrates refusal without claiming a prior production defect. The review finding remains open pending native disposition.
+
+Existing full-diff chronology is separate from supporting-read closure: deliver
+and assess every full-diff page before the first evidence stage, and place each
+page's final assessment after its last read. Supporting reads may follow FIRST,
+but every opened selected-profile chain must close at whole-trace terminal.
+A native approval alone does not establish these conditions; qualification
+requires the actual source-bound input and trace.
