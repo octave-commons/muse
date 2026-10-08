@@ -179,10 +179,12 @@
          ". Read and assess every changed hunk before publishing.")))
 
 (defn record-evidence
-  "Record a note for the current stage and advance to the next stage."
+  "Record a note and advance only after complete input before deterministic.
+   Preserve the later adversarial coverage check and all submission guards."
   [session stage note]
   (let [current (:stage session)
-        input-error (when (= stage :adversarial-validate) (full-input-error session))]
+        input-error (when (contains? #{:deterministic :adversarial-validate} stage)
+                      (full-input-error session))]
     (cond
       (not (contains? (set stages) stage))
       (err (str "Unknown stage " stage "; stages are " (str/join ", " (map name stages)) "."))

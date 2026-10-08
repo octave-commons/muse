@@ -46,7 +46,6 @@ function smokeInvocation(context) {
   call('review_begin', {}, {'ok?': true, stage: stages[0], stages, 'input-source': context.inputSource,
     'diff-stats': {files: 1, bytes: text.length, 'truncated?': false},
     'input-coverage': {chunks: pages.length, delivered: 0, assessed: 0, missing: pages.map(page => page.id)}});
-  call('review_record_evidence', {stage: stages[0], note: 'Synthetic deterministic evidence.'}, {'ok?': true});
   for (const [index, page] of pages.entries()) {
     call('review_read_diff_chunk', {id: page.id}, {'ok?': true,
       chunk: {...page, text: text.slice(page.start, page.end)}});
@@ -54,7 +53,7 @@ function smokeInvocation(context) {
       coverage: {chunks: pages.length, delivered: index + 1, assessed: index + 1,
         missing: pages.slice(index + 1).map(remaining => remaining.id)}});
   }
-  for (const stage of stages.slice(1)) {
+  for (const stage of stages) {
     call('review_record_evidence', {stage, note: `Synthetic ${stage} evidence.`}, {'ok?': true});
   }
   call('review_submit', {summary: body.summary}, {'ok?': true, event: body.event, file: submissionFile,
