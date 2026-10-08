@@ -195,3 +195,8 @@
   spore: none
   receipt-refs: receipts.edn (append-only-current05C-native-custody-status-correction)
   note: Prepared status can become stale before append. Preserve the original receipt and append a scoped correction with the exact original hash and actual native custody IDs. Native approval remains distinct from full qualification. No history rewrite, spore or promotion.
+
+
+### Public selected-profile parsing coverage
+
+Friction .83; recovery .29; confidence .51. The current ED native approval exposed a direct test gap for the fifth preparation argument. Added two tests/33 assertions for object, JSON, UTF-8 and safe malformed-profile refusal. Actual existing production already passes; offline source-built113/1357 passed with zero errors/warnings. Four genuine HOST failures remain a separate qualification failure under unchanged canonical source, while FIRST/LAST pass. Preserve the full old receipt/reflection and all failed evidence; claim neither production repair nor native credit from synthetic controls. No spore or promotion.

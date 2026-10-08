@@ -92,3 +92,17 @@ page's final assessment after its last read. Supporting reads may follow FIRST,
 but every opened selected-profile chain must close at whole-trace terminal.
 A native approval alone does not establish these conditions; qualification
 requires the actual source-bound input and trace.
+
+
+## Raw profile preparation verification
+
+The same public five-argument preparation API also accepts the selected profile
+as an object, JSON string or UTF-8 bytes. Two additional direct tests verify
+healthy and unfinished supporting read chains in all three forms, and the safe
+preparation error for malformed JSON, duplicate keys, invalid UTF-8, wrong keys,
+unsupported profile identity and invalid source digest. The existing ED producer
+already passes these controls: this closes a test coverage gap reported in native
+review5456759586, without claiming a production bug or changing recovery authority.
+The source-built suite completed 113 tests and 1,357 assertions with zero failures,
+errors or compiler warnings. Fresh current-head hosted checks and full native
+review qualification remain required after publication.

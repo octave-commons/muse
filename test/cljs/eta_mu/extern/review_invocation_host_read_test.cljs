@@ -88,3 +88,44 @@
         (is (= eligible (:eligible result)))
         (is (not (contains? result :acceptedInvocation)))
         (is (not (contains? result :approval)))))))
+
+
+(defn prepare-with-raw-profile [raw-profile]
+  (extern/prepare-review-invocation-context-with-host-read-profile
+   "diff" (public-fixture/json fixture/manifest)
+   (clj->js (:review-tools fixture/context))
+   (:submission-file fixture/context) raw-profile))
+
+(deftest raw-profile-object-json-and-utf8-keep-supporting-read-enforcement
+  (let [encoded (js/JSON.stringify profile)
+        complete (host/with-reads [(host/complete-read 40)])
+        unfinished (host/with-reads
+                    [(host/read-receipt 40 1 ["a" "b"] 4 true 1 false)])]
+    (doseq [wire [profile encoded (.encode (js/TextEncoder.) encoded)]]
+      (let [context (prepare-with-raw-profile wire)
+            refused (verify unfinished context)]
+        (is (:ok (verify complete context)))
+        (is (false? (:ok refused)))
+        (is (= "host-read-unfinished" (:code refused)))))))
+
+(deftest invalid-raw-profile-preparation-has-one-safe-typed-refusal
+  (let [digest "2c7d86dc58a34a8956dfc8e3828a6cda4b14b0dc17d7a76ab207cddedef416f7"
+        duplicate (str "{\"id\":\"eta-mu.restricted-host-read/v1\","
+                       "\"id\":\"eta-mu.restricted-host-read/v1\","
+                       "\"sourceSha256\":\"" digest "\"}")]
+    (doseq [wire [nil #js []
+                  #js {:id "eta-mu.restricted-host-read/v1"
+                       :sourceSha256 digest :extra true}
+                  #js {:id "eta-mu.restricted-host-read/v1"
+                       :source-sha256 digest}
+                  #js {:id "unsupported-profile" :sourceSha256 digest}
+                  #js {:id "eta-mu.restricted-host-read/v1"
+                       :sourceSha256 "wrong"}
+                  "{" "null" "[]" duplicate
+                  (js/Uint8Array. #js [255])
+                  (.encode (js/TextEncoder.) "{")]]
+      (let [error (try (prepare-with-raw-profile wire) nil
+                       (catch :default e e))]
+        (is (instance? js/Error error))
+        (is (= "unestablished-review-trace: invalid restricted HOST read context"
+               (.-message error)))))))
