@@ -83,6 +83,48 @@
         (assert (:ok? result) (:error result))
         (recur (:session result))))))
 
+(deftest assessment-refuses-after-first-evidence-at-every-later-stage
+  (doseq [stage (rest review/stages)]
+    (let [session (through-stage (begun) stage)
+          result (review/assess-diff-chunk session 1 "Too late to revise the assessed input.")]
+      (is (false? (:ok? result)))
+      (is (nil? (:session result)) "Refusal supplies no replacement session.")
+      (is (re-find #"before recording deterministic evidence" (or (:error result) "")))
+      (is (= stage (:stage session)))
+      (is (= "Fixture assessed the full changed hunk." (get-in session [:assessed-chunks 1])))
+      (is (= (count (take-while #(not= stage %) review/stages)) (count (:evidence session)))))))
+
+(deftest pre-stage-assessment-remains-idempotent-and-revisable
+  (let [read (review/read-diff-chunk (begun) 1)
+        first-assessment (review/assess-diff-chunk (:session read) 1 "Initial input assessment.")
+        repeated (review/assess-diff-chunk (:session first-assessment) 1 "Initial input assessment.")
+        revised (review/assess-diff-chunk (:session repeated) 1 "Revised before first evidence.")
+        final-session (through-stage (:session revised) :publish)
+        submitted (review/submission final-session "All assessments precede first evidence.")]
+    (is (:ok? first-assessment))
+    (is (:ok? repeated))
+    (is (= (:session first-assessment) (:session repeated)))
+    (is (:ok? revised))
+    (is (= :deterministic (get-in revised [:session :stage])))
+    (is (= [] (get-in revised [:session :evidence])))
+    (is (= "Revised before first evidence." (get-in revised [:session :assessed-chunks 1])))
+    (is (:ok? submitted))
+    (is (= "Revised before first evidence." (get-in submitted [:envelope :input-assessments 0 :note])))))
+
+(deftest post-stage-assessment-preserves-restart-and-LAST-error-precedence
+  (let [advanced (through-stage (begun) :map-change)
+        reread (:session (review/read-diff-chunk advanced 1))
+        rejected (:session (review/reject-restart advanced))
+        both (:session (review/reject-restart reread))]
+    (doseq [session [reread rejected both]]
+      (let [result (review/assess-diff-chunk session 1 "Cannot repair either latched refusal.")]
+        (is (false? (:ok? result)))
+        (is (nil? (:session result)))
+        (is (= (or (:restart-error session)
+                   "A diff chunk was read after assessment. Start a fresh invocation; this session's chronology cannot be restored.")
+               (:error result)))
+        (is (not (re-find #"before recording deterministic evidence" (or (:error result) ""))))))))
+
 (def quoted-receipt-diff
   ;; Git-emitted header from the isolated red fixture, with quotePath=true.
   ;; Native Foresight125/126 evidence uses this same C-octal UTF-8 spelling.
@@ -311,8 +353,10 @@
     (is (> (count (:diff-chunks begun)) 1))
     (is (false? (:ok? (review/submission publish "The delivered prefix had no findings."))))
     (is (false? (:ok? (review/assess-diff-chunk begun 1 "Not actually delivered."))))
-    (is (:ok? (review/submission (assess-all publish) "All changed hunks assessed; full input recovered.")))
-    (is (= "APPROVE" (get-in (review/submission (assess-all publish) "Complete review.") [:envelope :event])))))
+    ;; The successful fixture completes assessment before actual stage admission.
+    (let [publish (through-stage partial :publish)]
+      (is (:ok? (review/submission (assess-all publish) "All changed hunks assessed; full input recovered.")))
+      (is (= "APPROVE" (get-in (review/submission (assess-all publish) "Complete review.") [:envelope :event]))))))
 
 (deftest invalid-page-or-empty-assessment-cannot-supply-coverage
   (let [begun (review/begin sample-diff)
@@ -340,9 +384,9 @@
     (is (re-find #"Unassessed full-input chunks" (or (:error refused) "")))
     (is (= :adversarial-validate (:stage adversarial)))
     (is (= 3 (count (:evidence adversarial))))
-    ;; Recovery retains this session so the omitted tail can still supply a
-    ;; finding; no restart or relaxation of the :publish restriction is needed.
-    (let [recovered (assess-all adversarial)
+    ;; Recover the remaining input before actual first-stage admission. The
+    ;; synthetic adversarial refusal fixture supplies no admitted stage history.
+    (let [recovered (through-stage prefix :adversarial-validate)
           proposed (review/propose-finding recovered
                                           {:id "tail" :severity "high" :category "semantic-regression"
                                            :claim "Synthetic tail finding" :path "large" :line 300

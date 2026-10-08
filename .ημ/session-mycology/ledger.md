@@ -150,3 +150,12 @@
   spore: none
   receipt-refs: muse-first-stage-parent-source-20261008T0320Z/source-verification-record.edn
   note: Freeze the same original inputs before strengthening chronology. Exactly one of445 loses acceptance;444 remain identical, no acceptance promotion. Narrow length eligibility never creates review credit or retry budget. Preserve old source evidence and append-only histories. Fresh native qualification required. No spore or promotion.
+
+- ts: "2026-10-08T03:55:08.829Z"
+  origin: Post-stage producer reassessment refusal and compiled smoke correction
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: muse22-post-stage-parent-source-20261008T0350Z/source-verification-record.edn
+  note: Preserve every original assertion and whole source history. Genuine post-stage reassessment gap now refused; compiled cold204-page smoke and96tests1118assertions pass. Retain failed missing-dependency capture separately. Existing06c terminal MiMo custody is history, no successor credit. Fresh native qualification required. No spore or promotion.

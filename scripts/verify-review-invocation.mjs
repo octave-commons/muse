@@ -13,6 +13,7 @@ const modulePath = path.resolve(repo, process.argv[2] || '.opencode/dist/review-
 const verifier = createRequire(import.meta.url)(modulePath);
 assert.equal(typeof verifier.prepareReviewInvocationContext, 'function');
 assert.equal(typeof verifier.verifyReviewInvocation, 'function');
+assert.equal(typeof verifier.classifyLengthEndedReview, 'function');
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const stages = ['deterministic', 'map-change', 'generate-candidates', 'adversarial-validate', 'publish'];
 const tools = ['review_begin', 'review_read_diff_chunk', 'review_assess_diff_chunk',
@@ -83,6 +84,15 @@ for (const [representation, encode] of [['string', bytes => bytes.toString('utf8
     equal(verdict.acceptedInvocation.submissionSha256, sha256(submission));
     equal(verdict.acceptedInvocation.fullInputSha256, sha256(full));
     equal(verdict.acceptedInvocation.pageCount, context.pageCount);
+    const lengthContext = {...context, fullDiff: full.toString('utf8'), sessionID: 'session-optimized-export-smoke'};
+    const lengthVerdict = verifier.classifyLengthEndedReview(encode(response), encode(submission), lengthContext,
+      {invocationState: 'completed', exitCode: 0, submissionState: 'present',
+        responseSha256Before: sha256(response), responseSha256After: sha256(response),
+        contextBefore: lengthContext, contextAfter: lengthContext});
+    equal(lengthVerdict.eligible, false, 'A healthy completed review cannot authorize length recovery.');
+    equal(Object.hasOwn(lengthVerdict, 'ok'), false);
+    equal(Object.hasOwn(lengthVerdict, 'acceptedInvocation'), false);
+    equal(Object.hasOwn(lengthVerdict, 'approval'), false);
     result.pass = true;
   } catch (error) {
     result.pass = false;

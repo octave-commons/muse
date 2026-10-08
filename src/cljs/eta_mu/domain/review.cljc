@@ -157,12 +157,15 @@
 
 (defn assess-diff-chunk
   "Record a substantive model assessment only after delivery, while the
-   session has no latched restart or read-after-assessment violation."
+   session has no latched restart or read-after-assessment violation and
+   before the first deterministic evidence advances the stage."
   [session id note]
   (cond
     (restart-required? session) (err (chronology-error session))
     (not (contains? (:delivered-chunks session) id)) (err "Read the diff chunk before assessing it.")
     (not (non-blank note)) (err "Explain the changed-hunk assessment in a non-empty note.")
+    (not= :deterministic (:stage session))
+    (err "Assess every diff chunk before recording deterministic evidence; post-stage reassessment is refused.")
     :else {:ok? true :session (assoc-in session [:assessed-chunks id] note)
            :chunk-id id :coverage (input-coverage (assoc-in session [:assessed-chunks id] note))}))
 

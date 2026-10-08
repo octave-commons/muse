@@ -141,13 +141,10 @@ try {
   assert.ok(count > 1);
   const prefix = await call('review_read_diff_chunk', {id: 1}, ctx);
   await call('review_assess_diff_chunk', {id: 1, note: 'Synthetic assessment of the delivered first page'}, ctx);
-  for (const stage of ['deterministic', 'map-change', 'generate-candidates']) {
-    assert.equal((await call('review_record_evidence', {stage, note: 'Synthetic stage evidence'}, ctx))['ok?'], true);
-  }
   const premature = await call('review_record_evidence',
-    {stage: 'adversarial-validate', note: 'Synthetic attempt before tail assessment'}, ctx);
-  assert.equal(premature['ok?'], false, 'unassessed tail must keep the candidate stage open');
-  assert.equal((await call('review_status', {}, ctx)).stage, 'adversarial-validate');
+    {stage: 'deterministic', note: 'Synthetic attempt before tail assessment'}, ctx);
+  assert.equal(premature['ok?'], false, 'unassessed tail must keep the first stage open');
+  assert.equal((await call('review_status', {}, ctx)).stage, 'deterministic');
   assert.equal((await call('review_submit', {summary: 'Prefix alone is insufficient'}, ctx))['ok?'], false);
   let recovered = prefix.chunk.text;
   for (let id = 2; id <= count; id++) {
@@ -158,6 +155,9 @@ try {
     assert.equal((await call('review_assess_diff_chunk', {id, note: `Synthetic changed-hunk assessment of page ${id}`}, ctx))['ok?'], true);
   }
   assert.equal(recovered, full.toString('utf8'), 'all reader pages must preserve the omitted Unicode tail');
+  for (const stage of ['deterministic', 'map-change', 'generate-candidates']) {
+    assert.equal((await call('review_record_evidence', {stage, note: 'Synthetic stage evidence after complete input'}, ctx))['ok?'], true);
+  }
   assert.equal((await call('review_propose_finding', {id: 'tail', severity: 'high',
     category: 'semantic-regression', claim: 'Synthetic recovered-tail candidate', path: 'large', line: 26001,
     body: 'Synthetic blocking fixture in the recovered Unicode tail', confidence: 0.95, blocking: true}, ctx))['ok?'], true);
