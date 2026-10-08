@@ -27,10 +27,21 @@
 (defn- input [call] (get-in call [:part :state :input]))
 (defn- output [call] (get-in call [:part :state :output]))
 
+(def restricted-host-read-profile
+  "Explicit restricted-review contract, bound to the actual Eta HOST EDN source.
+   Selection is trusted caller data, never a model event or recovery authority."
+  {:id "eta-mu.restricted-host-read/v1"
+   :source-sha256 "2c7d86dc58a34a8956dfc8e3828a6cda4b14b0dc17d7a76ab207cddedef416f7"})
+
+(defn host-read-profile-valid?
+  "Only this exact source-bound profile is supported; absence stays generic."
+  [profile]
+  (= restricted-host-read-profile profile))
+
 (defn context-valid?
   "Validate caller-bound, canonically prepared geometry; this is not native
    source authority. Preserve the existing manifest's SHA40-or-SHA64 grammar."
-  [{:keys [input-source pages page-count full-input-sha256 review-tools submission-file]}]
+  [{:keys [input-source pages page-count full-input-sha256 review-tools submission-file] :as context}]
   (let [p (:provenance input-source) d (:full_diff input-source)]
     (and (map? input-source) (= "open-hax.review-input/v1" (:schema input-source))
          (every? #(oid? (get input-source %)) [:base_sha :head_sha :diff_base_sha])
@@ -49,7 +60,9 @@
          (vector? review-tools) (every? nonblank? review-tools)
          (= (count review-tools) (count (set review-tools)))
          (every? (set review-tools) eta-mu.law.review-invocation/review-tools)
-         (nonblank? submission-file))))
+         (nonblank? submission-file)
+         (or (not (contains? context :host-read-profile))
+             (host-read-profile-valid? (:host-read-profile context))))))
 
 (defn- event-error ([events expected-session] (event-error events expected-session "stop"))
   ([events expected-session terminal-reason]
@@ -113,6 +126,90 @@
                           (every? page-by-id (get-in result [:coverage :missing]))))) :returned-assessment-binding
            :else nil)))
      calls)))
+
+(defn- host-read-receipt-error
+  "Validate actual structured file display against the complete returned text.
+   Preview and requested limit cannot witness content or EOF. Capped intermediate
+   totals are per-receipt data, never a constant whole-file size."
+  [call]
+  (let [args (input call) path (:filePath args)
+        metadata (get-in call [:part :state :metadata]) display (:display metadata)
+        start (:lineStart display) end (:lineEnd display) total (:totalLines display)
+        truncated? (:truncated display) text (:text display)]
+    (cond
+      (not (and (nonblank? path) (map? metadata)
+                (= #{:preview :truncated :loaded :display} (set (keys metadata)))
+                (string? (:preview metadata)) (vector? (:loaded metadata))
+                (every? string? (:loaded metadata))
+                (map? display)
+                (= #{:type :path :text :lineStart :lineEnd :totalLines :truncated}
+                   (set (keys display)))
+                (= "file" (:type display)) (= path (:path display))
+                (string? text) (positive? start) (natural? end) (natural? total)
+                (<= end total)
+                (or (<= start end) (= [1 0 0] [start end total]))
+                (or (true? truncated?) (false? truncated?))
+                (= truncated? (:truncated metadata)))) :host-read-receipt-schema
+
+      ;; The current profile supports the observed text-file formatter without
+      ;; loaded-instruction reminders. Such a suffix is source-supported, but
+      ;; deliberately unestablished here rather than silently dropped.
+      (seq (:loaded metadata)) :host-read-unsupported-shape
+
+      (and (contains? args :offset)
+           (not (and (positive? (:offset args)) (= start (:offset args))))) :host-read-range-binding
+
+      :else
+      (let [lines (if (= [1 0 0] [start end total]) [] (str/split text #"\n" -1))
+            body (str "<path>" path "</path>\n<type>file</type>\n<content>\n"
+                      (str/join "\n" (map-indexed #(str (+ start %1) ": " %2) lines))
+                      "\n\n")
+            suffix "\n</content>"
+            trailers (if truncated?
+                       [(str "(Showing lines " start "-" end " of " total
+                             ". Use offset=" (inc end) " to continue.)")
+                        (str "(Output capped at 50 KB. Showing lines " start "-" end
+                             ". Use offset=" (inc end) " to continue.)")]
+                       (when (= end total) [(str "(End of file - total " total " lines)")]))]
+        (cond
+          ;; OpenCode can clip a line while reporting truncated=false. The
+          ;; identical literal suffix is ambiguous; neither case proves the
+          ;; original unabridged line. No omitted bytes are reconstructed.
+          (some #(str/ends-with? % "... (line truncated to 2000 chars)") lines)
+          :host-read-clipped-content
+
+          (not (and (= (count lines) (inc (- end start)))
+                    (or (seq lines) (empty? text))
+                    (some #(= (output call) (str body % suffix)) trailers)))
+          :host-read-content-binding
+          :else nil)))))
+
+(defn- host-read-protocol-error
+  "Fold all opened supporting-read chains, including calls after FIRST.
+   Close each at actual EOF by whole-trace terminal. A completed file may be
+   reread as a fresh chain from 1. No unobserved files or receipts are required."
+  [calls]
+  (loop [remaining (seq calls) opened {}]
+    (if-let [call (first remaining)]
+      (cond
+        (= "read" (tool call))
+        (let [args (input call) path (:filePath args)
+              display (get-in call [:part :state :metadata :display])
+              start (:lineStart display) pending (get opened path)
+              error (or (host-read-receipt-error call)
+                        (if pending
+                          (when-not (and (contains? args :offset)
+                                         (= pending (:offset args)) (= pending start))
+                            :host-read-continuation)
+                          (when-not (= 1 start) :host-read-start-offset)))]
+          (if error error
+            (recur (next remaining)
+                   (if (:truncated display)
+                     (assoc opened path (inc (:lineEnd display)))
+                     (dissoc opened path)))))
+
+        :else (recur (next remaining) opened))
+      (when (seq opened) :host-read-unfinished))))
 
 (defn last-read-violations
   "Original LAST predicate over ALL calls, including failed read/assessment
@@ -197,7 +294,9 @@
                          (when (and (some #(true? (:restart-required? (output %))) review-calls)
                                     (not (witnessed-stale? calls violations))) :restart-without-host-witness)
                          (serialized-error submission context calls)
-                         (when (and submission (not (submit-bound? submission context submits))) :actual-submit-binding))))
+                         (when (and submission (not (submit-bound? submission context submits))) :actual-submit-binding)
+                         (when (contains? context :host-read-profile)
+                           (host-read-protocol-error calls)))))
 
 (defn- input-before-first-stage?
   "All expected pages and every observed input call must precede stage one.

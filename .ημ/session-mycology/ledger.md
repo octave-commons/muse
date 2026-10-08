@@ -159,3 +159,55 @@
   spore: none
   receipt-refs: muse22-post-stage-parent-source-20261008T0350Z/source-verification-record.edn
   note: Preserve every original assertion and whole source history. Genuine post-stage reassessment gap now refused; compiled cold204-page smoke and96tests1118assertions pass. Retain failed missing-dependency capture separately. Existing06c terminal MiMo custody is history, no successor credit. Fresh native qualification required. No spore or promotion.
+
+- ts: "2026-10-08T10:26:47.031Z"
+  origin: Explicit source-bound restricted supporting-read admission
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: muse-host-read-closure-parent-source-20261008T1000Z/source-verification-record.edn
+  note: Keep actual native approval separate from mandatory supporting-read closure. The selected canonical profile refuses the identical incomplete EBF trace while unselected behavior and old test bytes remain. Both future Eta adapters need the new export, exact returned profile, source-policy and whole-context binding. Supporting reads close at terminal without a new BEFORE FIRST timing rule. Preserve all prior bytes and genuine failures; local controls confer no review or approval credit. Fresh native qualification, checks, all-gates normal merge and exact source/history adoption remain required. No promotion.
+
+- ts: "2026-10-08T11:24:45.123Z"
+  origin: Public selected-profile round-trip regression tests
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: muse-host-read-closure-parent-source-20261008T1000Z/selected-public-roundtrip-test-successor/source-verification-record.edn
+  note: Actual published producer key was already correct. Protect its public round trip with a separate repository test namespace; preserve every old test/production/history byte. Baseline107/1293 and proposed111/1324 PASS, synthetic wrong-key mutant16FAIL0ERROR. Native CHANGES_REQUESTED/root remains open; local evidence is not native withdrawal, independent agreement, settlement, approval or merge. Fresh successor qualification is required. Append correction evidence rather than rewrite prior receipts. No spore or promotion.
+
+- ts: "2026-10-08T12:05:41.927725Z"
+  origin: Record completed public extern coverage in the manual card
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: receipts.edn (native-CodeRabbit4218508495-doc-wording-correction)
+  note: Keep plans and delivered behavior coherent. A documentation request is a real finding even when production and tests are already correct. Change only the stale coverage paragraph, preserve every historical receipt and reflection byte, and append verification. Local test evidence, native model review, hosted checks and settlement remain separate; no prior-head credit transfers. No spore or promotion.
+
+- ts: "2026-10-08T12:13:22.210Z"
+  origin: Append-only prepared receipt status correction
+  p-efficiency: 0.83
+  p-friction: 0.29
+  p-skill-candidate: 0.51
+  spore: none
+  receipt-refs: receipts.edn (append-only-current05C-native-custody-status-correction)
+  note: Prepared status can become stale before append. Preserve the original receipt and append a scoped correction with the exact original hash and actual native custody IDs. Native approval remains distinct from full qualification. No history rewrite, spore or promotion.
+
+
+### Public selected-profile parsing coverage
+
+Friction .83; recovery .29; confidence .51. The current ED native approval exposed a direct test gap for the fifth preparation argument. Added two tests/33 assertions for object, JSON, UTF-8 and safe malformed-profile refusal. Actual existing production already passes; offline source-built113/1357 passed with zero errors/warnings. Four genuine HOST failures remain a separate qualification failure under unchanged canonical source, while FIRST/LAST pass. Preserve the full old receipt/reflection and all failed evidence; claim neither production repair nor native credit from synthetic controls. No spore or promotion.
+
+
+### Reviewed caller restoration after native deadline
+
+p-efficiency0.83; p-friction0.29; p-skill-candidate0.51. An old consumer can keep
+executing obsolete review machinery after its replacement was protected-merged.
+Bind the consumer to the actual qualified merge and explicit tool revision,
+preserve terminal cancellation and failed-tool evidence, and obtain new native
+qualification for the changed caller. Source inspection and syntax validation
+are preparation, not runtime proof. The whole historical receipt/reflection
+remains byte exact; no spore, promotion, fabricated approval or healthy rerun.
