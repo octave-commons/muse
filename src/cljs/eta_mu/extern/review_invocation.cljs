@@ -114,17 +114,18 @@
         digest (-> (js-invoke crypto "createHash" "sha256")
                    (js-invoke "update" bytes)
                    (js-invoke "digest" "hex"))
+        full (law/input-descriptor source)
         pages (mapv #(select-keys % [:id :start :end]) (review/diff-chunks text))
         ctx {:input-source source :pages pages :page-count (count pages)
              :full-input-sha256 digest :review-tools tools :submission-file file}]
-    (when-not (and (= (.-length bytes) (get-in source [:full_diff :bytes]))
-                   (= digest (get-in source [:full_diff :sha256]))
+    (when-not (and (= (.-length bytes) (:bytes full))
+                   (= digest (:sha256 full))
                    (law/context-valid? ctx))
       (invalid!))
     ctx))
 
 (defn prepare-review-invocation-context
-  "CJS prepareReviewInvocationContext(rawFullDiff, rawManifest, JS tools[],
+  "CJS prepareReviewInvocationContext(rawFullInput, rawManifest, JS tools[],
    submissionFile): fatal UTF8/strict JSON/exact SHA256 byte count; canonical
    review/diff-chunks geometry. Throws only a safe typed message on refusal.
    Caller independently binds actual Git/native source before and after child;

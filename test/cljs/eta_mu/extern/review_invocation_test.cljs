@@ -31,6 +31,59 @@
 (defn verify [raw]
   (js->clj (extern/verify-review-invocation raw (json fixture/submission) (context-json)) :keywordize-keys true))
 
+(defn- prepare-native-context [raw manifest tools file]
+  (try (extern/prepare-review-invocation-context raw manifest tools file)
+       (catch :default _ nil)))
+
+(deftest native-context-preparation-and-terminal-carrier-share-the-existing-api
+  (let [{:keys [context submission events]} (fixture/native-fixture)
+        prepared (prepare-native-context
+                  (js/Buffer.from "diff" "utf8") (json fixture/native-manifest)
+                  (clj->js (:review-tools context)) (:submission-file context))
+        shape (js->clj prepared :keywordize-keys true)
+        result (js->clj (extern/verify-review-invocation (response events) (json submission) prepared)
+                        :keywordize-keys true)]
+    (is (= fixture/native-manifest (:inputSource shape)))
+    (is (= [{:id 1 :start 0 :end 4}] (:pages shape)))
+    (is (:ok result))
+    (is (= 1 (get-in result [:acceptedInvocation :pageCount])))
+    (doseq [source [(assoc fixture/native-manifest :context_sha256 (apply str (repeat 64 "f")))
+                    (assoc fixture/native-manifest :proposal_id 72)
+                    (assoc-in fixture/native-manifest [:target :thread_id] "PRRT_other")]]
+      (let [changed (prepare-native-context "diff" (json source)
+                                                             (clj->js (:review-tools context)) (:submission-file context))
+            result (js->clj (extern/verify-review-invocation (response events) (json submission) changed)
+                            :keywordize-keys true)]
+        (is (false? (:ok result)))
+        (is (nil? (:acceptedInvocation result)))))
+    (let [changed (js->clj prepared :keywordize-keys true)
+          result (js->clj (extern/verify-review-invocation (response events) (json submission)
+                                                         (json (assoc changed :fullDiff "prefix")))
+                          :keywordize-keys true)]
+      (is (false? (:ok result)))
+      (is (nil? (:acceptedInvocation result))))))
+
+(deftest native-byte-preparation-rejects-incomplete-or-mixed-input
+  (let [text "complete native context ημ 😀\n"
+        bytes (js/Buffer.from text "utf8")
+        digest (-> (.createHash crypto "sha256") (.update bytes) (.digest "hex"))
+        manifest (assoc fixture/native-manifest :full_input {:path "actionability-input.txt" :bytes (.-length bytes) :sha256 digest})
+        tools (clj->js (:review-tools fixture/context))]
+    (doseq [raw [text bytes (js/Uint8Array. bytes)]]
+      (let [ctx (js->clj (prepare-native-context raw (json manifest) tools "/fixture/submission.json")
+                        :keywordize-keys true)]
+        (is (= (count text) (get-in ctx [:pages 0 :end])))
+        (is (= (.-length bytes) (get-in ctx [:inputSource :full_input :bytes])))
+        (is (= digest (:fullInputSha256 ctx)))))
+    (doseq [[raw source] [[(.subarray bytes 0 10) manifest]
+                          [text (assoc-in manifest [:full_input :bytes] (count text))]
+                          [text (assoc manifest :full_diff (:full_diff fixture/manifest))]
+                          [text (assoc-in manifest [:full_input :path] "basehead.diff")]
+                          [(js/Uint8Array. #js [255]) manifest]
+                          ["" (assoc manifest :full_input {:path "actionability-input.txt" :bytes 0
+                                                          :sha256 "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"})]]]
+      (is (thrown? js/Error (extern/prepare-review-invocation-context raw (json source) tools "/fixture/submission.json"))))))
+
 (deftest public-api-has-positive-and-refusal-bindings
   (let [result (verify (response (fixture/trace)))]
     (is (:ok result))

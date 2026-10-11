@@ -27,18 +27,42 @@
 (defn- input [call] (get-in call [:part :state :input]))
 (defn- output [call] (get-in call [:part :state :output]))
 
+(defn- provenance? [p]
+  (and (map? p) (every? #(nonblank? (get p %))
+                        [:repository :pull_request :run_id :run_attempt :workflow_ref])
+       (oid? (:workflow_sha p))))
+
+(defn input-descriptor
+  "Select a fixed full-input descriptor from a transport manifest. Coordinates
+   are shaped data, not native authenticity or actionability admission.
+   Preserve ordinary diff shape, including empty input and complete OIDs."
+  [source]
+  (let [diff (:full_diff source) full (:full_input source) target (:target source)]
+    (cond
+      (and (map? source) (= "open-hax.review-input/v1" (:schema source))
+           (every? #(oid? (get source %)) [:base_sha :head_sha :diff_base_sha])
+           (map? diff) (= "basehead.diff" (:path diff))
+           (integer? (:bytes diff)) (<= 0 (:bytes diff)) (sha? 64 (:sha256 diff))) diff
+      (and (map? source) (= "open-hax.actionability-input/v1" (:schema source))
+           (= "actionability" (:purpose source)) (not (contains? source :full_diff))
+           (oid? (:head_sha source)) (positive? (:proposal_id source))
+           (every? #(sha? 64 (get source %))
+                   [:context_sha256 :proposal_body_sha256 :source_inventory_sha256])
+           (map? target) (every? #(nonblank? (get target %)) [:repository_id :pr_id :thread_id])
+           (every? #(positive? (get target %)) [:repository_database_id :pr_number :root_comment_id])
+           (provenance? (:provenance source))
+           (map? full) (= "actionability-input.txt" (:path full))
+           (positive? (:bytes full)) (sha? 64 (:sha256 full))) full
+      :else nil)))
+
 (defn context-valid?
   "Validate caller-bound, canonically prepared geometry; this is not native
    source authority. Preserve the existing manifest's SHA40-or-SHA64 grammar."
   [{:keys [input-source pages page-count full-input-sha256 review-tools submission-file]}]
-  (let [p (:provenance input-source) d (:full_diff input-source)]
-    (and (map? input-source) (= "open-hax.review-input/v1" (:schema input-source))
-         (every? #(oid? (get input-source %)) [:base_sha :head_sha :diff_base_sha])
-         (map? d) (= "basehead.diff" (:path d)) (natural? (:bytes d)) (sha? 64 (:sha256 d))
-         (map? p) (every? #(nonblank? (get p %))
-                         [:repository :pull_request :run_id :run_attempt :workflow_ref])
-         (oid? (:workflow_sha p))
+  (let [d (input-descriptor input-source)]
+    (and (map? d) (natural? (:bytes d)) (provenance? (:provenance input-source))
          (vector? pages)
+         (or (= "open-hax.review-input/v1" (:schema input-source)) (boolean (seq pages)))
          (= (count pages) page-count) (= (:sha256 d) full-input-sha256)
          (loop [remaining pages id 1 start 0]
            (if-let [page (first remaining)]

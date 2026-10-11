@@ -54,6 +54,91 @@
   ([events] (invocation/verify events submission context))
   ([events s ctx] (invocation/verify events s ctx)))
 
+(def native-manifest
+  {:schema "open-hax.actionability-input/v1" :purpose "actionability"
+   :head_sha (:head_sha manifest)
+   :context_sha256 (apply str (repeat 64 "c")) :proposal_id 71
+   :proposal_body_sha256 (apply str (repeat 64 "d"))
+   :source_inventory_sha256 (apply str (repeat 64 "e"))
+   :target {:repository_id "R_fixture" :repository_database_id 3
+            :pr_id "PR_fixture" :pr_number 1 :thread_id "PRRT_fixture" :root_comment_id 7}
+   :full_input {:path "actionability-input.txt" :bytes 4
+                :sha256 (get-in manifest [:full_diff :sha256])}
+   :provenance (:provenance manifest)})
+
+(defn native-fixture
+  "Synthetic transport only; an accepted invocation authenticates no actor or verdict."
+  []
+  {:context (assoc context :input-source native-manifest)
+   :submission (assoc submission :input-source native-manifest :event "COMMENT")
+   :events (-> (trace)
+               (assoc-in [0 :part :state :output :input-source] native-manifest)
+               (assoc-in [8 :part :state :output :event] "COMMENT"))})
+
+(deftest native-positive-bytes-cannot-declare-zero-page-geometry
+  (let [ctx (assoc context :input-source native-manifest :pages [] :page-count 0)
+        empty-coverage {:chunks 0 :delivered 0 :assessed 0 :missing []}
+        events (vec (concat [(tool-event 1 "review_begin" {}
+                                        (assoc begin-output :input-source native-manifest
+                                               :diff-stats {:files 0 :bytes 0 :truncated? false}
+                                               :input-coverage empty-coverage))]
+                            (map-indexed #(tool-event (+ 2 %1) "review_record_evidence"
+                                                      {:stage %2 :note "stage evidence"} {:ok? true}) invocation/stages)
+                            [(tool-event 7 "review_submit" {:summary "fixture summary"} submit-output) (terminal 8)]))
+        s (assoc submission :input-source native-manifest :input-coverage empty-coverage :input-assessments [])
+        result (invocation/verify events s ctx)]
+    (is (false? (invocation/context-valid? ctx)))
+    (is (false? (:ok? result)))
+    (is (nil? (:accepted-invocation result)))))
+
+(deftest explicit-native-purpose-reuses-complete-trace-and-source-binding
+  (let [{:keys [context submission events]} (native-fixture)]
+    (is (invocation/context-valid? context))
+    (is (:ok? (invocation/verify events submission context)))
+    (is (= 1 (get-in (invocation/verify events submission context) [:accepted-invocation :page-count])))
+    (doseq [key [:head_sha :context_sha256 :proposal_body_sha256 :source_inventory_sha256]]
+      (let [changed (assoc native-manifest key (apply str (repeat (if (= key :head_sha) 40 64) "f")))
+            result (invocation/verify events submission (assoc context :input-source changed))]
+        (is (= :begin-source-binding (:code result)))
+        (is (nil? (:accepted-invocation result)))))
+    (let [result (invocation/verify events (assoc-in submission [:input-source :proposal_id] 72) context)]
+      (is (= :serialized-source-binding (:code result)))
+      (is (nil? (:accepted-invocation result))))
+    (doseq [events [(vec (concat [(first events)] (subvec events 3)))
+                    (append-calls events [(tool-event 10 "review_read_diff_chunk" {:id 1} read-output)])
+                    (assoc-in events [3 :part :state :output] {:ok? false :error "Refused stage."})
+                    (assoc-in events [8 :part :state :input :summary] "changed carrier")]]
+      (let [result (invocation/verify events submission context)]
+        (is (false? (:ok? result)))
+        (is (nil? (:accepted-invocation result)))))))
+
+(deftest native-purpose-cannot-mix-or-malform-transport-coordinates
+  (doseq [source [(assoc native-manifest :purpose "diff")
+                  (dissoc native-manifest :purpose)
+                  (assoc native-manifest :schema "unrecognized")
+                  (assoc native-manifest :full_diff (:full_diff manifest))
+                  (assoc-in native-manifest [:full_input :path] "../actionability-input.txt")
+                  (assoc-in native-manifest [:full_input :bytes] 0)
+                  (assoc-in native-manifest [:full_input :bytes] 1.5)
+                  (assoc-in native-manifest [:full_input :bytes] 9007199254740992)
+                  (assoc-in native-manifest [:full_input :sha256] "bad")
+                  (assoc native-manifest :context_sha256 "bad")
+                  (assoc native-manifest :proposal_id 0)
+                  (assoc native-manifest :proposal_body_sha256 "bad")
+                  (assoc native-manifest :source_inventory_sha256 "bad")
+                  (assoc native-manifest :head_sha "bad")
+                  (assoc-in native-manifest [:target :repository_id] " ")
+                  (assoc-in native-manifest [:target :repository_database_id] 0)
+                  (assoc-in native-manifest [:target :pr_id] "")
+                  (assoc-in native-manifest [:target :pr_number] 0)
+                  (assoc-in native-manifest [:target :thread_id] nil)
+                  (assoc-in native-manifest [:target :root_comment_id] 1.5)]]
+    (let [{:keys [context submission events]} (native-fixture)
+          result (invocation/verify events submission (assoc context :input-source source))]
+      (is (false? (invocation/context-valid? (assoc context :input-source source))))
+      (is (false? (:ok? result)))
+      (is (nil? (:accepted-invocation result))))))
+
 (defn first-stage-control-trace
   "Synthetic raw host controls, built independently of producer admission.
    Premature complete and post-stage reassessment have healthy LAST."

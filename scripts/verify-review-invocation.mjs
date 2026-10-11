@@ -27,8 +27,8 @@ const manifest = Buffer.from(JSON.stringify(source));
 const submissionFile = path.join(repo, '.opencode/review-evidence/smoke-submission.json');
 
 /** Construct synthetic successful host events using pages from the actual preparation export. */
-function smokeInvocation(context) {
-  const text = full.toString('utf8');
+function smokeInvocation(context, input = full) {
+  const text = input.toString('utf8');
   const pages = context.pages;
   const notes = pages.map(page => ({...page, note: `Synthetic smoke assessment of page ${page.id}.`}));
   const body = {schema: 'open-hax.github-review/v1', event: 'COMMENT',
@@ -93,6 +93,70 @@ for (const [representation, encode] of [['string', bytes => bytes.toString('utf8
     equal(Object.hasOwn(lengthVerdict, 'ok'), false);
     equal(Object.hasOwn(lengthVerdict, 'acceptedInvocation'), false);
     equal(Object.hasOwn(lengthVerdict, 'approval'), false);
+    result.pass = true;
+  } catch (error) {
+    result.pass = false;
+    result.error = {name: error.name, message: error.message};
+  }
+  results.push(result);
+}
+const nativeInput = Buffer.from(JSON.stringify({kind: 'synthetic-native-context',
+  native: {body: 'Original explanatory conversation ημ 😀\n> quoted source, retained as data',
+    proposal: 'Inert fixture; no native policy assessment'},
+  source: 'selected immutable source bytes\n'.repeat(700), tail: 'complete tail ημ 😀'}));
+const nativeSource = {schema: 'open-hax.actionability-input/v1', purpose: 'actionability',
+  head_sha: 'b'.repeat(40), context_sha256: 'c'.repeat(64), proposal_id: 71,
+  proposal_body_sha256: 'd'.repeat(64), source_inventory_sha256: 'e'.repeat(64),
+  target: {repository_id: 'R_fixture', repository_database_id: 3, pr_id: 'PR_fixture',
+    pr_number: 1, thread_id: 'PRRT_fixture', root_comment_id: 7},
+  full_input: {path: 'actionability-input.txt', bytes: nativeInput.length, sha256: sha256(nativeInput)},
+  provenance: source.provenance};
+for (const [representation, encode] of [['string', bytes => bytes.toString('utf8')],
+  ['Buffer', bytes => bytes], ['Uint8Array', bytes => new Uint8Array(bytes)]]) {
+  const result = {representation, purpose: 'actionability', assertions: 0};
+  const equal = (actual, expected) => { result.assertions++; assert.deepEqual(actual, expected); };
+  const refuses = (input, manifest) => { result.assertions++; assert.throws(() =>
+    verifier.prepareReviewInvocationContext(input, encode(Buffer.from(JSON.stringify(manifest))), tools, submissionFile)); };
+  try {
+    const context = verifier.prepareReviewInvocationContext(encode(nativeInput),
+      encode(Buffer.from(JSON.stringify(nativeSource))), tools, submissionFile);
+    equal(context.inputSource, nativeSource);
+    equal(context.fullInputSha256, sha256(nativeInput));
+    equal(context.pages.at(-1).end, nativeInput.toString('utf8').length);
+    equal(context.pageCount > 1, true);
+    const {response, submission} = smokeInvocation(context, nativeInput);
+    const verdict = verifier.verifyReviewInvocation(encode(response), encode(submission), context);
+    equal(verdict.ok, true);
+    equal(verdict.acceptedInvocation.fullInputSha256, sha256(nativeInput));
+    equal(verdict.acceptedInvocation.pageCount, context.pageCount);
+    equal(verdict.acceptedInvocation.submissionSha256, sha256(submission));
+    const revalidated = {...context, fullDiff: nativeInput.toString('utf8')};
+    equal(verifier.verifyReviewInvocation(encode(response), encode(submission), revalidated).ok, true);
+    for (const changed of [{...nativeSource, context_sha256: 'f'.repeat(64)},
+      {...nativeSource, proposal_id: 72}, {...nativeSource, head_sha: 'f'.repeat(40)},
+      {...nativeSource, source_inventory_sha256: 'f'.repeat(64)},
+      {...nativeSource, target: {...nativeSource.target, thread_id: 'PRRT_other'}}]) {
+      const changedContext = verifier.prepareReviewInvocationContext(encode(nativeInput),
+        encode(Buffer.from(JSON.stringify(changed))), tools, submissionFile);
+      const refused = verifier.verifyReviewInvocation(encode(response), encode(submission), changedContext);
+      equal(refused.ok, false);
+      equal(refused.acceptedInvocation, null);
+    }
+    const body = JSON.parse(submission);
+    const substituted = {...body, 'input-source': {...nativeSource, proposal_body_sha256: 'f'.repeat(64)}};
+    equal(verifier.verifyReviewInvocation(encode(response), JSON.stringify(substituted), context).ok, false);
+    equal(verifier.verifyReviewInvocation(encode(response), JSON.stringify({...body, summary: 'substituted'}), context).ok, false);
+    const omitted = response.toString('utf8').trim().split('\n').map(JSON.parse)
+      .filter(event => !(event.part.tool === 'review_assess_diff_chunk' && event.part.state.input.id === context.pageCount));
+    const incomplete = verifier.verifyReviewInvocation(omitted.map(JSON.stringify).join('\n'), encode(submission), context);
+    equal(incomplete.ok, false);
+    equal(incomplete.acceptedInvocation, null);
+    refuses(encode(nativeInput.subarray(0, 100)), nativeSource);
+    refuses(encode(nativeInput), {...nativeSource, purpose: 'diff'});
+    refuses(encode(nativeInput), {...nativeSource, full_diff: source.full_diff});
+    refuses(encode(nativeInput), {...nativeSource, full_input: {...nativeSource.full_input, path: '../other'}});
+    refuses(new Uint8Array([255]), nativeSource);
+    refuses('', {...nativeSource, full_input: {path: 'actionability-input.txt', bytes: 0, sha256: sha256('')}});
     result.pass = true;
   } catch (error) {
     result.pass = false;

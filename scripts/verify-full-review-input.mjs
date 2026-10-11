@@ -237,10 +237,70 @@ try {
   const faultChild = freshProcess(stageInput('cleanup-fault-consumer'), 'cleanup-fault');
   assert.equal(faultChild.surviving_artifact, true,
     'filesystem cleanup failure is a receiver-verification obligation, never assumed absent');
+
+  // Native context uses the same eight tools; the envelope remains an inert local carrier.
+  const nativeEvidence = path.join(fixture, 'native-consumer/.opencode/review-evidence');
+  fs.mkdirSync(nativeEvidence, {recursive: true});
+  const nativeCtx = {sessionID: 'native-input-verification', directory: path.dirname(path.dirname(nativeEvidence))};
+  const nativeData = {kind: 'synthetic-native-context',
+    native: {body: 'Original explanatory conversation ημ 😀\n> quoted body', proposal: 'Inert fixture'},
+    source: 'exact selected source bytes\n'.repeat(12000), tail: 'complete original tail ημ 😀'};
+  const nativeFull = Buffer.from(JSON.stringify(nativeData));
+  const nativeManifest = {schema: 'open-hax.actionability-input/v1', purpose: 'actionability',
+    head_sha: 'b'.repeat(40), context_sha256: 'c'.repeat(64), proposal_id: 71,
+    proposal_body_sha256: 'd'.repeat(64), source_inventory_sha256: 'e'.repeat(64),
+    target: {repository_id: 'R_fixture', repository_database_id: 3, pr_id: 'PR_fixture',
+      pr_number: 1, thread_id: 'PRRT_fixture', root_comment_id: 7},
+    full_input: {path: 'actionability-input.txt', bytes: nativeFull.length,
+      sha256: createHash('sha256').update(nativeFull).digest('hex')},
+    provenance: {repository: 'synthetic/native-context', pull_request: '1', run_id: '2', run_attempt: '1',
+      workflow_sha: 'd'.repeat(40), workflow_ref: 'synthetic/native-context/workflow@refs/heads/main'}};
+  const nativeInput = path.join(nativeEvidence, 'actionability-input.txt');
+  const nativeManifestPath = path.join(nativeEvidence, 'input-manifest.json');
+  fs.writeFileSync(path.join(nativeEvidence, 'basehead.diff'), nativeFull);
+  fs.writeFileSync(nativeInput, nativeFull.subarray(0, 300000));
+  fs.writeFileSync(nativeManifestPath, JSON.stringify(nativeManifest));
+  assert.equal((await call('review_begin', {}, nativeCtx))['ok?'], false, 'native prefix cannot fall back to complete diff file');
+  fs.writeFileSync(nativeInput, nativeFull);
+  fs.writeFileSync(nativeManifestPath, JSON.stringify({...nativeManifest, full_diff: manifest.full_diff}));
+  assert.equal((await call('review_begin', {}, nativeCtx))['ok?'], false, 'mixed purposes refuse');
+  fs.writeFileSync(nativeManifestPath, JSON.stringify(nativeManifest));
+  const nativeBegin = await call('review_begin', {}, nativeCtx);
+  assert.equal(nativeBegin['ok?'], true);
+  assert.deepEqual(nativeBegin['input-source'], nativeManifest);
+  const nativeCount = nativeBegin['input-coverage'].chunks;
+  assert.ok(nativeCount > 1);
+  assert.equal((await call('review_record_evidence',
+    {stage: 'deterministic', note: 'No native pages assessed yet'}, nativeCtx))['ok?'], false);
+  assert.equal((await call('review_submit', {summary: 'No unassessed context'}, nativeCtx))['ok?'], false);
+  let nativeRecovered = '';
+  for (let id = 1; id <= nativeCount; id++) {
+    const page = await call('review_read_diff_chunk', {id}, nativeCtx);
+    assert.equal(page['ok?'], true);
+    nativeRecovered += page.chunk.text;
+    assert.equal((await call('review_assess_diff_chunk', {id,
+      note: `Synthetic native context and source assessment of page ${id}`}, nativeCtx))['ok?'], true);
+  }
+  assert.equal(nativeRecovered, nativeFull.toString('utf8'));
+  assert.deepEqual(JSON.parse(nativeRecovered), nativeData, 'encoded data preserves every original decoded body');
+  for (const stage of ['deterministic', 'map-change', 'generate-candidates', 'adversarial-validate', 'publish']) {
+    assert.equal((await call('review_record_evidence', {stage,
+      note: 'Complete synthetic native transport fixture; no policy judgment'}, nativeCtx))['ok?'], true);
+  }
+  const nativeSummary = 'Synthetic native assessment carrier ημ 😀\nNo native eligibility or publication.';
+  const nativeSubmit = await call('review_submit', {summary: nativeSummary}, nativeCtx);
+  assert.equal(nativeSubmit['ok?'], true);
+  const nativeEnvelope = JSON.parse(fs.readFileSync(path.join(nativeEvidence, 'submission.json'), 'utf8'));
+  assert.equal(nativeEnvelope.summary, nativeSummary);
+  assert.deepEqual(nativeEnvelope['input-source'], nativeManifest);
+  assert.equal(nativeEnvelope['input-assessments'].length, nativeCount);
+  assert.equal(nativeEnvelope['input-coverage'].assessed, nativeCount);
+  assert.deepEqual(nativeEnvelope.comments, []);
   console.log(JSON.stringify({result: 'pass', tools: tools.length, pages: count,
     missing_tail_refused: true, premature_publish_refused: true, recovered_tail_finding_retained: true,
     recovered_full_input_accepted: true, stale_chronology_refused: true,
     same_session_reset_refused: true, host_id_reset_refused: true, healthy_readmission_refused: true,
     stale_submission_removed: true, fresh_invocation_accepted: true, cleanup_fault_artifact_observed: true,
-    native_review: false}));
+    native_context_pages: nativeCount, native_context_complete: true, native_context_unassessed_refused: true,
+    native_context_carrier_only: true, native_review: false}));
 } finally {fs.rmSync(fixture, {recursive: true, force: true});}
