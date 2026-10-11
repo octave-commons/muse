@@ -125,7 +125,7 @@
 
 (deftool classify-finding
   {:id          :review/classify_finding
-   :description "Classify a pending candidate after adversarial validation: confirmed (independently plausible failure trace), rejected (disproved), or needs-human (cannot be settled from available evidence). Legal only at adversarial-validate or publish. From generate-candidates, first record that stage's evidence note with review_record_evidence to advance into adversarial-validate; then classify every candidate BEFORE recording the adversarial-validate evidence note. Any failed review_* call ends this invocation; do not submit, retry, restart, or make further review calls."
+   :description "Classify a pending candidate after adversarial validation: confirmed (independently plausible failure trace), rejected (disproved), or needs-human (cannot be settled from available evidence). Legal only at adversarial-validate or publish. From generate-candidates, first record that stage's evidence note with review_record_evidence to advance into adversarial-validate; in that stage, prefer classifying candidates before recording the adversarial-validate evidence note. Candidates may still be classified at publish after that evidence note. Any failed review_* call ends this invocation; do not submit, retry, restart, or make further review calls."
    :args        [:map
                  [:id [:string {:min 1}]]
                  [:status [:enum "confirmed" "rejected" "needs-human"]]

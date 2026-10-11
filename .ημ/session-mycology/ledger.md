@@ -168,3 +168,12 @@
   spore: none
   receipt-refs: 637728f7-a0cb-487d-8f15-bede843e4965; muse-review-tool-guidance-qualification-v1/help-qualification-results-v1.json
   note: Distinguish correctly refused model ordering from a program defect. Preserve both failed Services traces and qualify current merged main separately from description-only usability changes. Exact reversible source scope plus retained compiled eight-tool metadata establishes the help change; existing strict controls preserve input and invocation refusal. Canonical receipt and historical ledger prefixes remain byte-exact. No native reviewer compliance, source adoption, activation, deployment, board validation, spore or promotion is claimed.
+
+- ts: "2026-10-11T02:00:46.619993+00:00"
+  origin: Preserve legal publish classification in PR24 tool help
+  p-efficiency: 0.76
+  p-friction: 0.31
+  p-skill-candidate: 0.38
+  spore: none
+  receipt-refs: 46c24f9e-844f-4d0d-a9a4-a1f09e531b05; muse-review-tool-guidance-qualification-v1/publish-stage-guidance-correction-v2/qualification-results-v2.json
+  note: Native review found an overstrong sequencing sentence while existing publish-stage classification stayed legal. Prefer the normal sequence in prose and state every supported later stage explicitly. Reuse the actual unchanged regression tests and compiled tool metadata; do not invent runtime RED from a description-only correction. Preserve the initial independent seal, hosted CI and all local preparation failures as historical facts, with fresh qualification for the successor. Canonical receipt and both complete ledger prefixes remain exact. No spore, promotion, native successor review acceptance, Services activation, installed-pack change or deployment is claimed.
