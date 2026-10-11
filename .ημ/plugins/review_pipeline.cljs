@@ -84,14 +84,14 @@
 
 (deftool read-diff-chunk
   {:id :review/read_diff_chunk
-   :description "Read one lossless bounded page of the verified immutable full diff. Read every page; this records delivery, not assessment. Finish all reads of a page before assessing it. Rereading an assessed page invalidates this invocation; same-session restart or reassessment cannot repair its history."
+   :description "Read one lossless bounded page of the verified immutable full diff. Read every page; this records delivery, not assessment. Pair each page read with review_assess_diff_chunk for that same page id; use the assessment result's coverage.missing to track unassessed pages. Retain the returned page content for later stages. Finish all reads of a page before assessing it. Rereading an assessed page invalidates this invocation; same-session restart or reassessment cannot repair its history."
    :args [:map [:id :int]] :tags #{:review}}
   [{:keys [id]} ctx]
   (apply-step! ctx "read-diff-chunk" review/read-diff-chunk id))
 
 (deftool assess-diff-chunk
   {:id :review/assess_diff_chunk
-   :description "Record your changed-hunk assessment of an already delivered page: changed invariants, candidate risks or why no defect is supported. Complete all page reads and assessments before the FIRST deterministic stage note; do not reassess after stage evidence."
+   :description "Record your changed-hunk assessment of an already delivered page: changed invariants, candidate risks or why no defect is supported. Use the same page id as review_read_diff_chunk. The returned coverage distinguishes delivered from assessed pages and lists every missing assessment; continue until coverage.missing is empty. Complete all page reads and assessments before the FIRST deterministic stage note; do not reassess after stage evidence."
    :args [:map [:id :int] [:note [:string {:min 1}]]] :tags #{:review}}
   [{:keys [id note]} ctx]
   (apply-step! ctx "assess-diff-chunk" review/assess-diff-chunk id note))
@@ -125,7 +125,7 @@
 
 (deftool classify-finding
   {:id          :review/classify_finding
-   :description "Classify a pending candidate after adversarial validation: confirmed (independently plausible failure trace), rejected (disproved), or needs-human (cannot be settled from available evidence)."
+   :description "Classify a pending candidate after adversarial validation: confirmed (independently plausible failure trace), rejected (disproved), or needs-human (cannot be settled from available evidence). Legal only at adversarial-validate or publish. From generate-candidates, first record that stage's evidence note with review_record_evidence to advance into adversarial-validate; then classify every candidate BEFORE recording the adversarial-validate evidence note. Any failed review_* call ends this invocation; do not submit, retry, restart, or make further review calls."
    :args        [:map
                  [:id [:string {:min 1}]]
                  [:status [:enum "confirmed" "rejected" "needs-human"]]

@@ -159,3 +159,12 @@
   spore: none
   receipt-refs: muse22-post-stage-parent-source-20261008T0350Z/source-verification-record.edn
   note: Preserve every original assertion and whole source history. Genuine post-stage reassessment gap now refused; compiled cold204-page smoke and96tests1118assertions pass. Retain failed missing-dependency capture separately. Existing06c terminal MiMo custody is history, no successor credit. Fresh native qualification required. No spore or promotion.
+
+- ts: "2026-10-11T01:35:47.323507+00:00"
+  origin: Clarify existing review tool stage and coverage guidance
+  p-efficiency: 0.88
+  p-friction: 0.25
+  p-skill-candidate: 0.42
+  spore: none
+  receipt-refs: 637728f7-a0cb-487d-8f15-bede843e4965; muse-review-tool-guidance-qualification-v1/help-qualification-results-v1.json
+  note: Distinguish correctly refused model ordering from a program defect. Preserve both failed Services traces and qualify current merged main separately from description-only usability changes. Exact reversible source scope plus retained compiled eight-tool metadata establishes the help change; existing strict controls preserve input and invocation refusal. Canonical receipt and historical ledger prefixes remain byte-exact. No native reviewer compliance, source adoption, activation, deployment, board validation, spore or promotion is claimed.
