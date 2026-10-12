@@ -10,6 +10,8 @@
    output text."
   (:require [eta-mu.boundaries.node.fs :as bfs]
             [eta-mu.domain.review :as review]
+            [eta-mu.law.review-invocation :as invocation]
+            [eta-mu.shape.review-input :as input-shape]
             [eta-mu.dsl :refer [deftool defplugin]]))
 
 (def evidence-dir-name ".opencode/review-evidence")
@@ -72,6 +74,15 @@
         (bfs/remove-file! (bfs/join (evidence-dir ctx) submission-file-name))
         (let [{:keys [text manifest]} (bfs/read-review-input (evidence-dir ctx))
               session (assoc (review/begin text) :input-source manifest)
+              _ (when (= "open-hax.actionability-input/v1" (:schema manifest))
+                  (when-not (invocation/context-valid?
+                             {:input-source manifest
+                              :pages (mapv #(select-keys % [:id :start :end]) (:diff-chunks session))
+                              :page-count (count (:diff-chunks session))
+                              :full-input-sha256 (:sha256 (input-shape/input-descriptor manifest))
+                              :review-tools (vec (sort invocation/review-tools))
+                              :submission-file (bfs/join (evidence-dir ctx) submission-file-name)})
+                    (throw (js/Error. "Invalid native full-input page geometry."))))
               context-file (bfs/join (evidence-dir ctx) context-file-name)
               context (when (bfs/exists? context-file) (bfs/read-text context-file))]
           (swap! !sessions assoc (session-key ctx) session)

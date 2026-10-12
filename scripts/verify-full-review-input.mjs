@@ -71,7 +71,11 @@ try {
   const checkout = path.join(fixture, 'checkout');
   const inventory = spawnSync('git', ['ls-files', '-z'], {cwd: repo, encoding: 'utf8'});
   assert.equal(inventory.status, 0, inventory.stderr);
-  for (const file of inventory.stdout.split('\0').filter(Boolean)) {
+  const sourceFiles = new Set(inventory.stdout.split('\0').filter(Boolean));
+  // This exact authored dependency must be copied before root stages it.
+  const strictJsonSource = 'src/cljs/eta_mu/extern/json.cljs';
+  if (fs.existsSync(path.join(repo, strictJsonSource))) sourceFiles.add(strictJsonSource);
+  for (const file of sourceFiles) {
     if (/^(?:src\/gen\/|target\/|\.shadow-cljs\/|\.claude\/dist\/|\.opencode\/dist\/|\.mcp\/dist\/)/.test(file)) continue;
     const source = path.join(repo, file), destination = path.join(checkout, file);
     const stat = fs.lstatSync(source);
@@ -100,7 +104,7 @@ try {
     JAVA_TOOL_OPTIONS: `${process.env.JAVA_TOOL_OPTIONS || ''} -Duser.home="${compilerHome}"`};
   for (const [command, args] of [
     ['clojure', ['-M', '-e', "(require 'eta-mu.opencode.build) (eta-mu.opencode.build/generate-entrypoint {})"]],
-    ['shadow-cljs', ['release', 'opencode-plugin']],
+    ['shadow-cljs', ['release', 'opencode-plugin', 'review-invocation']],
   ]) {
     const result = spawnSync(command, args, {cwd: checkout, env, encoding: 'utf8', timeout: 120000, maxBuffer: 8 * 1024 * 1024});
     process.stdout.write(result.stdout || '');
@@ -237,10 +241,173 @@ try {
   const faultChild = freshProcess(stageInput('cleanup-fault-consumer'), 'cleanup-fault');
   assert.equal(faultChild.surviving_artifact, true,
     'filesystem cleanup failure is a receiver-verification obligation, never assumed absent');
+
+  // Native context uses the same eight tools; the envelope remains an inert local carrier.
+  const nativeEvidence = path.join(fixture, 'native-consumer/.opencode/review-evidence');
+  fs.mkdirSync(nativeEvidence, {recursive: true});
+  const nativeCtx = {sessionID: 'native-input-verification', directory: path.dirname(path.dirname(nativeEvidence))};
+  const nativeData = {kind: 'synthetic-native-context',
+    native: {body: 'Original explanatory conversation ημ 😀\n> quoted body', proposal: 'Inert fixture'},
+    source: 'exact selected source bytes\n'.repeat(12000), tail: 'complete original tail ημ 😀'};
+  const nativeFull = Buffer.from(JSON.stringify(nativeData));
+  const nativeManifest = {schema: 'open-hax.actionability-input/v1', purpose: 'actionability',
+    head_sha: 'b'.repeat(40), context_sha256: 'c'.repeat(64), proposal_id: 71,
+    proposal_body_sha256: 'd'.repeat(64), source_inventory_sha256: 'e'.repeat(64),
+    target: {repository_id: 'R_fixture', repository_database_id: 3, pr_id: 'PR_fixture',
+      pr_number: 1, thread_id: 'PRRT_fixture', root_comment_id: 7},
+    full_input: {path: 'actionability-input.txt', bytes: nativeFull.length,
+      sha256: createHash('sha256').update(nativeFull).digest('hex')},
+    provenance: {repository: 'synthetic/native-context', pull_request: '1', run_id: '2', run_attempt: '1',
+      workflow_sha: 'd'.repeat(40), workflow_ref: 'synthetic/native-context/workflow@refs/heads/main'}};
+  const boundaryResults = [];
+  const strictManifest = JSON.stringify(nativeManifest);
+  const ambiguous = ['{"schema":"invalid",' + strictManifest.slice(1),
+    '{"sch\\u0065ma":"invalid",' + strictManifest.slice(1),
+    '{"schema":"open-hax.actionability-input/v1",' + strictManifest.slice(1),
+    '{"purpose":"diff",' + strictManifest.slice(1),
+    strictManifest.replace('"context_sha256":', '"context_sha256":"invalid","context_sha256":'),
+    strictManifest.replace('"sha256":', '"sha256":"invalid","sha256":'),
+    '{"ignored":{"x":1,"x":2},' + strictManifest.slice(1),
+    '{"ignored":1e309,' + strictManifest.slice(1)];
+  const inputConsumer = (name, bytes, sourceText) => {
+    const dir = path.join(fixture, name, '.opencode/review-evidence');
+    fs.mkdirSync(dir, {recursive: true});
+    fs.writeFileSync(path.join(dir, 'actionability-input.txt'), bytes);
+    fs.writeFileSync(path.join(dir, 'input-manifest.json'), sourceText);
+    return {dir, context: {sessionID: name, directory: path.dirname(path.dirname(dir))}};
+  };
+  for (const [index, sourceText] of ambiguous.entries()) {
+    const {dir, context} = inputConsumer(`ambiguous-native-${index}`, nativeFull, sourceText);
+    const result = {control: 'ambiguous-native-manifest', index};
+    fs.writeFileSync(path.join(dir, 'submission.json'), 'stale inert submission');
+    try {
+      assert.equal((await call('review_begin', {}, context))['ok?'], false);
+      assert.equal((await call('review_status', {}, context))['ok?'], false,
+        'malformed manifest cannot store a session');
+      assert.equal(fs.existsSync(path.join(dir, 'submission.json')), false);
+      assert.equal(fs.existsSync(path.join(dir, 'review-events.jsonl')), false);
+      result.pass = true;
+    } catch (error) { result.pass = false; result.error = {name: error.name, message: error.message}; }
+    boundaryResults.push(result);
+  }
+  const verifier = createRequire(import.meta.url)(path.join(checkout, '.opencode/dist/review-invocation.cjs'));
+  for (const [index, text] of ['\uFEFF', '\uFEFForiginal context ημ 😀\n', '\uFEFF\uFEFFcontext'].entries()) {
+    const bytes = Buffer.from(text);
+    const source = {...nativeManifest, full_input: {path: 'actionability-input.txt',
+      bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex')}};
+    const {dir, context} = inputConsumer(`bom-native-${index}`, bytes, JSON.stringify(source));
+    const result = {control: 'bom-native-lossless-pages', index, inputBytes: bytes.length};
+    try {
+      const begin = await call('review_begin', {}, context);
+      assert.equal(begin['ok?'], true);
+      assert.equal(begin['input-coverage'].chunks, 1);
+      const page = await call('review_read_diff_chunk', {id: 1}, context);
+      assert.equal(page['ok?'], true);
+      assert.equal(page.chunk.text, text);
+      const prepared = verifier.prepareReviewInvocationContext(bytes, Buffer.from(JSON.stringify(source)),
+        tools, path.join(dir, 'submission.json'));
+      assert.deepEqual(prepared.pages, [{id: page.chunk.id, start: page.chunk.start, end: page.chunk.end}]);
+      assert.equal((await call('review_assess_diff_chunk', {id: 1, note: 'Assess the preserved BOM and original full text'}, context))['ok?'], true);
+      for (const stage of ['deterministic', 'map-change', 'generate-candidates', 'adversarial-validate', 'publish']) {
+        assert.equal((await call('review_record_evidence', {stage, note: 'Complete inert BOM byte-preservation control'}, context))['ok?'], true);
+      }
+      assert.equal((await call('review_submit', {summary: 'Inert complete BOM transport'}, context))['ok?'], true);
+      const envelope = JSON.parse(fs.readFileSync(path.join(dir, 'submission.json')));
+      assert.deepEqual(envelope['input-source'], source);
+      assert.equal(envelope['input-coverage'].assessed, 1);
+      result.pass = true;
+    } catch (error) { result.pass = false; result.error = {name: error.name, message: error.message}; }
+    boundaryResults.push(result);
+  }
+  // Deliberate decoder-loss fault proves native geometry is checked before session custody.
+  const lostText = 'synthetic positive-byte decoder-loss control';
+  const lostBytes = Buffer.from(lostText);
+  const lostSource = {...nativeManifest, full_input: {path: 'actionability-input.txt', bytes: lostBytes.length,
+    sha256: createHash('sha256').update(lostBytes).digest('hex')}};
+  const lost = inputConsumer('native-decoder-loss', lostBytes, JSON.stringify(lostSource));
+  const decoder = globalThis.TextDecoder;
+  const lossResult = {control: 'native-nonempty-geometry-before-admission'};
+  globalThis.TextDecoder = class extends decoder {
+    decode(...args) { const text = super.decode(...args); return text === lostText ? '' : text; }
+  };
+  try {
+    assert.equal((await call('review_begin', {}, lost.context))['ok?'], false);
+    assert.equal((await call('review_status', {}, lost.context))['ok?'], false);
+    assert.equal(fs.existsSync(path.join(lost.dir, 'submission.json')), false);
+    assert.equal(fs.existsSync(path.join(lost.dir, 'review-events.jsonl')), false);
+    lossResult.pass = true;
+  } catch (error) { lossResult.pass = false; lossResult.error = {name: error.name, message: error.message}; }
+  finally { globalThis.TextDecoder = decoder; }
+  boundaryResults.push(lossResult);
+  const emptyEvidence = path.join(fixture, 'ordinary-empty-consumer/.opencode/review-evidence');
+  fs.mkdirSync(emptyEvidence, {recursive: true});
+  const emptySource = {...manifest, full_diff: {path: 'basehead.diff', bytes: 0,
+    sha256: createHash('sha256').update('').digest('hex')}};
+  fs.writeFileSync(path.join(emptyEvidence, 'basehead.diff'), '');
+  fs.writeFileSync(path.join(emptyEvidence, 'input-manifest.json'), JSON.stringify(emptySource));
+  const emptyCtx = {sessionID: 'ordinary-empty-preserved', directory: path.dirname(path.dirname(emptyEvidence))};
+  const emptyResult = {control: 'ordinary-empty-diff-admission-preserved'};
+  try {
+    const begin = await call('review_begin', {}, emptyCtx);
+    assert.equal(begin['ok?'], true);
+    assert.equal(begin['input-coverage'].chunks, 0);
+    for (const stage of ['deterministic', 'map-change', 'generate-candidates', 'adversarial-validate', 'publish']) {
+      assert.equal((await call('review_record_evidence', {stage, note: 'Supported empty ordinary diff'}, emptyCtx))['ok?'], true);
+    }
+    assert.equal((await call('review_submit', {summary: 'Inert empty diff compatibility'}, emptyCtx))['ok?'], true);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(emptyEvidence, 'submission.json')))['input-source'], emptySource);
+    emptyResult.pass = true;
+  } catch (error) { emptyResult.pass = false; emptyResult.error = {name: error.name, message: error.message}; }
+  boundaryResults.push(emptyResult);
+  console.log(JSON.stringify({strict_manifest_bom_admission_controls: boundaryResults, native_review: false}));
+  assert.equal(boundaryResults.filter(result => !result.pass).length, 0,
+    'every actual compiled filesystem/admission/BOM control must pass');
+  const nativeInput = path.join(nativeEvidence, 'actionability-input.txt');
+  const nativeManifestPath = path.join(nativeEvidence, 'input-manifest.json');
+  fs.writeFileSync(path.join(nativeEvidence, 'basehead.diff'), nativeFull);
+  fs.writeFileSync(nativeInput, nativeFull.subarray(0, 300000));
+  fs.writeFileSync(nativeManifestPath, JSON.stringify(nativeManifest));
+  assert.equal((await call('review_begin', {}, nativeCtx))['ok?'], false, 'native prefix cannot fall back to complete diff file');
+  fs.writeFileSync(nativeInput, nativeFull);
+  fs.writeFileSync(nativeManifestPath, JSON.stringify({...nativeManifest, full_diff: manifest.full_diff}));
+  assert.equal((await call('review_begin', {}, nativeCtx))['ok?'], false, 'mixed purposes refuse');
+  fs.writeFileSync(nativeManifestPath, JSON.stringify(nativeManifest));
+  const nativeBegin = await call('review_begin', {}, nativeCtx);
+  assert.equal(nativeBegin['ok?'], true);
+  assert.deepEqual(nativeBegin['input-source'], nativeManifest);
+  const nativeCount = nativeBegin['input-coverage'].chunks;
+  assert.ok(nativeCount > 1);
+  assert.equal((await call('review_record_evidence',
+    {stage: 'deterministic', note: 'No native pages assessed yet'}, nativeCtx))['ok?'], false);
+  assert.equal((await call('review_submit', {summary: 'No unassessed context'}, nativeCtx))['ok?'], false);
+  let nativeRecovered = '';
+  for (let id = 1; id <= nativeCount; id++) {
+    const page = await call('review_read_diff_chunk', {id}, nativeCtx);
+    assert.equal(page['ok?'], true);
+    nativeRecovered += page.chunk.text;
+    assert.equal((await call('review_assess_diff_chunk', {id,
+      note: `Synthetic native context and source assessment of page ${id}`}, nativeCtx))['ok?'], true);
+  }
+  assert.equal(nativeRecovered, nativeFull.toString('utf8'));
+  assert.deepEqual(JSON.parse(nativeRecovered), nativeData, 'encoded data preserves every original decoded body');
+  for (const stage of ['deterministic', 'map-change', 'generate-candidates', 'adversarial-validate', 'publish']) {
+    assert.equal((await call('review_record_evidence', {stage,
+      note: 'Complete synthetic native transport fixture; no policy judgment'}, nativeCtx))['ok?'], true);
+  }
+  const nativeSummary = 'Synthetic native assessment carrier ημ 😀\nNo native eligibility or publication.';
+  const nativeSubmit = await call('review_submit', {summary: nativeSummary}, nativeCtx);
+  assert.equal(nativeSubmit['ok?'], true);
+  const nativeEnvelope = JSON.parse(fs.readFileSync(path.join(nativeEvidence, 'submission.json'), 'utf8'));
+  assert.equal(nativeEnvelope.summary, nativeSummary);
+  assert.deepEqual(nativeEnvelope['input-source'], nativeManifest);
+  assert.equal(nativeEnvelope['input-assessments'].length, nativeCount);
+  assert.equal(nativeEnvelope['input-coverage'].assessed, nativeCount);
+  assert.deepEqual(nativeEnvelope.comments, []);
   console.log(JSON.stringify({result: 'pass', tools: tools.length, pages: count,
     missing_tail_refused: true, premature_publish_refused: true, recovered_tail_finding_retained: true,
     recovered_full_input_accepted: true, stale_chronology_refused: true,
     same_session_reset_refused: true, host_id_reset_refused: true, healthy_readmission_refused: true,
     stale_submission_removed: true, fresh_invocation_accepted: true, cleanup_fault_artifact_observed: true,
-    native_review: false}));
+    native_context_pages: nativeCount, native_context_complete: true, native_context_unassessed_refused: true,
+    native_context_carrier_only: true, native_review: false}));
 } finally {fs.rmSync(fixture, {recursive: true, force: true});}

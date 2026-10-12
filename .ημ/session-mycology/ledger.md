@@ -177,3 +177,39 @@
   spore: none
   receipt-refs: 46c24f9e-844f-4d0d-a9a4-a1f09e531b05; muse-review-tool-guidance-qualification-v1/publish-stage-guidance-correction-v2/qualification-results-v2.json
   note: Native review found an overstrong sequencing sentence while existing publish-stage classification stayed legal. Prefer the normal sequence in prose and state every supported later stage explicitly. Reuse the actual unchanged regression tests and compiled tool metadata; do not invent runtime RED from a description-only correction. Preserve the initial independent seal, hosted CI and all local preparation failures as historical facts, with fresh qualification for the successor. Canonical receipt and both complete ledger prefixes remain exact. No spore, promotion, native successor review acceptance, Services activation, installed-pack change or deployment is claimed.
+- ts: 2026-10-11T23:13:41.575352645Z
+  session: /home/err/.local/share/openhax-codex/20261010/muse-actionability-input
+  task: Carry complete native assessment context through existing Muse tools
+  p-efficiency: 0.72
+  p-friction: 0.64
+  p-skill-candidate: 0.65
+  spore: none
+  receipt-refs: 7fc0ea37-447c-49b9-b027-ab8b8905eacd
+  note: Extend only the shared input descriptor and retain the actual eight-tool trace. Test positive-byte zero-page geometry and three raw representations. Full suite invocation requires documented --test selector when focused; retain accidental whole predecessor RED separately and run the exact complete candidate suite after compiling. Candidate292/1732 passes with Mongo integration authentication skip explicit. Shared context coordinates are transport data; protected native host owns actor/source/publication authority. No spore or promotion.
+- ts: 2026-10-12T00:10:16.791800819Z
+  session: /home/err/.local/share/openhax-codex/20261010/muse-actionability-input
+  task: Repair shared strict manifest decoding and preserve native context BOM custody
+  p-efficiency: 0.77
+  p-friction: 0.62
+  p-skill-candidate: 0.59
+  spore: none
+  receipt-refs: 610d142fd7ffbd986b783ba96d51a591b754dddf0d6f25bd0bebfe57c3716794
+  note: Exact9source frozen after actual meaningful predecessor RED and full/focused/CJS/cold8tool GREEN; independent682readbackchecks no findings. Preserve parser bodies, ordinaryemptydiff and existingnativecontextlaw. Mongo authentication skip and EOF/instrumentation corrections visible. Local qualification precedes native successor review; no spore or promotion.
+- ts: 2026-10-12T01:14:05.488327204Z
+  session: /home/err/.local/share/openhax-codex/20261010/muse-actionability-input
+  task: Build and load the Muse standalone verifier inside its own cold fixture
+  p-efficiency: 0.86
+  p-friction: 0.54
+  p-skill-candidate: 0.52
+  spore: none
+  receipt-refs: 980dce649402c34aa368c6c9240e3e7eb282e6faf98b83c75e763bef524c8910
+  note: Cold qualification must compile both existing targets and load the fixture artifact. Require a compiler-success predecessor RED plus a separate adverse control for each seam. Actual four-case results and complete generated-byte hashes are bound to the canonical receipt. Retain MR9 full-suite/Mongo skip scope; no live model, native or protected adoption credit. No spore or promotion.
+- ts: 2026-10-12T02:50:26.172421459Z
+  session: /home/err/.local/share/openhax-codex/20261010/muse-actionability-input
+  task: Share the input descriptor shape across law, boundaries and the live Muse review plugin
+  p-efficiency: 0.84
+  p-friction: 0.53
+  p-skill-candidate: 0.49
+  spore: none
+  receipt-refs: 9c427e1147504b6dbcb0cc1cd09a75ada313f44fd8538f6f81873900ce39f471
+  note: A projection moved out of the validation law must be traced through every live consumer. Preserve old descriptor identity and transport semantics with the predecessor oracle, then compile and exercise a cold native plugin. Keep missed-plugin evidence, adverses, Mongo authentication skip and local/native authority boundaries visible. No spore or promotion.

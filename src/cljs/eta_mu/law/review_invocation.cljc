@@ -27,29 +27,57 @@
 (defn- input [call] (get-in call [:part :state :input]))
 (defn- output [call] (get-in call [:part :state :output]))
 
+(defn- provenance? [p]
+  (and (map? p) (every? #(nonblank? (get p %))
+                        [:repository :pull_request :run_id :run_attempt :workflow_ref])
+       (oid? (:workflow_sha p))))
+
+(defn input-source-valid?
+  "Validate the fixed transport manifest without projecting its descriptor.
+   Coordinates establish shape only, not native authenticity or admission.
+   Preserve ordinary empty input and complete SHA40-or-SHA64 commit OIDs."
+  [source]
+  (let [diff (:full_diff source) full (:full_input source) target (:target source)]
+    (boolean
+     (or
+      (and (map? source) (= "open-hax.review-input/v1" (:schema source))
+           (every? #(oid? (get source %)) [:base_sha :head_sha :diff_base_sha])
+           (map? diff) (= "basehead.diff" (:path diff))
+           (integer? (:bytes diff)) (<= 0 (:bytes diff)) (sha? 64 (:sha256 diff)))
+      (and (map? source) (= "open-hax.actionability-input/v1" (:schema source))
+           (= "actionability" (:purpose source)) (not (contains? source :full_diff))
+           (oid? (:head_sha source)) (positive? (:proposal_id source))
+           (every? #(sha? 64 (get source %))
+                   [:context_sha256 :proposal_body_sha256 :source_inventory_sha256])
+           (map? target) (every? #(nonblank? (get target %)) [:repository_id :pr_id :thread_id])
+           (every? #(positive? (get target %)) [:repository_database_id :pr_number :root_comment_id])
+           (provenance? (:provenance source))
+           (map? full) (= "actionability-input.txt" (:path full))
+           (positive? (:bytes full)) (sha? 64 (:sha256 full)))))))
+
 (defn context-valid?
   "Validate caller-bound, canonically prepared geometry; this is not native
    source authority. Preserve the existing manifest's SHA40-or-SHA64 grammar."
   [{:keys [input-source pages page-count full-input-sha256 review-tools submission-file]}]
-  (let [p (:provenance input-source) d (:full_diff input-source)]
-    (and (map? input-source) (= "open-hax.review-input/v1" (:schema input-source))
-         (every? #(oid? (get input-source %)) [:base_sha :head_sha :diff_base_sha])
-         (map? d) (= "basehead.diff" (:path d)) (natural? (:bytes d)) (sha? 64 (:sha256 d))
-         (map? p) (every? #(nonblank? (get p %))
-                         [:repository :pull_request :run_id :run_attempt :workflow_ref])
-         (oid? (:workflow_sha p))
-         (vector? pages)
-         (= (count pages) page-count) (= (:sha256 d) full-input-sha256)
-         (loop [remaining pages id 1 start 0]
-           (if-let [page (first remaining)]
-             (and (map? page) (= id (:id page)) (= start (:start page))
-                  (natural? (:start page)) (positive? (:end page)) (< start (:end page))
-                  (recur (next remaining) (inc id) (:end page)))
-             true))
-         (vector? review-tools) (every? nonblank? review-tools)
-         (= (count review-tools) (count (set review-tools)))
-         (every? (set review-tools) eta-mu.law.review-invocation/review-tools)
-         (nonblank? submission-file))))
+  (and (input-source-valid? input-source) (provenance? (:provenance input-source))
+       (or (and (= "open-hax.review-input/v1" (:schema input-source))
+                (natural? (get-in input-source [:full_diff :bytes]))
+                (= (get-in input-source [:full_diff :sha256]) full-input-sha256))
+           (and (= "open-hax.actionability-input/v1" (:schema input-source))
+                (= (get-in input-source [:full_input :sha256]) full-input-sha256)))
+       (vector? pages)
+       (or (= "open-hax.review-input/v1" (:schema input-source)) (boolean (seq pages)))
+       (= (count pages) page-count)
+       (loop [remaining pages id 1 start 0]
+         (if-let [page (first remaining)]
+           (and (map? page) (= id (:id page)) (= start (:start page))
+                (natural? (:start page)) (positive? (:end page)) (< start (:end page))
+                (recur (next remaining) (inc id) (:end page)))
+           true))
+       (vector? review-tools) (every? nonblank? review-tools)
+       (= (count review-tools) (count (set review-tools)))
+       (every? (set review-tools) eta-mu.law.review-invocation/review-tools)
+       (nonblank? submission-file)))
 
 (defn- event-error ([events expected-session] (event-error events expected-session "stop"))
   ([events expected-session terminal-reason]
