@@ -4,6 +4,7 @@
             ["node:os" :as os]
             ["node:path" :as path]
             [cljs.test :refer-macros [deftest is testing]]
+            [clojure.string :as str]
             [eta-mu.boundaries.node.fs :as bfs]
             [eta-mu.law.review-invocation-test :as fixture]))
 
@@ -123,3 +124,53 @@
                          (str sha256-id "z")]]
           (bfs/write-text! manifest-path (js/JSON.stringify (clj->js (assoc complete :head_sha invalid))))
           (is (thrown-with-msg? js/Error #"Invalid full-review input manifest" (bfs/read-review-input dir))))))))
+
+(defn- ambiguous-manifests [manifest]
+  (let [text (js/JSON.stringify (clj->js manifest))]
+    [(str "{\"schema\":\"invalid\"," (subs text 1))
+     (str "{\"sch\\u0065ma\":\"invalid\"," (subs text 1))
+     (str "{\"schema\":" (js/JSON.stringify (:schema manifest)) "," (subs text 1))
+     (str/replace text "\"sha256\":" "\"sha256\":\"invalid\",\"sha256\":")
+     (str "{\"ignored\":{\"x\":1,\"x\":2}," (subs text 1))
+     (str "{\"ignored\":1e309," (subs text 1))]))
+
+(deftest filesystem-manifests-refuse-duplicate-escaped-nested-and-nonfinite-members
+  (doseq [with-fixture [with-native-input with-input]]
+    (with-fixture (js/Buffer.from "context" "utf8")
+      (fn [dir _ manifest-path manifest]
+        (doseq [text (ambiguous-manifests manifest)]
+          (bfs/write-text! manifest-path text)
+          (is (thrown? js/Error (bfs/read-review-input dir))))
+        (bfs/write-text! manifest-path (js/JSON.stringify (clj->js manifest)))
+        (is (= manifest (:manifest (bfs/read-review-input dir)))))))
+  (with-native-input (js/Buffer.from "context" "utf8")
+    (fn [dir _ manifest-path manifest]
+      (bfs/write-text! manifest-path (str "{\"purpose\":\"diff\"," (subs (js/JSON.stringify (clj->js manifest)) 1)))
+      (is (thrown? js/Error (bfs/read-review-input dir)))
+      (bfs/write-text! manifest-path
+                       (str/replace (js/JSON.stringify (clj->js manifest)) "\"context_sha256\":"
+                                    "\"context_sha256\":\"invalid\",\"context_sha256\":"))
+      (is (thrown? js/Error (bfs/read-review-input dir))))))
+
+(deftest filesystem-input-preserves-leading-bom-covered-by-byte-digest
+  (doseq [text ["\uFEFF" "\uFEFForiginal context ημ 😀\n" "\uFEFF\uFEFFcontext"]
+          with-fixture [with-native-input with-input]]
+    (let [bytes (js/Buffer.from text "utf8")]
+      (with-fixture bytes
+        (fn [dir _ _ _]
+          (let [actual (:text (bfs/read-review-input dir))]
+            (is (= text actual))
+            (is (= (count text) (count actual)))
+            (is (= (.toString bytes "hex") (.toString (js/Buffer.from actual "utf8") "hex")))))))))
+
+(deftest filesystem-manifest-requires-fatal-utf8-and-json-bom-refusal
+  (with-native-input (js/Buffer.from "context" "utf8")
+    (fn [dir _ manifest-path manifest]
+      (let [json (js/JSON.stringify (clj->js manifest))]
+        (bfs/write-text! manifest-path (str "\uFEFF" json))
+        (is (thrown? js/Error (bfs/read-review-input dir)))
+        (.writeFileSync fs manifest-path
+                        (js/Buffer.concat #js [(js/Buffer.from "{\"ignored\":\"")
+                                               (js/Buffer.from #js [255])
+                                               (js/Buffer.from (str "\"," (subs json 1)))]))
+        (is (thrown? js/Error (bfs/read-review-input dir)))))))

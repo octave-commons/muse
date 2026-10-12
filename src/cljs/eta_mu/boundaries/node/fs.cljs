@@ -7,7 +7,8 @@
             ["node:os" :as os]
             ["node:path" :as path]
             [clojure.string :as str]
-            [eta-mu.law.review-invocation :as invocation]))
+            [eta-mu.law.review-invocation :as invocation]
+            [eta-mu.extern.json :as json]))
 
 (defn home-dir []
   (.homedir os))
@@ -46,8 +47,7 @@
   "Verify the workflow's immutable full-input manifest before decoding UTF-8.
    The manifest cannot redirect reads to an arbitrary path."
   [dir]
-  (let [manifest (js->clj (js/JSON.parse (.readFileSync fs (join dir "input-manifest.json") "utf8"))
-                         :keywordize-keys true)
+  (let [manifest (json/strict-json (json/decode-text (.readFileSync fs (join dir "input-manifest.json"))))
         full (invocation/input-descriptor manifest)]
     (when-not full
       (throw (js/Error. "Invalid full-review input manifest.")))
@@ -55,7 +55,7 @@
           digest (-> (.createHash crypto "sha256") (.update bytes) (.digest "hex"))]
       (when-not (and (= (:bytes full) (.-length bytes)) (= (:sha256 full) digest))
         (throw (js/Error. "Full-review input is missing bytes or differs from its immutable manifest.")))
-      {:manifest manifest :text (.decode (js/TextDecoder. "utf-8" #js {:fatal true}) bytes)})))
+      {:manifest manifest :text (json/decode-text bytes)})))
 
 (defn write-text! [p text]
   (ensure-dir! (path/dirname p))

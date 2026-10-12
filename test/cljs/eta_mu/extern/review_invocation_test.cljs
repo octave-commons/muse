@@ -35,6 +35,22 @@
   (try (extern/prepare-review-invocation-context raw manifest tools file)
        (catch :default _ nil)))
 
+(deftest native-byte-preparation-preserves-bom-only-and-prefixed-page-geometry
+  (doseq [text ["\uFEFF" "\uFEFForiginal context ημ 😀\n" "\uFEFF\uFEFFcontext"]]
+    (let [bytes (js/Buffer.from text "utf8")
+          digest (-> (.createHash crypto "sha256") (.update bytes) (.digest "hex"))
+          manifest (assoc fixture/native-manifest :full_input
+                          {:path "actionability-input.txt" :bytes (.-length bytes) :sha256 digest})
+          tools (clj->js (:review-tools fixture/context))]
+      (doseq [raw [text bytes (js/Uint8Array. bytes)]]
+        (let [prepared (prepare-native-context raw (json manifest) tools "/fixture/submission.json")
+              ctx (js->clj prepared :keywordize-keys true)]
+          (is (some? prepared))
+          (is (= [{:id 1 :start 0 :end (count text)}] (:pages ctx)))
+          (is (= 1 (:pageCount ctx)))
+          (is (= digest (:fullInputSha256 ctx)))
+          (is (= manifest (:inputSource ctx))))))))
+
 (deftest native-context-preparation-and-terminal-carrier-share-the-existing-api
   (let [{:keys [context submission events]} (fixture/native-fixture)
         prepared (prepare-native-context

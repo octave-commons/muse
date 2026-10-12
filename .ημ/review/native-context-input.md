@@ -28,7 +28,13 @@ newlines while preserving every decoded original body and its independent
 hash. Muse pages the exact full text, checks every page is assessed before the
 first evidence stage and retains its manifest in the terminal envelope.
 UTF8 byte count differs from the existing UTF16 page coordinates.
-The native purpose requires nonempty page geometry. Prefer byte arrays when
+Both filesystem and terminal adapters use the same strict JSON decoder.
+Duplicate members, including escaped aliases and nested members, nonfinite
+numbers and malformed UTF8 manifests refuse before descriptor admission.
+Full-input decoding preserves every leading UTF8 BOM as text covered by the
+manifest digest; a BOM-only positive-byte native input therefore has one page.
+The native purpose requires nonempty page geometry, checked with the existing
+invocation context law before a tool session or successful begin event is stored. Prefer byte arrays when
 preparing context: a JavaScript string cannot attest an earlier UTF8 decoding.
 The shared pager's reserved diff-truncation marker stays enforced; encoding
 original bodies as data avoids presenting an embedded body line as that marker.

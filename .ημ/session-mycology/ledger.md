@@ -186,3 +186,12 @@
   spore: none
   receipt-refs: 7fc0ea37-447c-49b9-b027-ab8b8905eacd
   note: Extend only the shared input descriptor and retain the actual eight-tool trace. Test positive-byte zero-page geometry and three raw representations. Full suite invocation requires documented --test selector when focused; retain accidental whole predecessor RED separately and run the exact complete candidate suite after compiling. Candidate292/1732 passes with Mongo integration authentication skip explicit. Shared context coordinates are transport data; protected native host owns actor/source/publication authority. No spore or promotion.
+- ts: 2026-10-12T00:10:16.791800819Z
+  session: /home/err/.local/share/openhax-codex/20261010/muse-actionability-input
+  task: Repair shared strict manifest decoding and preserve native context BOM custody
+  p-efficiency: 0.77
+  p-friction: 0.62
+  p-skill-candidate: 0.59
+  spore: none
+  receipt-refs: 610d142fd7ffbd986b783ba96d51a591b754dddf0d6f25bd0bebfe57c3716794
+  note: Exact9source frozen after actual meaningful predecessor RED and full/focused/CJS/cold8tool GREEN; independent682readbackchecks no findings. Preserve parser bodies, ordinaryemptydiff and existingnativecontextlaw. Mongo authentication skip and EOF/instrumentation corrections visible. Local qualification precedes native successor review; no spore or promotion.

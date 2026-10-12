@@ -164,6 +164,41 @@ for (const [representation, encode] of [['string', bytes => bytes.toString('utf8
   }
   results.push(result);
 }
+// Leading BOM is full input, including the positive-byte BOM-only case.
+for (const [representation, encode] of [['string', bytes => bytes.toString('utf8')],
+  ['Buffer', bytes => bytes], ['Uint8Array', bytes => new Uint8Array(bytes)]]) {
+  for (const text of ['\uFEFF', '\uFEFForiginal context ημ 😀\n', '\uFEFF\uFEFFcontext']) {
+    const bytes = Buffer.from(text), result = {representation, purpose: 'actionability-bom',
+      inputBytes: bytes.length, assertions: 0};
+    const equal = (actual, expected) => { result.assertions++; assert.deepEqual(actual, expected); };
+    try {
+      const source = {...nativeSource, full_input: {path: 'actionability-input.txt',
+        bytes: bytes.length, sha256: sha256(bytes)}};
+      const context = verifier.prepareReviewInvocationContext(encode(bytes),
+        encode(Buffer.from(JSON.stringify(source))), tools, submissionFile);
+      equal(context.pages, [{id: 1, start: 0, end: text.length}]);
+      equal(context.pageCount, 1);
+      equal(context.fullInputSha256, sha256(bytes));
+      const {response, submission} = smokeInvocation(context, bytes);
+      const verdict = verifier.verifyReviewInvocation(encode(response), encode(submission), context);
+      equal(verdict.ok, true);
+      equal(verdict.acceptedInvocation.pageCount, 1);
+      equal(verifier.verifyReviewInvocation(encode(response), encode(submission),
+        {...context, fullDiff: encode(bytes)}).ok, true);
+      for (const duplicate of ['{"schema":"invalid",' + JSON.stringify(source).slice(1),
+        '{"sch\\u0065ma":"invalid",' + JSON.stringify(source).slice(1),
+        '{"purpose":"diff",' + JSON.stringify(source).slice(1),
+        JSON.stringify(source).replace('"sha256":', '"sha256":"invalid","sha256":'),
+        '{"ignored":{"x":1,"x":2},' + JSON.stringify(source).slice(1)]) {
+        result.assertions++;
+        assert.throws(() => verifier.prepareReviewInvocationContext(encode(bytes),
+          encode(Buffer.from(duplicate)), tools, submissionFile));
+      }
+      result.pass = true;
+    } catch (error) { result.pass = false; result.error = {name: error.name, message: error.message}; }
+    results.push(result);
+  }
+}
 const failures = results.filter(result => !result.pass).length;
 console.log(JSON.stringify({result: failures ? 'fail' : 'pass', runtime: process.version, modulePath,
   moduleSha256: sha256(fs.readFileSync(modulePath)), results,
