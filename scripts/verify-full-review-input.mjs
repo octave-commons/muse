@@ -104,7 +104,7 @@ try {
     JAVA_TOOL_OPTIONS: `${process.env.JAVA_TOOL_OPTIONS || ''} -Duser.home="${compilerHome}"`};
   for (const [command, args] of [
     ['clojure', ['-M', '-e', "(require 'eta-mu.opencode.build) (eta-mu.opencode.build/generate-entrypoint {})"]],
-    ['shadow-cljs', ['release', 'opencode-plugin']],
+    ['shadow-cljs', ['release', 'opencode-plugin', 'review-invocation']],
   ]) {
     const result = spawnSync(command, args, {cwd: checkout, env, encoding: 'utf8', timeout: 120000, maxBuffer: 8 * 1024 * 1024});
     process.stdout.write(result.stdout || '');
@@ -290,7 +290,7 @@ try {
     } catch (error) { result.pass = false; result.error = {name: error.name, message: error.message}; }
     boundaryResults.push(result);
   }
-  const verifier = createRequire(import.meta.url)(path.join(repo, '.opencode/dist/review-invocation.cjs'));
+  const verifier = createRequire(import.meta.url)(path.join(checkout, '.opencode/dist/review-invocation.cjs'));
   for (const [index, text] of ['\uFEFF', '\uFEFForiginal context ημ 😀\n', '\uFEFF\uFEFFcontext'].entries()) {
     const bytes = Buffer.from(text);
     const source = {...nativeManifest, full_input: {path: 'actionability-input.txt',

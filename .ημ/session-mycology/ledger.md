@@ -195,3 +195,12 @@
   spore: none
   receipt-refs: 610d142fd7ffbd986b783ba96d51a591b754dddf0d6f25bd0bebfe57c3716794
   note: Exact9source frozen after actual meaningful predecessor RED and full/focused/CJS/cold8tool GREEN; independent682readbackchecks no findings. Preserve parser bodies, ordinaryemptydiff and existingnativecontextlaw. Mongo authentication skip and EOF/instrumentation corrections visible. Local qualification precedes native successor review; no spore or promotion.
+- ts: 2026-10-12T01:14:05.488327204Z
+  session: /home/err/.local/share/openhax-codex/20261010/muse-actionability-input
+  task: Build and load the Muse standalone verifier inside its own cold fixture
+  p-efficiency: 0.86
+  p-friction: 0.54
+  p-skill-candidate: 0.52
+  spore: none
+  receipt-refs: 980dce649402c34aa368c6c9240e3e7eb282e6faf98b83c75e763bef524c8910
+  note: Cold qualification must compile both existing targets and load the fixture artifact. Require a compiler-success predecessor RED plus a separate adverse control for each seam. Actual four-case results and complete generated-byte hashes are bound to the canonical receipt. Retain MR9 full-suite/Mongo skip scope; no live model, native or protected adoption credit. No spore or promotion.
