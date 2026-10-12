@@ -7,7 +7,7 @@
             ["node:os" :as os]
             ["node:path" :as path]
             [clojure.string :as str]
-            [eta-mu.law.review-invocation :as invocation]
+            [eta-mu.shape.review-input :as input-shape]
             [eta-mu.extern.json :as json]))
 
 (defn home-dir []
@@ -48,7 +48,7 @@
    The manifest cannot redirect reads to an arbitrary path."
   [dir]
   (let [manifest (json/strict-json (json/decode-text (.readFileSync fs (join dir "input-manifest.json"))))
-        full (invocation/input-descriptor manifest)]
+        full (input-shape/input-descriptor manifest)]
     (when-not full
       (throw (js/Error. "Invalid full-review input manifest.")))
     (let [bytes (.readFileSync fs (join dir (:path full)))

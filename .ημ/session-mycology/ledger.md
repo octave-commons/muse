@@ -204,3 +204,12 @@
   spore: none
   receipt-refs: 980dce649402c34aa368c6c9240e3e7eb282e6faf98b83c75e763bef524c8910
   note: Cold qualification must compile both existing targets and load the fixture artifact. Require a compiler-success predecessor RED plus a separate adverse control for each seam. Actual four-case results and complete generated-byte hashes are bound to the canonical receipt. Retain MR9 full-suite/Mongo skip scope; no live model, native or protected adoption credit. No spore or promotion.
+- ts: 2026-10-12T02:50:26.172421459Z
+  session: /home/err/.local/share/openhax-codex/20261010/muse-actionability-input
+  task: Share the input descriptor shape across law, boundaries and the live Muse review plugin
+  p-efficiency: 0.84
+  p-friction: 0.53
+  p-skill-candidate: 0.49
+  spore: none
+  receipt-refs: 9c427e1147504b6dbcb0cc1cd09a75ada313f44fd8538f6f81873900ce39f471
+  note: A projection moved out of the validation law must be traced through every live consumer. Preserve old descriptor identity and transport semantics with the predecessor oracle, then compile and exercise a cold native plugin. Keep missed-plugin evidence, adverses, Mongo authentication skip and local/native authority boundaries visible. No spore or promotion.

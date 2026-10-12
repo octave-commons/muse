@@ -6,6 +6,7 @@
   (:require [clojure.string :as str]
             [eta-mu.extern.json :as json]
             [eta-mu.law.review-invocation :as law]
+            [eta-mu.shape.review-input :as input-shape]
             [eta-mu.domain.review :as review]
             ["node:crypto" :as crypto]))
 
@@ -46,7 +47,7 @@
         digest (-> (js-invoke crypto "createHash" "sha256")
                    (js-invoke "update" bytes)
                    (js-invoke "digest" "hex"))
-        full (law/input-descriptor source)
+        full (input-shape/input-descriptor source)
         pages (mapv #(select-keys % [:id :start :end]) (review/diff-chunks text))
         ctx {:input-source source :pages pages :page-count (count pages)
              :full-input-sha256 digest :review-tools tools :submission-file file}]
