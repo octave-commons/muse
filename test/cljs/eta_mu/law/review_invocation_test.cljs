@@ -992,3 +992,75 @@
     (let [result (length-classification (length-events) nil ctx (length-custody ctx))]
       (is (false? (:eligible? result)))
       (is (= :trusted-context-unestablished (:code result))))))
+
+
+;; A third fixed transport purpose supplies no rejection-policy or native credit.
+(def rejection-manifest
+  (-> native-manifest
+      (assoc :schema "open-hax.rejection-assessment-input/v1" :purpose "rejection-assessment")
+      (assoc-in [:full_input :path] "rejection-assessment-input.txt")))
+
+(defn rejection-fixture []
+  (let [{:keys [context submission events]} (native-fixture)]
+    {:context (assoc context :input-source rejection-manifest)
+     :submission (assoc submission :input-source rejection-manifest)
+     :events (assoc-in events [0 :part :state :output :input-source] rejection-manifest)}))
+
+(deftest rejection-purpose-reuses-existing-full-input-trace-and-custody
+  (let [{:keys [context submission events]} (rejection-fixture)
+        result (invocation/verify events submission context)]
+    (is (true? (invocation/input-source-valid? rejection-manifest)))
+    (is (true? (invocation/context-valid? context)))
+    (is (true? (:ok? result)))
+    (is (= 1 (get-in result [:accepted-invocation :page-count])))
+    (is (nil? (:agreement result)))
+    (is (nil? (:disposition result)))
+    (doseq [key [:head_sha :context_sha256 :proposal_body_sha256 :source_inventory_sha256]]
+      (let [changed (assoc rejection-manifest key (apply str (repeat (if (= key :head_sha) 40 64) "f")))
+            refused (invocation/verify events submission (assoc context :input-source changed))]
+        (is (= :begin-source-binding (:code refused)))
+        (is (nil? (:accepted-invocation refused)))))
+    (doseq [[key value] [[:proposal_id 72] [:target (assoc (:target rejection-manifest) :root_comment_id 8)]]]
+      (let [refused (invocation/verify events (assoc-in submission [:input-source key] value) context)]
+        (is (= :serialized-source-binding (:code refused)))
+        (is (nil? (:accepted-invocation refused)))))
+    (doseq [changed [(vec (concat [(first events)] (subvec events 3)))
+                     (append-calls events [(tool-event 10 "review_read_diff_chunk" {:id 1} read-output)])
+                     (assoc-in events [3 :part :state :output] {:ok? false :error "Refused stage."})
+                     (assoc-in events [0 :part :state :output] {:ok? false :error "Refused begin."})
+                     (assoc-in events [8 :part :state :input :summary] "changed carrier")]]
+      (let [refused (invocation/verify changed submission context)]
+        (is (false? (:ok? refused)))
+        (is (nil? (:accepted-invocation refused)))))
+    (is (false? (invocation/context-valid? (assoc context :pages [] :page-count 0))))))
+
+(deftest rejection-purpose-keeps-exact-manifest-shape-and-refusals
+  (doseq [source [(assoc rejection-manifest :purpose "actionability")
+                  (assoc rejection-manifest :schema "open-hax.actionability-input/v1")
+                  (dissoc rejection-manifest :purpose)
+                  (assoc rejection-manifest :full_diff (:full_diff manifest))
+                  (assoc-in rejection-manifest [:full_input :path] "actionability-input.txt")
+                  (assoc-in rejection-manifest [:full_input :path] "../rejection-assessment-input.txt")
+                  (assoc-in rejection-manifest [:full_input :bytes] 0)
+                  (assoc-in rejection-manifest [:full_input :bytes] 1.5)
+                  (assoc-in rejection-manifest [:full_input :bytes] 9007199254740992)
+                  (assoc-in rejection-manifest [:full_input :sha256] "bad")
+                  (assoc rejection-manifest :context_sha256 "bad")
+                  (assoc rejection-manifest :proposal_id 0)
+                  (assoc rejection-manifest :proposal_body_sha256 "bad")
+                  (assoc rejection-manifest :source_inventory_sha256 "bad")
+                  (assoc rejection-manifest :head_sha "bad")
+                  (assoc-in rejection-manifest [:target :repository_id] " ")
+                  (assoc-in rejection-manifest [:target :repository_database_id] 0)
+                  (assoc-in rejection-manifest [:target :pr_id] "")
+                  (assoc-in rejection-manifest [:target :pr_number] 0)
+                  (assoc-in rejection-manifest [:target :thread_id] nil)
+                  (assoc-in rejection-manifest [:target :root_comment_id] 1.5)
+                  (dissoc rejection-manifest :provenance)]]
+    (is (false? (invocation/input-source-valid? source)))
+    (is (false? (invocation/context-valid? (assoc context :input-source source)))))
+  (let [complete (-> rejection-manifest
+                     (assoc :head_sha (apply str (repeat 64 "b")))
+                     (assoc-in [:provenance :workflow_sha] (apply str (repeat 64 "d"))))]
+    (is (true? (invocation/input-source-valid? complete)))
+    (is (true? (invocation/context-valid? (assoc context :input-source complete))))))

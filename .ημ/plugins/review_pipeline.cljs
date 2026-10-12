@@ -74,7 +74,8 @@
         (bfs/remove-file! (bfs/join (evidence-dir ctx) submission-file-name))
         (let [{:keys [text manifest]} (bfs/read-review-input (evidence-dir ctx))
               session (assoc (review/begin text) :input-source manifest)
-              _ (when (= "open-hax.actionability-input/v1" (:schema manifest))
+              _ (when (#{"open-hax.actionability-input/v1"
+                         "open-hax.rejection-assessment-input/v1"} (:schema manifest))
                   (when-not (invocation/context-valid?
                              {:input-source manifest
                               :pages (mapv #(select-keys % [:id :start :end]) (:diff-chunks session))

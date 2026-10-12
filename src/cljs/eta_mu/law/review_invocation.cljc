@@ -44,26 +44,33 @@
            (every? #(oid? (get source %)) [:base_sha :head_sha :diff_base_sha])
            (map? diff) (= "basehead.diff" (:path diff))
            (integer? (:bytes diff)) (<= 0 (:bytes diff)) (sha? 64 (:sha256 diff)))
-      (and (map? source) (= "open-hax.actionability-input/v1" (:schema source))
-           (= "actionability" (:purpose source)) (not (contains? source :full_diff))
+      (and (map? source)
+           (or (and (= "open-hax.actionability-input/v1" (:schema source))
+                    (= "actionability" (:purpose source))
+                    (= "actionability-input.txt" (:path full)))
+               (and (= "open-hax.rejection-assessment-input/v1" (:schema source))
+                    (= "rejection-assessment" (:purpose source))
+                    (= "rejection-assessment-input.txt" (:path full))))
+           (not (contains? source :full_diff))
            (oid? (:head_sha source)) (positive? (:proposal_id source))
            (every? #(sha? 64 (get source %))
                    [:context_sha256 :proposal_body_sha256 :source_inventory_sha256])
            (map? target) (every? #(nonblank? (get target %)) [:repository_id :pr_id :thread_id])
            (every? #(positive? (get target %)) [:repository_database_id :pr_number :root_comment_id])
            (provenance? (:provenance source))
-           (map? full) (= "actionability-input.txt" (:path full))
+           (map? full)
            (positive? (:bytes full)) (sha? 64 (:sha256 full)))))))
 
 (defn context-valid?
   "Validate caller-bound, canonically prepared geometry; this is not native
    source authority. Preserve the existing manifest's SHA40-or-SHA64 grammar."
   [{:keys [input-source pages page-count full-input-sha256 review-tools submission-file]}]
-  (and (input-source-valid? input-source) (provenance? (:provenance input-source))
+  (boolean (and (input-source-valid? input-source) (provenance? (:provenance input-source))
        (or (and (= "open-hax.review-input/v1" (:schema input-source))
                 (natural? (get-in input-source [:full_diff :bytes]))
                 (= (get-in input-source [:full_diff :sha256]) full-input-sha256))
-           (and (= "open-hax.actionability-input/v1" (:schema input-source))
+           (and (#{"open-hax.actionability-input/v1"
+                   "open-hax.rejection-assessment-input/v1"} (:schema input-source))
                 (= (get-in input-source [:full_input :sha256]) full-input-sha256)))
        (vector? pages)
        (or (= "open-hax.review-input/v1" (:schema input-source)) (boolean (seq pages)))
@@ -77,7 +84,7 @@
        (vector? review-tools) (every? nonblank? review-tools)
        (= (count review-tools) (count (set review-tools)))
        (every? (set review-tools) eta-mu.law.review-invocation/review-tools)
-       (nonblank? submission-file)))
+       (nonblank? submission-file))))
 
 (defn- event-error ([events expected-session] (event-error events expected-session "stop"))
   ([events expected-session terminal-reason]

@@ -331,3 +331,48 @@
     (is (= "length" (:terminalReason (classify-length raw))))
     (is (false? (:eligible (classify-length (response (pop events))))))
     (is (false? (:eligible (classify-length (response (assoc-in events [4 :part :reason] "length"))))))))
+
+
+(deftest rejection-carrier-uses-unchanged-prepare-and-verify-exports
+  (let [{:keys [context submission events]} (fixture/rejection-fixture)
+        prepared (prepare-native-context (js/Buffer.from "diff" "utf8")
+                                         (json fixture/rejection-manifest)
+                                         (clj->js (:review-tools context)) (:submission-file context))
+        result (js->clj (extern/verify-review-invocation (response events) (json submission) prepared)
+                        :keywordize-keys true)]
+    (is (some? prepared))
+    (is (= fixture/rejection-manifest (:inputSource (js->clj prepared :keywordize-keys true))))
+    (is (true? (:ok result)))
+    (is (= 1 (get-in result [:acceptedInvocation :pageCount])))
+    (is (nil? (:agreement result)))
+    (doseq [source [(assoc fixture/rejection-manifest :proposal_id 72)
+                    (assoc fixture/rejection-manifest :context_sha256 (apply str (repeat 64 "f")))
+                    (assoc-in fixture/rejection-manifest [:target :thread_id] "PRRT_other")]]
+      (let [changed (prepare-native-context "diff" (json source)
+                                            (clj->js (:review-tools context)) (:submission-file context))
+            refused (js->clj (extern/verify-review-invocation (response events) (json submission) changed)
+                            :keywordize-keys true)]
+        (is (false? (:ok refused)))
+        (is (nil? (:acceptedInvocation refused)))))))
+
+(deftest rejection-raw-bytes-preserve-bom-and-refuse-mixed-or-corrupt-input
+  (let [tools (clj->js (:review-tools fixture/context))]
+    (doseq [text ["\uFEFF" "\uFEFForiginal proposal ημ 😀\n" "\uFEFF\uFEFFcontext"]]
+      (let [bytes (js/Buffer.from text "utf8")
+            digest (-> (.createHash crypto "sha256") (.update bytes) (.digest "hex"))
+            source (assoc fixture/rejection-manifest :full_input
+                          {:path "rejection-assessment-input.txt" :bytes (.-length bytes) :sha256 digest})]
+        (doseq [raw [text bytes (js/Uint8Array. bytes)]]
+          (let [prepared (prepare-native-context raw (json source) tools "/fixture/submission.json")
+                ctx (js->clj prepared :keywordize-keys true)]
+            (is (some? prepared))
+            (is (= [{:id 1 :start 0 :end (count text)}] (:pages ctx)))
+            (is (= digest (:fullInputSha256 ctx)))
+            (is (= source (:inputSource ctx)))))))
+    (doseq [[raw source] [["prefix" fixture/rejection-manifest]
+                          ["diff" (assoc fixture/rejection-manifest :full_diff (:full_diff fixture/manifest))]
+                          ["diff" (assoc fixture/rejection-manifest :purpose "actionability")]
+                          ["diff" (assoc-in fixture/rejection-manifest [:full_input :path] "actionability-input.txt")]
+                          [(js/Uint8Array. #js [255]) fixture/rejection-manifest]
+                          ["" (assoc-in fixture/rejection-manifest [:full_input :bytes] 0)]]]
+      (is (thrown? js/Error (extern/prepare-review-invocation-context raw (json source) tools "/fixture/submission.json"))))))
