@@ -174,3 +174,66 @@
                                                (js/Buffer.from #js [255])
                                                (js/Buffer.from (str "\"," (subs json 1)))]))
         (is (thrown? js/Error (bfs/read-review-input dir)))))))
+
+
+(defn- with-rejection-input [bytes f]
+  (let [dir (.mkdtempSync fs (.join path (.tmpdir os) "muse-rejection-input-"))
+        full (.join path dir "rejection-assessment-input.txt")
+        manifest-path (.join path dir "input-manifest.json")
+        manifest (assoc fixture/rejection-manifest :full_input
+                        {:path "rejection-assessment-input.txt" :bytes (.-length bytes)
+                         :sha256 (-> (.createHash crypto "sha256") (.update bytes) (.digest "hex"))})]
+    (try
+      (.writeFileSync fs full bytes)
+      (bfs/write-text! manifest-path (js/JSON.stringify (clj->js manifest)))
+      (f dir full manifest-path manifest)
+      (finally (.rmSync fs dir #js {:recursive true :force true})))))
+
+(deftest rejection-filesystem-keeps-original-bytes-without-other-purpose-fallback
+  (let [text (str (apply str (repeat 300001 "x")) "\noriginal proposal ημ 😀\n")
+        bytes (js/Buffer.from text "utf8")]
+    (with-rejection-input bytes
+      (fn [dir full _ manifest]
+        (is (= {:manifest manifest :text text} (bfs/read-review-input dir)))
+        (.writeFileSync fs (.join path dir "basehead.diff") bytes)
+        (.writeFileSync fs (.join path dir "actionability-input.txt") bytes)
+        (.writeFileSync fs full (.subarray bytes 0 300000))
+        (is (thrown? js/Error (bfs/read-review-input dir)))
+        (.writeFileSync fs full bytes)
+        (is (= text (:text (bfs/read-review-input dir))))
+        (let [changed (js/Buffer.from bytes)]
+          (aset changed (dec (.-length changed)) 32)
+          (.writeFileSync fs full changed)
+          (is (thrown? js/Error (bfs/read-review-input dir))))
+        (.unlinkSync fs full)
+        (is (thrown? js/Error (bfs/read-review-input dir))))))
+  (doseq [bytes [(js/Buffer.from #js [255]) (js/Buffer.from "" "utf8")]]
+    (with-rejection-input bytes
+      (fn [dir _ _ _] (is (thrown? js/Error (bfs/read-review-input dir)))))))
+
+(deftest rejection-filesystem-reuses-strict-json-fatal-utf8-and-original-bom
+  (doseq [text ["\uFEFF" "\uFEFForiginal proposal ημ 😀\n" "\uFEFF\uFEFFcontext"]]
+    (with-rejection-input (js/Buffer.from text "utf8")
+      (fn [dir _ _ _]
+        (is (= text (:text (bfs/read-review-input dir)))))))
+  (with-rejection-input (js/Buffer.from "context" "utf8")
+    (fn [dir _ manifest-path manifest]
+      (doseq [text (ambiguous-manifests manifest)]
+        (bfs/write-text! manifest-path text)
+        (is (thrown? js/Error (bfs/read-review-input dir))))
+      (doseq [source [(assoc manifest :purpose "actionability")
+                      (assoc manifest :full_diff (:full_diff fixture/manifest))
+                      (assoc-in manifest [:full_input :path] "../rejection-assessment-input.txt")
+                      (assoc manifest :proposal_id 0)]]
+        (bfs/write-text! manifest-path (js/JSON.stringify (clj->js source)))
+        (is (thrown? js/Error (bfs/read-review-input dir))))
+      (let [text (js/JSON.stringify (clj->js manifest))]
+        (bfs/write-text! manifest-path (str "\uFEFF" text))
+        (is (thrown? js/Error (bfs/read-review-input dir)))
+        (.writeFileSync fs manifest-path
+                        (js/Buffer.concat #js [(js/Buffer.from "{\"ignored\":\"")
+                                               (js/Buffer.from #js [255])
+                                               (js/Buffer.from (str "\"," (subs text 1)))]))
+        (is (thrown? js/Error (bfs/read-review-input dir))))
+      (bfs/write-text! manifest-path (js/JSON.stringify (clj->js manifest)))
+      (is (= manifest (:manifest (bfs/read-review-input dir)))))))

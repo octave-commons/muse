@@ -67,3 +67,17 @@
       (is (false? (invocation/context-valid? (assoc context :full-input-sha256 (apply str (repeat 64 "f"))))))))
   (is (false? (invocation/context-valid? (assoc fixture/context :input-source fixture/native-manifest
                                               :pages [] :page-count 0)))))
+
+
+(deftest rejection-descriptor-is-the-original-validated-full-input-map
+  (let [descriptor (assoc (:full_input fixture/rejection-manifest) :retained-extra "original carrier data")
+        source (assoc fixture/rejection-manifest :full_input descriptor)]
+    (is (true? (invocation/input-source-valid? source)))
+    (is (identical? descriptor (shape/input-descriptor source)))
+    (is (= descriptor (shape/input-descriptor source))))
+  (doseq [source [(assoc fixture/rejection-manifest :purpose "actionability")
+                  (assoc fixture/rejection-manifest :schema "open-hax.actionability-input/v1")
+                  (assoc fixture/rejection-manifest :full_diff (:full_diff fixture/manifest))
+                  (assoc-in fixture/rejection-manifest [:full_input :path] "actionability-input.txt")
+                  (dissoc fixture/rejection-manifest :provenance)]]
+    (is (nil? (shape/input-descriptor source)))))

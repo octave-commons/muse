@@ -403,6 +403,157 @@ try {
   assert.equal(nativeEnvelope['input-assessments'].length, nativeCount);
   assert.equal(nativeEnvelope['input-coverage'].assessed, nativeCount);
   assert.deepEqual(nativeEnvelope.comments, []);
+
+  // Distinct rejection input reuses the same fresh compiled tools and verifier.
+  // This is an inert carrier control, never an independent native agreement.
+  const rejectionData = {...nativeData, kind: 'synthetic-native-rejection-context',
+    native: {body: 'Original finding conversation ημ 😀\n> quoted evidence',
+      proposal: 'Inert current-head writer proposal; no native provenance'}};
+  const rejectionFull = Buffer.from(JSON.stringify(rejectionData));
+  const rejectionManifest = {...nativeManifest, schema: 'open-hax.rejection-assessment-input/v1',
+    purpose: 'rejection-assessment', full_input: {path: 'rejection-assessment-input.txt',
+      bytes: rejectionFull.length, sha256: createHash('sha256').update(rejectionFull).digest('hex')}};
+  const rejectionResults = [];
+  const rejectionConsumer = (name, bytes, sourceText) => {
+    const dir = path.join(fixture, name, '.opencode/review-evidence');
+    fs.mkdirSync(dir, {recursive: true});
+    fs.writeFileSync(path.join(dir, 'rejection-assessment-input.txt'), bytes);
+    fs.writeFileSync(path.join(dir, 'input-manifest.json'), sourceText);
+    return {dir, context: {sessionID: name, directory: path.dirname(path.dirname(dir))}};
+  };
+  const rejectionCheck = async (control, run) => {
+    const result = {control};
+    try { await run(); result.pass = true; }
+    catch (error) { result.pass = false; result.error = {name: error.name, message: error.message}; }
+    rejectionResults.push(result);
+  };
+  await rejectionCheck('rejection-complete-pages-and-accepted-invocation', async () => {
+    const {dir, context} = rejectionConsumer('rejection-complete', rejectionFull, JSON.stringify(rejectionManifest));
+    const calls = [];
+    const recorded = async (name, args) => {
+      const output = await call(name, args, context), index = calls.length + 1;
+      calls.push({type: 'tool_use', timestamp: index, sessionID: context.sessionID,
+        part: {type: 'tool', id: `rejection-part-${index}`, callID: `rejection-call-${index}`,
+          sessionID: context.sessionID, tool: name,
+          state: {status: 'completed', input: args, output: JSON.stringify(output)}}});
+      assert.equal(output['ok?'], true);
+      return output;
+    };
+    const begin = await recorded('review_begin', {}), pages = begin['input-coverage'].chunks;
+    assert.deepEqual(begin['input-source'], rejectionManifest);
+    assert.ok(pages > 1);
+    let recovered = '';
+    for (let id = 1; id <= pages; id++) {
+      const page = await recorded('review_read_diff_chunk', {id});
+      recovered += page.chunk.text;
+      await recorded('review_assess_diff_chunk', {id, note: `Inert whole rejection input page ${id}`});
+    }
+    assert.equal(recovered, rejectionFull.toString('utf8'));
+    assert.deepEqual(JSON.parse(recovered), rejectionData);
+    for (const stage of ['deterministic', 'map-change', 'generate-candidates', 'adversarial-validate', 'publish']) {
+      await recorded('review_record_evidence', {stage, note: 'Inert full-input carrier; no native policy judgment'});
+    }
+    await recorded('review_submit', {summary: 'Inert rejection transport; no native agreement or review approval'});
+    const stop = calls.length + 1;
+    calls.push({type: 'step_finish', timestamp: stop, sessionID: context.sessionID,
+      part: {type: 'step-finish', id: `rejection-stop-${stop}`, sessionID: context.sessionID, reason: 'stop'}});
+    const response = Buffer.from(calls.map(event => JSON.stringify(event)).join('\n') + '\n');
+    const submission = fs.readFileSync(path.join(dir, 'submission.json'));
+    const envelope = JSON.parse(submission);
+    assert.deepEqual(envelope['input-source'], rejectionManifest);
+    assert.deepEqual(envelope.comments, []);
+    const prepared = verifier.prepareReviewInvocationContext(rejectionFull, Buffer.from(JSON.stringify(rejectionManifest)),
+      tools, path.join(dir, 'submission.json'));
+    const result = verifier.verifyReviewInvocation(response, submission, prepared);
+    assert.equal(result.ok, true);
+    assert.equal(result.acceptedInvocation.pageCount, pages);
+    assert.equal(result.acceptedInvocation.fullInputSha256, rejectionManifest.full_input.sha256);
+    assert.equal(result.acceptedInvocation.responseSha256, createHash('sha256').update(response).digest('hex'));
+    assert.equal(result.acceptedInvocation.submissionSha256, createHash('sha256').update(submission).digest('hex'));
+    for (const changed of [
+      {...rejectionManifest, proposal_id: 72},
+      {...rejectionManifest, context_sha256: 'f'.repeat(64)},
+      {...rejectionManifest, proposal_body_sha256: 'f'.repeat(64)},
+      {...rejectionManifest, source_inventory_sha256: 'f'.repeat(64)},
+      {...rejectionManifest, target: {...rejectionManifest.target, root_comment_id: 8}},
+    ]) {
+      const changedContext = verifier.prepareReviewInvocationContext(rejectionFull, Buffer.from(JSON.stringify(changed)),
+        tools, path.join(dir, 'submission.json'));
+      const refused = verifier.verifyReviewInvocation(response, submission, changedContext);
+      assert.equal(refused.ok, false);
+      assert.equal(refused.acceptedInvocation, null);
+    }
+    const forged = verifier.verifyReviewInvocation(Buffer.from(JSON.stringify({type: 'text', timestamp: 1,
+      sessionID: context.sessionID, part: {type: 'text', id: 'nested-only', sessionID: context.sessionID,
+        text: response.toString('utf8')}})), submission, prepared);
+    assert.equal(forged.ok, false);
+    assert.equal(forged.acceptedInvocation, null);
+  });
+  const rejectedSources = [
+    {...rejectionManifest, purpose: 'actionability'},
+    {...rejectionManifest, schema: 'open-hax.actionability-input/v1'},
+    {...rejectionManifest, full_diff: manifest.full_diff},
+    {...rejectionManifest, full_input: {...rejectionManifest.full_input, path: 'actionability-input.txt'}},
+    {...rejectionManifest, full_input: {...rejectionManifest.full_input, path: '../rejection-assessment-input.txt'}},
+    {...rejectionManifest, proposal_id: 0},
+  ];
+  const rejectionJson = JSON.stringify(rejectionManifest);
+  const rejectedTexts = rejectedSources.map(source => JSON.stringify(source)).concat([
+    '{"schema":"invalid",' + rejectionJson.slice(1),
+    '{"sch\\u0065ma":"invalid",' + rejectionJson.slice(1),
+    '{"ignored":{"x":1,"x":2},' + rejectionJson.slice(1),
+    '\uFEFF' + rejectionJson,
+  ]);
+  for (const [index, sourceText] of rejectedTexts.entries()) {
+    await rejectionCheck(`rejection-malformed-manifest-${index}`, async () => {
+      const {dir, context} = rejectionConsumer(`rejection-malformed-${index}`, rejectionFull, sourceText);
+      fs.writeFileSync(path.join(dir, 'submission.json'), 'inert stale carrier');
+      assert.equal((await call('review_begin', {}, context))['ok?'], false);
+      assert.equal((await call('review_status', {}, context))['ok?'], false);
+      assert.equal(fs.existsSync(path.join(dir, 'submission.json')), false);
+      assert.equal(fs.existsSync(path.join(dir, 'review-events.jsonl')), false);
+    });
+  }
+  await rejectionCheck('rejection-prefix-cannot-read-other-purpose-fallback', async () => {
+    const {dir, context} = rejectionConsumer('rejection-prefix', rejectionFull.subarray(0, 300000), JSON.stringify(rejectionManifest));
+    fs.writeFileSync(path.join(dir, 'basehead.diff'), rejectionFull);
+    fs.writeFileSync(path.join(dir, 'actionability-input.txt'), rejectionFull);
+    assert.equal((await call('review_begin', {}, context))['ok?'], false);
+    assert.equal((await call('review_status', {}, context))['ok?'], false);
+  });
+  for (const [index, text] of ['\uFEFF', '\uFEFForiginal proposal ημ 😀\n', '\uFEFF\uFEFFcontext'].entries()) {
+    await rejectionCheck(`rejection-bom-lossless-${index}`, async () => {
+      const bytes = Buffer.from(text), source = {...rejectionManifest, full_input: {
+        path: 'rejection-assessment-input.txt', bytes: bytes.length,
+        sha256: createHash('sha256').update(bytes).digest('hex')}};
+      const {dir, context} = rejectionConsumer(`rejection-bom-${index}`, bytes, JSON.stringify(source));
+      assert.equal((await call('review_begin', {}, context))['ok?'], true);
+      const page = await call('review_read_diff_chunk', {id: 1}, context);
+      assert.equal(page['ok?'], true);
+      assert.equal(page.chunk.text, text);
+      const prepared = verifier.prepareReviewInvocationContext(bytes, Buffer.from(JSON.stringify(source)), tools, path.join(dir, 'submission.json'));
+      assert.deepEqual(prepared.pages, [{id: 1, start: 0, end: text.length}]);
+    });
+  }
+  await rejectionCheck('rejection-decoder-loss-refuses-before-session', async () => {
+    const text = 'synthetic rejection positive-byte decoder-loss control', bytes = Buffer.from(text);
+    const source = {...rejectionManifest, full_input: {path: 'rejection-assessment-input.txt',
+      bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex')}};
+    const {dir, context} = rejectionConsumer('rejection-decoder-loss', bytes, JSON.stringify(source));
+    const originalDecoder = globalThis.TextDecoder;
+    globalThis.TextDecoder = class extends originalDecoder {
+      decode(...args) { const decoded = super.decode(...args); return decoded === text ? '' : decoded; }
+    };
+    try {
+      assert.equal((await call('review_begin', {}, context))['ok?'], false);
+      assert.equal((await call('review_status', {}, context))['ok?'], false);
+      assert.equal(fs.existsSync(path.join(dir, 'review-events.jsonl')), false);
+    } finally { globalThis.TextDecoder = originalDecoder; }
+  });
+  console.log(JSON.stringify({rejection_input_controls: rejectionResults, native_agreement: false, native_review: false}));
+  assert.equal(rejectionResults.filter(result => !result.pass).length, 0,
+    'every fresh compiled rejection carrier control must pass');
+
   console.log(JSON.stringify({result: 'pass', tools: tools.length, pages: count,
     missing_tail_refused: true, premature_publish_refused: true, recovered_tail_finding_retained: true,
     recovered_full_input_accepted: true, stale_chronology_refused: true,

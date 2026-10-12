@@ -213,3 +213,12 @@
   spore: none
   receipt-refs: 9c427e1147504b6dbcb0cc1cd09a75ada313f44fd8538f6f81873900ce39f471
   note: A projection moved out of the validation law must be traced through every live consumer. Preserve old descriptor identity and transport semantics with the predecessor oracle, then compile and exercise a cold native plugin. Keep missed-plugin evidence, adverses, Mongo authentication skip and local/native authority boundaries visible. No spore or promotion.
+- ts: 2026-10-12T09:23:53.723995283Z
+  session: /home/err/.local/share/openhax-codex/20261010/muse-rejection-input-qualification45-v1
+  task: Carry rejection assessment through complete Muse input with strict Boolean contract
+  p-efficiency: 0.64
+  p-friction: 0.78
+  p-skill-candidate: 0.70
+  spore: none
+  receipt-refs: 50a9df830242be9fd342b20f77d8c7470b067a533ec40fbd58c5340ec33058ab
+  note: Retain actual first full-suite failure and minimal implementation correction. Disclose final raw index drift and missing original raw backup; preserve functional evidence and logical source custody.
