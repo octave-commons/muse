@@ -376,3 +376,54 @@
                           [(js/Uint8Array. #js [255]) fixture/rejection-manifest]
                           ["" (assoc-in fixture/rejection-manifest [:full_input :bytes] 0)]]]
       (is (thrown? js/Error (extern/prepare-review-invocation-context raw (json source) tools "/fixture/submission.json"))))))
+
+
+(deftest cohort-carrier-uses-the-existing-prepare-and-verify-exports
+  (let [{:keys [context submission events]} (fixture/cohort-fixture)
+        prepared (prepare-native-context (js/Buffer.from "diff" "utf8")
+                                         (json fixture/cohort-manifest)
+                                         (clj->js (:review-tools context)) (:submission-file context))
+        result (js->clj (extern/verify-review-invocation (response events) (json submission) prepared)
+                        :keywordize-keys true)]
+    (is (some? prepared))
+    (is (= fixture/cohort-manifest (:inputSource (js->clj prepared :keywordize-keys true))))
+    (is (true? (:ok result)))
+    (is (= 1 (get-in result [:acceptedInvocation :pageCount])))
+    (is (every? #(not (contains? result %)) [:agreement :preservation :qualified :settled :approval]))
+    (doseq [source [(assoc fixture/cohort-manifest :proposal_id 72)
+                    (assoc fixture/cohort-manifest :context_sha256 (apply str (repeat 64 "f")))
+                    (assoc-in fixture/cohort-manifest [:target :cohort_targets 1 1] 9)]]
+      (let [changed (prepare-native-context "diff" (json source)
+                                           (clj->js (:review-tools context)) (:submission-file context))
+            refused (js->clj (extern/verify-review-invocation (response events) (json submission) changed)
+                            :keywordize-keys true)]
+        (is (false? (:ok refused)))
+        (is (nil? (:acceptedInvocation refused)))))))
+
+(deftest cohort-raw-byte-custody-refuses-short-hash-purpose-target-and-json-substitution
+  (let [text "\uFEFFcomplete cohort body ημ 😀\n"
+        bytes (js/Buffer.from text "utf8")
+        digest (-> (.createHash crypto "sha256") (.update bytes) (.digest "hex"))
+        source (assoc fixture/cohort-manifest :full_input
+                      {:path "positive-cohort-assessment-input.txt" :bytes (.-length bytes) :sha256 digest})
+        tools (clj->js (:review-tools fixture/context))]
+    (doseq [raw [text bytes (js/Uint8Array. bytes)]]
+      (let [prepared (prepare-native-context raw (json source) tools "/fixture/submission.json")
+            ctx (js->clj prepared :keywordize-keys true)]
+        (is (some? prepared))
+        (is (= [{:id 1 :start 0 :end (count text)}] (:pages ctx)))
+        (is (= digest (:fullInputSha256 ctx)))
+        (is (= source (:inputSource ctx)))))
+    (doseq [[raw changed] [[(.subarray bytes 0 10) source]
+                           [text (assoc-in source [:full_input :bytes] (count text))]
+                           [text (assoc-in source [:full_input :sha256] (apply str (repeat 64 "f")))]
+                           [text (assoc source :purpose "rejection-assessment")]
+                           [text (assoc-in source [:target :cohort_targets] [42])]
+                           [text (assoc-in source [:target :root_comment_id] 7)]
+                           [text (assoc-in source [:full_input :path] "rejection-assessment-input.txt")]
+                           [(js/Uint8Array. #js [255]) source]]]
+      (is (thrown? js/Error (extern/prepare-review-invocation-context raw (json changed) tools "/fixture/submission.json"))))
+    (doseq [manifest [(str "{\"purpose\":\"rejection-assessment\"," (subs (json source) 1))
+                      (str "{\"ignored\":{\"x\":1,\"x\":2}," (subs (json source) 1))
+                      (str "\uFEFF" (json source))]]
+      (is (thrown? js/Error (extern/prepare-review-invocation-context bytes manifest tools "/fixture/submission.json"))))))

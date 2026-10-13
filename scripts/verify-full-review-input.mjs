@@ -554,6 +554,169 @@ try {
   assert.equal(rejectionResults.filter(result => !result.pass).length, 0,
     'every fresh compiled rejection carrier control must pass');
 
+
+  // Cohort transport is an inert full-input carrier, never native preservation.
+  const cohortData = {...nativeData, kind: 'synthetic-positive-cohort-context',
+    native: {threads: [{thread: 'PRRT_fixture_A', root: 7, body: 'Original member A ημ 😀'},
+      {thread: 'PRRT_fixture_B', root: 8, body: 'Original member B and its full enclosing review'},
+      {thread: 'PRRT_unrelated', root: 9, body: 'Nonmember corpus must remain complete'}],
+      proposal: 'Inert single actual-proposal placeholder; no native provenance'}};
+  const cohortFull = Buffer.from(JSON.stringify(cohortData));
+  const cohortManifest = {...nativeManifest, schema: 'open-hax.positive-cohort-assessment-input/v1',
+    purpose: 'positive-cohort-assessment', target: {repository: 'synthetic/native-context',
+      repository_id: 'R_fixture', repository_database_id: 3, pr_id: 'PR_fixture', pr_number: 1,
+      cohort_targets: [['PRRT_fixture_A', 7], ['PRRT_fixture_B', 8]]},
+    full_input: {path: 'positive-cohort-assessment-input.txt', bytes: cohortFull.length,
+      sha256: createHash('sha256').update(cohortFull).digest('hex')}};
+  const cohortResults = [];
+  const cohortConsumer = (name, bytes, sourceText) => {
+    const dir = path.join(fixture, name, '.opencode/review-evidence');
+    fs.mkdirSync(dir, {recursive: true});
+    fs.writeFileSync(path.join(dir, 'positive-cohort-assessment-input.txt'), bytes);
+    fs.writeFileSync(path.join(dir, 'input-manifest.json'), sourceText);
+    return {dir, context: {sessionID: name, directory: path.dirname(path.dirname(dir))}};
+  };
+  const cohortCheck = async (control, run) => {
+    const result = {control};
+    try { await run(); result.pass = true; }
+    catch (error) { result.pass = false; result.error = {name: error.name, message: error.message}; }
+    cohortResults.push(result);
+  };
+  await cohortCheck('cohort-complete-actual-tools-and-accepted-invocation', async () => {
+    const {dir, context} = cohortConsumer('cohort-complete', cohortFull, JSON.stringify(cohortManifest));
+    const calls = [];
+    const recorded = async (name, args) => {
+      const output = await call(name, args, context), index = calls.length + 1;
+      calls.push({type: 'tool_use', timestamp: index, sessionID: context.sessionID,
+        part: {type: 'tool', id: `cohort-part-${index}`, callID: `cohort-call-${index}`,
+          sessionID: context.sessionID, tool: name,
+          state: {status: 'completed', input: args, output: JSON.stringify(output)}}});
+      assert.equal(output['ok?'], true);
+      return output;
+    };
+    const terminate = () => {
+      const n = calls.length + 1;
+      calls.push({type: 'step_finish', timestamp: n, sessionID: context.sessionID,
+        part: {type: 'step-finish', id: `cohort-stop-${n}`, sessionID: context.sessionID, reason: 'stop'}});
+      return Buffer.from(calls.map(event => JSON.stringify(event)).join('\n') + '\n');
+    };
+    const begin = await recorded('review_begin', {}), pages = begin['input-coverage'].chunks;
+    assert.deepEqual(begin['input-source'], cohortManifest);
+    assert.ok(pages > 1);
+    let recovered = '';
+    for (let id = 1; id <= pages; id++) {
+      const page = await recorded('review_read_diff_chunk', {id});
+      recovered += page.chunk.text;
+      await recorded('review_assess_diff_chunk', {id, note: `Complete inert cohort page ${id}`});
+    }
+    assert.equal(recovered, cohortFull.toString('utf8'));
+    assert.deepEqual(JSON.parse(recovered), cohortData);
+    for (const stage of ['deterministic', 'map-change', 'generate-candidates', 'adversarial-validate', 'publish']) {
+      await recorded('review_record_evidence', {stage, note: 'Inert full-corpus transport; no semantic or native judgment'});
+    }
+    await recorded('review_submit', {summary: 'Inert cohort carrier; no preservation agreement or review approval'});
+    const response = terminate(), submission = fs.readFileSync(path.join(dir, 'submission.json'));
+    const envelope = JSON.parse(submission);
+    assert.deepEqual(envelope['input-source'], cohortManifest);
+    assert.deepEqual(envelope.comments, []);
+    const prepared = verifier.prepareReviewInvocationContext(cohortFull, Buffer.from(JSON.stringify(cohortManifest)),
+      tools, path.join(dir, 'submission.json'));
+    const result = verifier.verifyReviewInvocation(response, submission, prepared);
+    assert.equal(result.ok, true);
+    assert.equal(result.acceptedInvocation.pageCount, pages);
+    assert.equal(result.acceptedInvocation.fullInputSha256, cohortManifest.full_input.sha256);
+    assert.equal(result.acceptedInvocation.responseSha256, createHash('sha256').update(response).digest('hex'));
+    assert.equal(result.acceptedInvocation.submissionSha256, createHash('sha256').update(submission).digest('hex'));
+    for (const changed of [
+      {...cohortManifest, proposal_id: 72},
+      {...cohortManifest, context_sha256: 'f'.repeat(64)},
+      {...cohortManifest, source_inventory_sha256: 'f'.repeat(64)},
+      {...cohortManifest, target: {...cohortManifest.target, repository: 'synthetic/other'}},
+      {...cohortManifest, target: {...cohortManifest.target, cohort_targets: [['PRRT_fixture_A', 7], ['PRRT_fixture_B', 10]]}},
+    ]) {
+      const changedContext = verifier.prepareReviewInvocationContext(cohortFull, Buffer.from(JSON.stringify(changed)),
+        tools, path.join(dir, 'submission.json'));
+      const refused = verifier.verifyReviewInvocation(response, submission, changedContext);
+      assert.equal(refused.ok, false);
+      assert.equal(refused.acceptedInvocation, null);
+    }
+    const omitted = calls.filter(event => !(event.part.tool === 'review_assess_diff_chunk' && event.part.state.input.id === pages));
+    const incomplete = verifier.verifyReviewInvocation(Buffer.from(omitted.map(event => JSON.stringify(event)).join('\n') + '\n'), submission, prepared);
+    assert.equal(incomplete.ok, false);
+    assert.equal(incomplete.acceptedInvocation, null);
+    // Capture the real late tool output after submission. It cannot restore acceptance.
+    calls.pop();
+    const late = await recorded('review_read_diff_chunk', {id: pages});
+    assert.equal(late['restart-required?'], true);
+    const refused = verifier.verifyReviewInvocation(terminate(), submission, prepared);
+    assert.equal(refused.ok, false);
+    assert.equal(refused.code, 'last-read-order');
+    assert.equal(refused.acceptedInvocation, null);
+    assert.equal(fs.existsSync(path.join(dir, 'submission.json')), false);
+  });
+  const cohortBadSources = [
+    {...cohortManifest, purpose: 'rejection-assessment'},
+    {...cohortManifest, schema: 'open-hax.rejection-assessment-input/v1'},
+    {...cohortManifest, full_diff: manifest.full_diff},
+    {...cohortManifest, full_input: {...cohortManifest.full_input, path: 'rejection-assessment-input.txt'}},
+    {...cohortManifest, target: {...cohortManifest.target, cohort_targets: [42]}},
+    {...cohortManifest, target: {...cohortManifest.target, cohort_targets: []}},
+    {...cohortManifest, target: {...cohortManifest.target, cohort_targets: [['PRRT_fixture_B', 8], ['PRRT_fixture_A', 7]]}},
+    {...cohortManifest, target: {...cohortManifest.target, cohort_targets: [['PRRT_fixture_A', 7], ['PRRT_fixture_A', 7]]}},
+    {...cohortManifest, target: {...cohortManifest.target, thread_id: 'PRRT_fixture_A'}},
+    {...cohortManifest, target: {...cohortManifest.target, root_comment_id: 7}},
+  ];
+  const cohortJson = JSON.stringify(cohortManifest);
+  const cohortBadTexts = cohortBadSources.map(source => JSON.stringify(source)).concat([
+    '{"purpose":"rejection-assessment",' + cohortJson.slice(1),
+    '{"ignored":{"x":1,"x":2},' + cohortJson.slice(1), '\uFEFF' + cohortJson,
+  ]);
+  for (const [index, text] of cohortBadTexts.entries()) {
+    await cohortCheck(`cohort-manifest-refusal-${index}`, async () => {
+      const {dir, context} = cohortConsumer(`cohort-malformed-${index}`, cohortFull, text);
+      fs.writeFileSync(path.join(dir, 'submission.json'), 'inert stale carrier');
+      assert.equal((await call('review_begin', {}, context))['ok?'], false);
+      assert.equal((await call('review_status', {}, context))['ok?'], false);
+      assert.equal(fs.existsSync(path.join(dir, 'submission.json')), false);
+      assert.equal(fs.existsSync(path.join(dir, 'review-events.jsonl')), false);
+    });
+  }
+  for (const [index, bytes] of [cohortFull.subarray(0, 300000),
+    Buffer.concat([cohortFull.subarray(0, -1), Buffer.from(' ')]), Buffer.from([255])].entries()) {
+    await cohortCheck(`cohort-byte-hash-refusal-${index}`, async () => {
+      const {dir, context} = cohortConsumer(`cohort-corrupt-${index}`, bytes, JSON.stringify(cohortManifest));
+      for (const filename of ['basehead.diff', 'actionability-input.txt', 'rejection-assessment-input.txt']) {
+        fs.writeFileSync(path.join(dir, filename), cohortFull);
+      }
+      assert.equal((await call('review_begin', {}, context))['ok?'], false);
+      assert.equal((await call('review_status', {}, context))['ok?'], false);
+    });
+  }
+  await cohortCheck('cohort-unassessed-pages-refuse-stage-and-submit', async () => {
+    const {dir, context} = cohortConsumer('cohort-unassessed', cohortFull, cohortJson);
+    assert.equal((await call('review_begin', {}, context))['ok?'], true);
+    assert.equal((await call('review_record_evidence', {stage: 'deterministic', note: 'Unassessed input cannot complete'}, context))['ok?'], false);
+    assert.equal((await call('review_submit', {summary: 'No omitted members'}, context))['ok?'], false);
+    assert.equal(fs.existsSync(path.join(dir, 'submission.json')), false);
+  });
+  for (const [index, text] of ['\uFEFF', '\uFEFForiginal cohort ημ 😀\n', '\uFEFF\uFEFFcontext'].entries()) {
+    await cohortCheck(`cohort-bom-lossless-${index}`, async () => {
+      const bytes = Buffer.from(text), source = {...cohortManifest, full_input: {
+        path: 'positive-cohort-assessment-input.txt', bytes: bytes.length,
+        sha256: createHash('sha256').update(bytes).digest('hex')}};
+      const {dir, context} = cohortConsumer(`cohort-bom-${index}`, bytes, JSON.stringify(source));
+      assert.equal((await call('review_begin', {}, context))['ok?'], true);
+      const page = await call('review_read_diff_chunk', {id: 1}, context);
+      assert.equal(page['ok?'], true);
+      assert.equal(page.chunk.text, text);
+      const prepared = verifier.prepareReviewInvocationContext(bytes, Buffer.from(JSON.stringify(source)), tools, path.join(dir, 'submission.json'));
+      assert.deepEqual(prepared.pages, [{id: 1, start: 0, end: text.length}]);
+    });
+  }
+  console.log(JSON.stringify({cohort_input_controls: cohortResults, native_preservation: false, native_review: false}));
+  assert.equal(cohortResults.filter(result => !result.pass).length, 0,
+    'every fresh compiled cohort carrier control must pass');
+
   console.log(JSON.stringify({result: 'pass', tools: tools.length, pages: count,
     missing_tail_refused: true, premature_publish_refused: true, recovered_tail_finding_retained: true,
     recovered_full_input_accepted: true, stale_chronology_refused: true,

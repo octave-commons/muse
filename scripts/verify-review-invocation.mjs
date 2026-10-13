@@ -199,6 +199,62 @@ for (const [representation, encode] of [['string', bytes => bytes.toString('utf8
     results.push(result);
   }
 }
+
+// The same optimized exports carry a sorted full cohort, without semantic credit.
+const cohortInput = Buffer.from(JSON.stringify({kind: 'synthetic-cohort-context',
+  native: {threads: [{id: 'PRRT_fixture_A', root: 7, body: 'Member A ημ 😀'},
+    {id: 'PRRT_fixture_B', root: 8, body: 'Member B full original review'},
+    {id: 'PRRT_unrelated', root: 9, body: 'Unrelated context retained'}]},
+  source: 'complete immutable source bytes\n'.repeat(700), tail: 'complete cohort tail ημ 😀'}));
+const cohortSource = {...nativeSource, schema: 'open-hax.positive-cohort-assessment-input/v1',
+  purpose: 'positive-cohort-assessment', target: {repository: 'synthetic/optimized-export-smoke',
+    repository_id: 'R_fixture', repository_database_id: 3, pr_id: 'PR_fixture', pr_number: 1,
+    cohort_targets: [['PRRT_fixture_A', 7], ['PRRT_fixture_B', 8]]},
+  full_input: {path: 'positive-cohort-assessment-input.txt', bytes: cohortInput.length, sha256: sha256(cohortInput)}};
+for (const [representation, encode] of [['string', bytes => bytes.toString('utf8')],
+  ['Buffer', bytes => bytes], ['Uint8Array', bytes => new Uint8Array(bytes)]]) {
+  const result = {representation, purpose: 'positive-cohort-assessment', assertions: 0};
+  const equal = (actual, expected) => { result.assertions++; assert.deepEqual(actual, expected); };
+  const refuses = (input, source) => { result.assertions++; assert.throws(() =>
+    verifier.prepareReviewInvocationContext(input, encode(Buffer.from(JSON.stringify(source))), tools, submissionFile)); };
+  try {
+    const context = verifier.prepareReviewInvocationContext(encode(cohortInput),
+      encode(Buffer.from(JSON.stringify(cohortSource))), tools, submissionFile);
+    equal(context.inputSource, cohortSource);
+    equal(context.pages.at(-1).end, cohortInput.toString('utf8').length);
+    equal(context.pageCount > 1, true);
+    const {response, submission} = smokeInvocation(context, cohortInput);
+    const verdict = verifier.verifyReviewInvocation(encode(response), encode(submission), context);
+    equal(verdict.ok, true);
+    equal(verdict.acceptedInvocation.fullInputSha256, sha256(cohortInput));
+    equal(verdict.acceptedInvocation.pageCount, context.pageCount);
+    equal(verdict.acceptedInvocation.responseSha256, sha256(response));
+    equal(verdict.acceptedInvocation.submissionSha256, sha256(submission));
+    equal(Object.hasOwn(verdict, 'preservation'), false);
+    equal(Object.hasOwn(verdict, 'agreement'), false);
+    for (const changed of [{...cohortSource, proposal_id: 72},
+      {...cohortSource, source_inventory_sha256: 'f'.repeat(64)},
+      {...cohortSource, target: {...cohortSource.target, cohort_targets: [['PRRT_fixture_A', 7], ['PRRT_fixture_B', 10]]}}]) {
+      const changedContext = verifier.prepareReviewInvocationContext(encode(cohortInput),
+        encode(Buffer.from(JSON.stringify(changed))), tools, submissionFile);
+      const refused = verifier.verifyReviewInvocation(encode(response), encode(submission), changedContext);
+      equal(refused.ok, false); equal(refused.acceptedInvocation, null);
+    }
+    const events = response.toString('utf8').trim().split('\n').map(JSON.parse);
+    const omitted = events.filter(event => !(event.part.tool === 'review_read_diff_chunk' && event.part.state.input.id === context.pageCount));
+    const incomplete = verifier.verifyReviewInvocation(omitted.map(JSON.stringify).join('\n'), encode(submission), context);
+    equal(incomplete.ok, false); equal(incomplete.acceptedInvocation, null);
+    refuses(encode(cohortInput.subarray(0, 100)), cohortSource);
+    refuses(encode(cohortInput), {...cohortSource, purpose: 'rejection-assessment'});
+    refuses(encode(cohortInput), {...cohortSource, target: {...cohortSource.target, cohort_targets: [42]}});
+    refuses(encode(cohortInput), {...cohortSource, target: {...cohortSource.target, thread_id: 'PRRT_fixture_A'}});
+    refuses(encode(cohortInput), {...cohortSource, full_input: {...cohortSource.full_input, bytes: cohortInput.toString('utf8').length}});
+    refuses(encode(cohortInput), {...cohortSource, full_input: {...cohortSource.full_input, sha256: 'f'.repeat(64)}});
+    refuses(new Uint8Array([255]), cohortSource);
+    result.pass = true;
+  } catch (error) { result.pass = false; result.error = {name: error.name, message: error.message}; }
+  results.push(result);
+}
 const failures = results.filter(result => !result.pass).length;
 console.log(JSON.stringify({result: failures ? 'fail' : 'pass', runtime: process.version, modulePath,
   moduleSha256: sha256(fs.readFileSync(modulePath)), results,

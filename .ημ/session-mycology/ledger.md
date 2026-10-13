@@ -222,3 +222,12 @@
   spore: none
   receipt-refs: 50a9df830242be9fd342b20f77d8c7470b067a533ec40fbd58c5340ec33058ab
   note: Retain actual first full-suite failure and minimal implementation correction. Disclose final raw index drift and missing original raw backup; preserve functional evidence and logical source custody.
+- ts: 2026-10-13T14:50:22.686498119Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: Qualify complete cohort transport through existing Muse review input
+  p-efficiency: 0.72
+  p-friction: 0.75
+  p-skill-candidate: 0.20
+  spore: none
+  receipt-refs: defa605df8165af3f1e4afb0ccc4b1ccd3c6c300692ef58f00221f3ef017f524
+  note: Preserve actual old and one-branch-removal refusal evidence; all final owning gates pass. Retain unrelated watcher failure and isolated unchanged-source rerun, without claiming its cause. Mongo authentication integration remains skipped. Pure transport is separate from native semantic admission and production deployment; no new spore or promotion.
