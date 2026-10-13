@@ -237,3 +237,59 @@
         (is (thrown? js/Error (bfs/read-review-input dir))))
       (bfs/write-text! manifest-path (js/JSON.stringify (clj->js manifest)))
       (is (= manifest (:manifest (bfs/read-review-input dir)))))))
+
+
+(defn- with-cohort-input [bytes f]
+  (let [dir (.mkdtempSync fs (.join path (.tmpdir os) "muse-cohort-input-"))
+        full (.join path dir "positive-cohort-assessment-input.txt")
+        manifest-path (.join path dir "input-manifest.json")
+        manifest (assoc fixture/cohort-manifest :full_input
+                        {:path "positive-cohort-assessment-input.txt" :bytes (.-length bytes)
+                         :sha256 (-> (.createHash crypto "sha256") (.update bytes) (.digest "hex"))})]
+    (try
+      (.writeFileSync fs full bytes)
+      (bfs/write-text! manifest-path (js/JSON.stringify (clj->js manifest)))
+      (f dir full manifest-path manifest)
+      (finally (.rmSync fs dir #js {:recursive true :force true})))))
+
+(deftest cohort-filesystem-retains-full-tail-and-has-no-other-purpose-fallback
+  (let [text (str (apply str (repeat 300001 "x")) "\nall original cohort members ημ 😀\n")
+        bytes (js/Buffer.from text "utf8")]
+    (with-cohort-input bytes
+      (fn [dir full _ manifest]
+        (is (= {:manifest manifest :text text} (bfs/read-review-input dir)))
+        (doseq [name ["basehead.diff" "actionability-input.txt" "rejection-assessment-input.txt"]]
+          (.writeFileSync fs (.join path dir name) bytes))
+        (.writeFileSync fs full (.subarray bytes 0 300000))
+        (is (thrown? js/Error (bfs/read-review-input dir)))
+        (.writeFileSync fs full bytes)
+        (is (= text (:text (bfs/read-review-input dir))))
+        (let [changed (js/Buffer.from bytes)]
+          (aset changed (dec (.-length changed)) 32)
+          (.writeFileSync fs full changed)
+          (is (thrown? js/Error (bfs/read-review-input dir))))
+        (.unlinkSync fs full)
+        (is (thrown? js/Error (bfs/read-review-input dir))))))
+  (doseq [bytes [(js/Buffer.from #js [255]) (js/Buffer.from "" "utf8")]]
+    (with-cohort-input bytes
+      (fn [dir _ _ _] (is (thrown? js/Error (bfs/read-review-input dir)))))))
+
+(deftest cohort-filesystem-reuses-strict-json-target-shape-and-original-bom
+  (doseq [text ["\uFEFF" "\uFEFForiginal cohort ημ 😀\n" "\uFEFF\uFEFFcontext"]]
+    (with-cohort-input (js/Buffer.from text "utf8")
+      (fn [dir _ _ _] (is (= text (:text (bfs/read-review-input dir)))))))
+  (with-cohort-input (js/Buffer.from "context" "utf8")
+    (fn [dir _ manifest-path manifest]
+      (doseq [text (ambiguous-manifests manifest)]
+        (bfs/write-text! manifest-path text)
+        (is (thrown? js/Error (bfs/read-review-input dir))))
+      (doseq [source [(assoc manifest :purpose "rejection-assessment")
+                      (assoc-in manifest [:target :cohort_targets] [42])
+                      (assoc-in manifest [:target :cohort_targets] [["PRRT_fixture_B" 8] ["PRRT_fixture_A" 7]])
+                      (assoc-in manifest [:target :thread_id] "PRRT_fixture_A")
+                      (assoc-in manifest [:full_input :path] "rejection-assessment-input.txt")
+                      (assoc-in manifest [:full_input :bytes] 6)]]
+        (bfs/write-text! manifest-path (js/JSON.stringify (clj->js source)))
+        (is (thrown? js/Error (bfs/read-review-input dir))))
+      (bfs/write-text! manifest-path (js/JSON.stringify (clj->js manifest)))
+      (is (= manifest (:manifest (bfs/read-review-input dir)))))))

@@ -222,3 +222,21 @@
   spore: none
   receipt-refs: 50a9df830242be9fd342b20f77d8c7470b067a533ec40fbd58c5340ec33058ab
   note: Retain actual first full-suite failure and minimal implementation correction. Disclose final raw index drift and missing original raw backup; preserve functional evidence and logical source custody.
+- ts: 2026-10-13T14:50:22.686498119Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: Qualify complete cohort transport through existing Muse review input
+  p-efficiency: 0.72
+  p-friction: 0.75
+  p-skill-candidate: 0.20
+  spore: none
+  receipt-refs: defa605df8165af3f1e4afb0ccc4b1ccd3c6c300692ef58f00221f3ef017f524
+  note: Preserve actual old and one-branch-removal refusal evidence; all final owning gates pass. Retain unrelated watcher failure and isolated unchanged-source rerun, without claiming its cause. Mongo authentication integration remains skipped. Pure transport is separate from native semantic admission and production deployment; no new spore or promotion.
+- ts: 2026-10-13T17:14:51.700174346Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: Qualify three Muse native input findings and restore watcher runtime capacity
+  p-efficiency: 0.39
+  p-friction: 0.86
+  p-skill-candidate: 0.61
+  spore: none
+  receipt-refs: 5d1d9871b055be38c66d4857dfe3952cf2cd6e9343560638421e49c1e0fdf0f8
+  note: Separate decoder/session custody and singular target laws; preserve actual failed controls. Use restricted syscall observations to identify current ENOSPC before changing tests. Bounded live capacity repair restored normal315 without source/timer changes; prior causes remain unassigned. No spore or deployment credit.

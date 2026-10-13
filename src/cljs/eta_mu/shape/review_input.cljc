@@ -11,4 +11,5 @@
     (case (:schema source)
       "open-hax.review-input/v1" (:full_diff source)
       "open-hax.actionability-input/v1" (:full_input source)
-      "open-hax.rejection-assessment-input/v1" (:full_input source))))
+      "open-hax.rejection-assessment-input/v1" (:full_input source)
+      "open-hax.positive-cohort-assessment-input/v1" (:full_input source))))

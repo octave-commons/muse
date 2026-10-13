@@ -32,6 +32,23 @@
                         [:repository :pull_request :run_id :run_attempt :workflow_ref])
        (oid? (:workflow_sha p))))
 
+(defn- cohort-target? [target]
+  (let [members (:cohort_targets target)]
+    (and (map? target)
+         (nonblank? (:repository target))
+         (boolean (re-matches #"[^/\s]+/[^/\s]+" (:repository target)))
+         (every? #(nonblank? (get target %)) [:repository_id :pr_id])
+         (every? #(positive? (get target %)) [:repository_database_id :pr_number])
+         (not-any? #(contains? target %) [:thread_id :root_comment_id])
+         (vector? members) (seq members)
+         ;; Validate rows before sorting/projecting: malformed scalars must refuse.
+         (every? #(and (vector? %) (= 2 (count %))
+                       (nonblank? (first %)) (positive? (second %))) members)
+         (= members (vec (sort members)))
+         (= (count members) (count (set members)))
+         (= (count members) (count (set (map first members))))
+         (= (count members) (count (set (map second members)))))))
+
 (defn input-source-valid?
   "Validate the fixed transport manifest without projecting its descriptor.
    Coordinates establish shape only, not native authenticity or admission.
@@ -50,13 +67,20 @@
                     (= "actionability-input.txt" (:path full)))
                (and (= "open-hax.rejection-assessment-input/v1" (:schema source))
                     (= "rejection-assessment" (:purpose source))
-                    (= "rejection-assessment-input.txt" (:path full))))
+                    (= "rejection-assessment-input.txt" (:path full)))
+               (and (= "open-hax.positive-cohort-assessment-input/v1" (:schema source))
+                    (= "positive-cohort-assessment" (:purpose source))
+                    (= "positive-cohort-assessment-input.txt" (:path full))))
            (not (contains? source :full_diff))
            (oid? (:head_sha source)) (positive? (:proposal_id source))
            (every? #(sha? 64 (get source %))
                    [:context_sha256 :proposal_body_sha256 :source_inventory_sha256])
-           (map? target) (every? #(nonblank? (get target %)) [:repository_id :pr_id :thread_id])
-           (every? #(positive? (get target %)) [:repository_database_id :pr_number :root_comment_id])
+           (if (= "open-hax.positive-cohort-assessment-input/v1" (:schema source))
+             (cohort-target? target)
+             (and (map? target)
+                  (not (contains? target :cohort_targets))
+                  (every? #(nonblank? (get target %)) [:repository_id :pr_id :thread_id])
+                  (every? #(positive? (get target %)) [:repository_database_id :pr_number :root_comment_id])))
            (provenance? (:provenance source))
            (map? full)
            (positive? (:bytes full)) (sha? 64 (:sha256 full)))))))
@@ -70,7 +94,8 @@
                 (natural? (get-in input-source [:full_diff :bytes]))
                 (= (get-in input-source [:full_diff :sha256]) full-input-sha256))
            (and (#{"open-hax.actionability-input/v1"
-                   "open-hax.rejection-assessment-input/v1"} (:schema input-source))
+                   "open-hax.rejection-assessment-input/v1"
+                   "open-hax.positive-cohort-assessment-input/v1"} (:schema input-source))
                 (= (get-in input-source [:full_input :sha256]) full-input-sha256)))
        (vector? pages)
        (or (= "open-hax.review-input/v1" (:schema input-source)) (boolean (seq pages)))

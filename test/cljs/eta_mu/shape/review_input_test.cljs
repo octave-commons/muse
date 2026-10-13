@@ -81,3 +81,20 @@
                   (assoc-in fixture/rejection-manifest [:full_input :path] "actionability-input.txt")
                   (dissoc fixture/rejection-manifest :provenance)]]
     (is (nil? (shape/input-descriptor source)))))
+
+
+(deftest cohort-descriptor-preserves-the-original-validated-full-input-map
+  (let [descriptor (assoc (:full_input fixture/cohort-manifest) :retained-extra "original cohort bytes")
+        source (assoc fixture/cohort-manifest :full_input descriptor)]
+    (is (true? (invocation/input-source-valid? source)))
+    (is (identical? descriptor (shape/input-descriptor source)))
+    (is (= descriptor (shape/input-descriptor source))))
+  (doseq [source (fixture/malformed-cohort-sources)]
+    (is (nil? (shape/input-descriptor source))))
+  (let [source (-> fixture/cohort-manifest
+                   (assoc :head_sha (apply str (repeat 64 "b")))
+                   (assoc-in [:provenance :workflow_sha] (apply str (repeat 64 "d"))))]
+    (is (= (:full_input source) (shape/input-descriptor source))))
+  (is (false? (invocation/context-valid?
+               (assoc fixture/context :input-source fixture/cohort-manifest
+                      :full-input-sha256 (apply str (repeat 64 "f")))))))

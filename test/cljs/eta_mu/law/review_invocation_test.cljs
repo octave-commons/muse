@@ -1064,3 +1064,125 @@
                      (assoc-in [:provenance :workflow_sha] (apply str (repeat 64 "d"))))]
     (is (true? (invocation/input-source-valid? complete)))
     (is (true? (invocation/context-valid? (assoc context :input-source complete))))))
+
+
+;; A fourth transport purpose binds every cohort target without admission credit.
+(def cohort-manifest
+  (-> native-manifest
+      (assoc :schema "open-hax.positive-cohort-assessment-input/v1"
+             :purpose "positive-cohort-assessment"
+             :target {:repository "fixture/repo" :repository_id "R_fixture"
+                      :repository_database_id 3 :pr_id "PR_fixture" :pr_number 1
+                      :cohort_targets [["PRRT_fixture_A" 7] ["PRRT_fixture_B" 8]]})
+      (assoc-in [:full_input :path] "positive-cohort-assessment-input.txt")))
+
+(defn cohort-fixture []
+  (let [{:keys [context submission events]} (native-fixture)]
+    {:context (assoc context :input-source cohort-manifest)
+     :submission (assoc submission :input-source cohort-manifest)
+     :events (assoc-in events [0 :part :state :output :input-source] cohort-manifest)}))
+
+(defn malformed-cohort-sources []
+  (vec
+   (concat
+    [(assoc cohort-manifest :purpose "rejection-assessment")
+     (assoc cohort-manifest :schema "open-hax.rejection-assessment-input/v1")
+     (dissoc cohort-manifest :purpose)
+     (assoc cohort-manifest :full_diff (:full_diff manifest))
+     (assoc-in cohort-manifest [:full_input :path] "rejection-assessment-input.txt")
+     (assoc-in cohort-manifest [:full_input :path] "../positive-cohort-assessment-input.txt")
+     (assoc-in cohort-manifest [:full_input :bytes] 0)
+     (assoc-in cohort-manifest [:full_input :bytes] 1.5)
+     (assoc-in cohort-manifest [:full_input :bytes] 9007199254740992)
+     (assoc-in cohort-manifest [:full_input :sha256] "short")
+     (assoc cohort-manifest :head_sha (apply str (repeat 41 "a")))
+     (assoc cohort-manifest :proposal_id 0)
+     (assoc cohort-manifest :proposal_id "71")
+     (dissoc cohort-manifest :provenance)]
+    (for [k [:context_sha256 :proposal_body_sha256 :source_inventory_sha256]]
+      (assoc cohort-manifest k "short"))
+    (for [target [nil 42 "target" [] {}
+                  (assoc (:target cohort-manifest) :repository " ")
+                  (assoc (:target cohort-manifest) :repository "fixture")
+                  (assoc (:target cohort-manifest) :repository "fixture/repo/extra")
+                  (assoc (:target cohort-manifest) :repository_id "")
+                  (assoc (:target cohort-manifest) :repository_database_id 0)
+                  (assoc (:target cohort-manifest) :pr_id nil)
+                  (assoc (:target cohort-manifest) :pr_number 1.5)
+                  (assoc (:target cohort-manifest) :thread_id "PRRT_fixture_A")
+                  (assoc (:target cohort-manifest) :root_comment_id 7)]]
+      (assoc cohort-manifest :target target))
+    (for [members [nil 42 "members" {} [] (seq [["PRRT_fixture_A" 7]])
+                   [42] [["PRRT_fixture_A"]] [["PRRT_fixture_A" 7 "extra"]]
+                   [[" " 7]] [["PRRT_fixture_A" 0]] [["PRRT_fixture_A" "7"]]
+                   [["PRRT_fixture_A" 9007199254740992]]
+                   [["PRRT_fixture_A" 7] ["PRRT_fixture_A" 7]]
+                   [["PRRT_fixture_A" 7] ["PRRT_fixture_A" 8]]
+                   [["PRRT_fixture_A" 7] ["PRRT_fixture_B" 7]]
+                   [["PRRT_fixture_B" 8] ["PRRT_fixture_A" 7]]]]
+      (assoc-in cohort-manifest [:target :cohort_targets] members)))))
+
+(deftest cohort-transport-refuses-malformed-and-singular-targets-without-throwing
+  (doseq [source (malformed-cohort-sources)]
+    (let [{:keys [context submission events]} (cohort-fixture)
+          changed (assoc context :input-source source)
+          result (invocation/verify events submission changed)]
+      (is (false? (invocation/input-source-valid? source)))
+      (is (false? (invocation/context-valid? changed)))
+      (is (= :trusted-context-unestablished (:code result)))
+      (is (nil? (:accepted-invocation result))))))
+
+(deftest cohort-transport-reuses-complete-host-custody-without-semantic-credit
+  (let [{:keys [context submission events]} (cohort-fixture)
+        result (invocation/verify events submission context)]
+    (is (true? (invocation/input-source-valid? cohort-manifest)))
+    (is (true? (:ok? result)))
+    (is (= 1 (get-in result [:accepted-invocation :page-count])))
+    (is (every? #(not (contains? result %))
+                [:agreement :preservation :qualified? :settled? :approval]))
+    (doseq [changed [(assoc cohort-manifest :proposal_id 72)
+                     (assoc cohort-manifest :context_sha256 (apply str (repeat 64 "f")))
+                     (assoc cohort-manifest :proposal_body_sha256 (apply str (repeat 64 "f")))
+                     (assoc cohort-manifest :source_inventory_sha256 (apply str (repeat 64 "f")))
+                     (assoc-in cohort-manifest [:target :repository] "fixture/other")
+                     (assoc-in cohort-manifest [:target :repository_id] "R_other")
+                     (assoc-in cohort-manifest [:target :repository_database_id] 4)
+                     (assoc-in cohort-manifest [:target :pr_id] "PR_other")
+                     (assoc-in cohort-manifest [:target :pr_number] 2)
+                     (assoc-in cohort-manifest [:target :cohort_targets 1 1] 9)]]
+      (is (= :begin-source-binding
+             (:code (invocation/verify events submission (assoc context :input-source changed)))))
+      (is (= :serialized-source-binding
+             (:code (invocation/verify events (assoc submission :input-source changed) context)))))
+    (doseq [changed [(vec (concat [(first events)] (subvec events 3)))
+                     (append-calls events [(tool-event 10 "review_read_diff_chunk" {:id 1} read-output)])
+                     (assoc-in events [2 :part :state :output] {:ok? false :error "Actual page failure"})
+                     (assoc-in events [3 :part :state :output] {:ok? false :error "Actual stage failure"})
+                     (assoc-in events [8 :part :state :input :summary] "changed carrier")]]
+      (let [refused (invocation/verify changed submission context)]
+        (is (false? (:ok? refused)))
+        (is (nil? (:accepted-invocation refused)))))
+    (is (false? (invocation/context-valid? (assoc context :pages [] :page-count 0)))))
+  (let [complete (-> cohort-manifest
+                     (assoc :head_sha (apply str (repeat 64 "b")))
+                     (assoc-in [:provenance :workflow_sha] (apply str (repeat 64 "d"))))]
+    (is (true? (invocation/input-source-valid? complete)))
+    (is (true? (invocation/context-valid? (assoc context :input-source complete)))))
+  (let [single (assoc-in cohort-manifest [:target :cohort_targets] [["PRRT_fixture_A" 7]])]
+    (is (true? (invocation/input-source-valid? single)))))
+
+
+(deftest singular-native-purposes-refuse-any-cohort-coordinate-key
+  (doseq [fixture-maker [native-fixture rejection-fixture]]
+    (let [{:keys [context submission events]} (fixture-maker)
+          original (:input-source context)]
+      (is (true? (invocation/input-source-valid? original)))
+      (is (true? (:ok? (invocation/verify events submission context))))
+      (doseq [members [nil [] [["PRRT_fixture_A" 7] ["PRRT_fixture_B" 8]] 42 "members"]]
+        (let [mixed (assoc-in original [:target :cohort_targets] members)
+              changed (assoc context :input-source mixed)
+              result (invocation/verify events submission changed)]
+          (is (false? (invocation/input-source-valid? mixed)))
+          (is (false? (invocation/context-valid? changed)))
+          (is (= :trusted-context-unestablished (:code result)))
+          (is (nil? (:accepted-invocation result))))))))
