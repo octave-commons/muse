@@ -78,6 +78,7 @@
            (if (= "open-hax.positive-cohort-assessment-input/v1" (:schema source))
              (cohort-target? target)
              (and (map? target)
+                  (not (contains? target :cohort_targets))
                   (every? #(nonblank? (get target %)) [:repository_id :pr_id :thread_id])
                   (every? #(positive? (get target %)) [:repository_database_id :pr_number :root_comment_id])))
            (provenance? (:provenance source))

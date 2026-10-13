@@ -1170,3 +1170,19 @@
     (is (true? (invocation/context-valid? (assoc context :input-source complete)))))
   (let [single (assoc-in cohort-manifest [:target :cohort_targets] [["PRRT_fixture_A" 7]])]
     (is (true? (invocation/input-source-valid? single)))))
+
+
+(deftest singular-native-purposes-refuse-any-cohort-coordinate-key
+  (doseq [fixture-maker [native-fixture rejection-fixture]]
+    (let [{:keys [context submission events]} (fixture-maker)
+          original (:input-source context)]
+      (is (true? (invocation/input-source-valid? original)))
+      (is (true? (:ok? (invocation/verify events submission context))))
+      (doseq [members [nil [] [["PRRT_fixture_A" 7] ["PRRT_fixture_B" 8]] 42 "members"]]
+        (let [mixed (assoc-in original [:target :cohort_targets] members)
+              changed (assoc context :input-source mixed)
+              result (invocation/verify events submission changed)]
+          (is (false? (invocation/input-source-valid? mixed)))
+          (is (false? (invocation/context-valid? changed)))
+          (is (= :trusted-context-unestablished (:code result)))
+          (is (nil? (:accepted-invocation result))))))))

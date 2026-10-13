@@ -713,6 +713,47 @@ try {
       assert.deepEqual(prepared.pages, [{id: 1, start: 0, end: text.length}]);
     });
   }
+  await cohortCheck('cohort-decoder-loss-refuses-before-session', async () => {
+    const text = 'synthetic cohort positive-byte decoder-loss control', bytes = Buffer.from(text);
+    const source = {...cohortManifest, full_input: {path: 'positive-cohort-assessment-input.txt',
+      bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex')}};
+    const {dir, context} = cohortConsumer('cohort-decoder-loss', bytes, JSON.stringify(source));
+    const originalDecoder = globalThis.TextDecoder;
+    let losses = 0;
+    globalThis.TextDecoder = class extends originalDecoder {
+      decode(...args) {
+        const decoded = super.decode(...args);
+        if (decoded === text) { losses++; return ''; }
+        return decoded;
+      }
+    };
+    try {
+      const begin = await call('review_begin', {}, context);
+      const status = await call('review_status', {}, context);
+      assert.equal(losses, 1, 'the actual full-input decoder must encounter the controlled byte-valid text');
+      assert.deepEqual({beginRefused: begin['ok?'] === false, sessionAbsent: status['ok?'] === false,
+        submissionAbsent: !fs.existsSync(path.join(dir, 'submission.json')),
+        eventsAbsent: !fs.existsSync(path.join(dir, 'review-events.jsonl'))},
+      {beginRefused: true, sessionAbsent: true, submissionAbsent: true, eventsAbsent: true},
+      'cohort geometry must refuse decoder loss before session or event custody');
+    } finally { globalThis.TextDecoder = originalDecoder; }
+  });
+  for (const [purpose, source, bytes, consumer] of [
+    ['actionability', nativeManifest, nativeFull, inputConsumer],
+    ['rejection-assessment', rejectionManifest, rejectionFull, rejectionConsumer],
+  ]) {
+    for (const [index, members] of [null, [], [['PRRT_fixture_A', 7], ['PRRT_fixture_B', 8]]].entries()) {
+      await cohortCheck(`singular-${purpose}-cohort-coordinate-refusal-${index}`, async () => {
+        const mixed = {...source, target: {...source.target, cohort_targets: members}};
+        const {dir, context} = consumer(`singular-${purpose}-cohort-${index}`, bytes, JSON.stringify(mixed));
+        fs.writeFileSync(path.join(dir, 'submission.json'), 'inert stale carrier');
+        assert.equal((await call('review_begin', {}, context))['ok?'], false);
+        assert.equal((await call('review_status', {}, context))['ok?'], false);
+        assert.equal(fs.existsSync(path.join(dir, 'submission.json')), false);
+        assert.equal(fs.existsSync(path.join(dir, 'review-events.jsonl')), false);
+      });
+    }
+  }
   console.log(JSON.stringify({cohort_input_controls: cohortResults, native_preservation: false, native_review: false}));
   assert.equal(cohortResults.filter(result => !result.pass).length, 0,
     'every fresh compiled cohort carrier control must pass');

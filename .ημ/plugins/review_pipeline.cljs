@@ -75,7 +75,8 @@
         (let [{:keys [text manifest]} (bfs/read-review-input (evidence-dir ctx))
               session (assoc (review/begin text) :input-source manifest)
               _ (when (#{"open-hax.actionability-input/v1"
-                         "open-hax.rejection-assessment-input/v1"} (:schema manifest))
+                         "open-hax.rejection-assessment-input/v1"
+                         "open-hax.positive-cohort-assessment-input/v1"} (:schema manifest))
                   (when-not (invocation/context-valid?
                              {:input-source manifest
                               :pages (mapv #(select-keys % [:id :start :end]) (:diff-chunks session))
