@@ -221,4 +221,5 @@ Acceptance and RED/GREEN controls:
 Measured retained inputs: raw diff 1,274,799 bytes; summary 1,043 bytes; deterministic log 782,474 bytes. Choose the actual invocation budget after canonical view geometry is measured. The current ordinary whole-job budget is 60–180 minutes, default 120; explicit 180 is a candidate for the first full-support native qualification, without a completion guarantee or weakening any guard. No implementation starts until this owner card's planning review and lawful readiness are established through Rheos.
 
 This dated scope advances the current authorized Website/CMS deployment. Earlier preparation holds and non-goals remain historical scope records; this addition requests planning review before implementation, not readiness or qualification.
+
 ---
