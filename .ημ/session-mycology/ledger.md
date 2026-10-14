@@ -258,3 +258,12 @@
   spore: none
   receipt-refs: 3b4cac1053de0ccc3ca5005fe1410c3309fb25dbda07a96ebf70d176f6d96eaa
   note: Initial first-class Markdown cards are visible to actual canonical read-task, with real owner UUIDs, scoped decomposition and honest downstream qualification. Preserve the old card/frontmatter and historical ledger bytes; exact one-newline correction improves rendering. Source plans are committed and ready for native planning review; no implementation, readiness, complete supporting review scope, native approval or production rollout claimed. Cross-repository links do not invent completion enforcement. No spore.
+- ts: 2026-10-14T09:15:21.975158285Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: Correct canonical dependency shapes and external narrative ownership
+  p-efficiency: 0.77
+  p-friction: 0.42
+  p-skill-candidate: 0.0
+  spore: none
+  receipt-refs: a4d7ea3b81543d6cf49fae3ab603556c890be6c3ed97afe429a95d151c51acc1
+  note: Fresh native planning feedback exposed a scalar dependency admitted by raw card readback but invalid under the planning law. Use actual canonical field operations and verify vector plus correlated engine event/write ID; preserve incoming status, points and ledger prefix. Name the narrative task external owner without adding a dependency. Manual initial creation remains authorized and its absent generated event is not fabricated. Native current-head review convergence and full CMS deployment remain outstanding; no spore.
