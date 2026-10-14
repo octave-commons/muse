@@ -39,7 +39,7 @@
                  :base_sha (:base_sha producer) :head_sha (:head_sha producer)
                  :diff_base_sha (:diff_base_sha producer)
                  :full_diff (select-keys (first components) [:path :bytes :sha256])
-                 :components components
+                 :components (vec components)
                  :view (-> (byte-descriptor "unused" view) (dissoc :path)
                            (assoc :text_units (count view) :page_count (count (review/diff-chunks view))))
                  :producer producer}]
