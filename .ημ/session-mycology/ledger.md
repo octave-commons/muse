@@ -339,3 +339,12 @@
   spore: none
   receipt-refs: 8864777b9147f53f526349eb33c45e1da85d62830852018f6a0ebefeee1b442f
   note: A bounded full-card review found the intrinsic length issue before publication; actual52causal failures and cold51control qualification close it. Preserve authored assessment work privately rather than contaminating predecessor gates. Commit alreadyqualified paths promptly. No spore/promotion.
+- ts: 2026-10-14T17:37:21.097953133Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: Commit complete component assessment causal RED
+  p-efficiency: 0.7
+  p-friction: 0.8
+  p-skill-candidate: 0
+  spore: none
+  receipt-refs: 67ed94e9f1306c305eb984911ef5575cb30a079b0e70e28e0021941da9a8c66c
+  note: Actual existing APIs reproduce missing role/assessment/geometry behavior; corrected private fixture leaves 145 semantic failures and no errors/warnings. Preserve earlier fixture/npm captures and Mongo unqualified scope. Commit RED before GREEN; cold plugin and retained real per-role reconstruction remain required. No new spore or promotion.
