@@ -1,7 +1,311 @@
 (ns eta-mu.domain.review-test
   (:require [cljs.test :refer [deftest is]]
             [clojure.string :as str]
+            [eta-mu.extern.review-input :as input-edge]
+            [eta-mu.law.review-invocation-test :as input-fixture]
             [eta-mu.domain.review :as review]))
+
+(defn assessment-v2-input [texts]
+  ;; The known originals are held before the boundary call. Candidate bytes
+  ;; never fill in a missing trusted identity during the operation under test.
+  (let [{:keys [source trusted]} (input-fixture/ordinary-v2-fixture texts)]
+    (assoc (input-edge/prepare-ordinary-v2-originals
+            source (mapv #(js/Buffer.from % "utf8") texts) trusted)
+           :manifest source)))
+
+(def assessment-page-identity-keys
+  [:id :role :component-sha256 :component-byte-span :component-text-span
+   :view-byte-span :view-text-span :start :end])
+
+(defn assessment-v2-begin [input]
+  ;; SAME existing compiled symbol: predecessor ignores native argument two
+  ;; and reaches its real text-only behavior, without a CLJS arity failure.
+  (.call review/begin nil (:text input) input))
+
+(defn assessment-v2-record [chunk]
+  ;; Build observations from actual returned payload slices. Missing role
+  ;; metadata is not relabeled as a valid changed-hunk positive neighbor.
+  (let [text (:text chunk)
+        role (:role chunk)
+        marker (case role
+                 "raw-diff" (or (re-find #"(?m)^@@[^\r\n]*@@" text)
+                                (when-let [[start end] (first (or (seq (:changed-spans chunk))
+                                                                (seq (:hunk-spans chunk))))]
+                                  (subs text start end)))
+                 "summary" (re-find #"\"gate\"\s*:\s*\"pass\"" text)
+                 "log" (when (str/includes? text "result: pass") "result: pass")
+                 nil)
+        kind (case role
+               "raw-diff" (if marker "changed-hunk" "no-changed-hunk")
+               "summary" (if marker "summary-field" "no-relevant-evidence")
+               "log" (if marker "log-observation" "no-relevant-evidence")
+               nil)
+        at (when marker
+             (if (and (= role "raw-diff") (not (re-find #"(?m)^@@[^\r\n]*@@" text)))
+               (first (first (or (seq (:changed-spans chunk)) (seq (:hunk-spans chunk)))))
+               (str/index-of text marker)))
+        observation (when kind
+                      (cond-> {:kind kind :text-span (if marker [at (+ at (count marker))]
+                                                         [0 (count text)])
+                               :text (or marker text)}
+                        (= kind "summary-field") (assoc :field "gate" :value "pass")
+                        (= kind "log-observation") (assoc :context "result" :value "pass")
+                        (not marker) (assoc :reason "No matching evidence in this actual synthetic payload slice.")))]
+    {:page-ref (select-keys chunk assessment-page-identity-keys)
+     :kind kind :observations (if observation [observation] [])}))
+
+(deftest ordinary-v2-delivery-keeps-every-role-and-exact-original-identity
+  (doseq [texts [["diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\r\n+ημ 😀\r\n"
+                 "{\"gate\":\"pass\"}\r\n" "\uFEFFresult: pass\r\nlog tail 😀\n"]
+                ["" "{\"gate\":\"pass\"}" ""]
+                [(str (apply str (repeat 8191 "x")) "😀tail\r\n")
+                 "{\"gate\":\"pass\"}" "result: pass\n"]]]
+    (let [input (assessment-v2-input texts)
+          session (assessment-v2-begin input)
+          components (:components input)
+          expected-pages (reduce + (map #(count (review/diff-chunks %)) texts))
+          delivered (mapv #(review/read-diff-chunk session (:id %)) (:diff-chunks session))
+          chunks (mapv :chunk delivered)]
+      (is (= components (:components session)) "empty identities stay in the component universe")
+      (is (= (:manifest input) (:input-source session)))
+      (is (= expected-pages (count chunks)) "canonical pages are counted independently per role")
+      (is (every? :ok? delivered))
+      (is (= (vec (range 1 (inc expected-pages))) (mapv :id chunks))
+          "global IDs remain deterministic and unique across component-local pages")
+      (doseq [[descriptor original] (map vector components texts)]
+        (let [pages (filterv #(= (:role descriptor) (:role %)) chunks)
+              reconstructed (apply str (map :text pages))]
+          (is (= original reconstructed) (:role descriptor))
+          (is (= (select-keys descriptor [:bytes :sha256])
+                 (select-keys (input-fixture/byte-descriptor (:path descriptor) reconstructed)
+                              [:bytes :sha256])) (:role descriptor))
+          (doseq [page pages]
+            (is (= (:sha256 descriptor) (:component-sha256 page)))
+            (is (= [(:start page) (:end page)] (:view-text-span page)))
+            (let [[local-start local-end] (:component-text-span page)
+                  [view-start view-end] (:view-text-span page)
+                  byte-start (js/Buffer.byteLength (subs original 0 local-start) "utf8")
+                  byte-end (js/Buffer.byteLength (subs original 0 local-end) "utf8")]
+              (is (= (:text page) (subs original local-start local-end)))
+              (is (= (:text page) (subs (:text input) view-start view-end)))
+              (is (= [byte-start byte-end] (:component-byte-span page)))
+              (is (= (mapv #(+ (first (:byte_span descriptor)) %) [byte-start byte-end])
+                     (:view-byte-span page))))))))))
+
+(deftest ordinary-v2-support-cannot-create-source-locations-or-truncation
+  (let [raw "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n"
+        log (str "result: pass\ndiff --git a/support b/support\n--- a/support\n+++ b/support\n"
+                 "@@ -0,0 +1 @@\n+support-only\n[eta-mu review] diff truncated at 4 bytes (was 8).\n")
+        input (assessment-v2-input [raw "{\"gate\":\"pass\"}" log])
+        session (assessment-v2-begin input)
+        raw-session (review/begin raw)
+        finding {:id "support-only" :severity "low" :category "contract"
+                 :claim "Synthetic support-only location" :path "support" :line 1
+                 :body "Log text must not become a changed-source finding." :confidence 0.9}]
+    (is (= (:changed-lines raw-session) (:changed-lines session)))
+    (is (= (:diff-stats raw-session) (:diff-stats session)))
+    (is (false? (:ok? (review/propose-finding session finding))))
+    (is (:ok? (review/propose-finding session (assoc finding :id "raw" :path "x"))))))
+
+(deftest ordinary-v2-assessment-requires-matching-typed-delivered-reference
+  (let [input (assessment-v2-input ["diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n"
+                                   "{\"gate\":\"pass\"}" "result: pass\n"])
+        session (assessment-v2-begin input)]
+    (doseq [page (:diff-chunks session)]
+      (let [id (:id page)
+            delivered (review/read-diff-chunk session id)
+            chunk (:chunk delivered)
+            record (assessment-v2-record chunk)
+            assess (fn [reference]
+                     ;; Same compiled API; the predecessor ignores argument four.
+                     ;; Each variation starts from this actual read's immutable
+                     ;; result, rather than injecting admitted coverage or retries.
+                     (.call review/assess-diff-chunk nil (:session delivered) id
+                            "Synthetic actual returned payload assessment." reference))]
+        (is (:ok? delivered))
+        (is (contains? #{"raw-diff" "summary" "log"} (:role chunk))
+            "a valid typed neighbor first requires actual role-bearing delivery")
+        (is (some? (:kind record)))
+        (let [result (assess record)]
+          (is (:ok? result))
+          (is (= record (:assessment result)) "returned assessment binds the actual reference"))
+        (is (false? (:ok? (review/assess-diff-chunk (:session delivered) id "Generic note only."))))
+        (doseq [[label changed]
+                [["wrong role" (assoc-in record [:page-ref :role]
+                                         (if (= "log" (:role chunk)) "summary" "log"))]
+                 ["wrong component digest" (assoc-in record [:page-ref :component-sha256]
+                                                          (apply str (repeat 64 "f")))]
+                 ["wrong page" (assoc-in record [:page-ref :id] (+ id 100))]
+                 ["wrong byte span" (assoc-in record [:page-ref :component-byte-span] [-1 1])]
+                 ["wrong text span" (assoc-in record [:page-ref :component-text-span] [-1 1])]
+                 ["wrong view span" (assoc-in record [:page-ref :view-text-span] [-1 1])]
+                 ["wrong semantic kind" (assoc record :kind
+                                              (if (= "summary-field" (:kind record))
+                                                "log-observation" "summary-field"))]
+                 ["wrong inner observation kind" (assoc-in record [:observations 0 :kind] "empty-component")]
+                 ["wrong exact observation span" (assoc-in record [:observations 0 :text-span] [-1 1])]
+                 ["payload mutation" (assoc-in record [:observations 0 :text] "replacement")]]]
+          (is (false? (:ok? (assess changed))) label))
+        (doseq [[label changed]
+                (case (:role chunk)
+                  "summary" [["wrong delivered summary field" (assoc-in record [:observations 0 :field] "unobserved")]
+                             ["wrong delivered summary value" (assoc-in record [:observations 0 :value] "failure")]]
+                  "log" [["wrong delivered log context" (assoc-in record [:observations 0 :context] "unobserved")]
+                         ["wrong delivered log value" (assoc-in record [:observations 0 :value] "failure")]]
+                  [])]
+          ;; Page identity and exact quoted text stay unchanged in these cases.
+          (is (false? (:ok? (assess changed))) label))))
+    ;; Complete the pure session only through actual returned owner results.
+    ;; This is not a fabricated successful eight-tool/OpenCode trace.
+    (let [records* (atom [])
+          assessed (reduce
+                    (fn [state page]
+                      (let [read (review/read-diff-chunk state (:id page))
+                            record (assessment-v2-record (:chunk read))
+                            result (.call review/assess-diff-chunk nil (:session read) (:id page)
+                                          "Actual typed payload assessment." record)]
+                        (is (:ok? read))
+                        (is (:ok? result))
+                        (swap! records* conj record)
+                        (if (:ok? result) (:session result) (:session read))))
+                    session (:diff-chunks session))
+          advanced (reduce (fn [state stage]
+                             (let [result (review/record-evidence state stage "Actual returned full-input state.")]
+                               (is (:ok? result))
+                               (if (:ok? result) (:session result) state)))
+                           assessed review/stages)
+          submitted (review/submission advanced "Synthetic pure owner result, not a native review.")]
+      (is (= #{"raw-diff" "summary" "log"}
+             (set (map #(get-in % [:page-ref :role]) @records*))))
+      (is (:ok? submitted))
+      (is (= (:manifest input) (get-in submitted [:envelope :input-source])))
+      (is (= @records* (mapv :assessment (get-in submitted [:envelope :input-assessments])))))
+    (let [legacy (review/read-diff-chunk (review/begin "diff") 1)]
+      (is (:ok? (review/assess-diff-chunk (:session legacy) 1 "Legacy note."))))))
+
+(deftest ordinary-v2-empty-components-require-explicit-empty-observations
+  (let [input (assessment-v2-input ["" "" ""])
+        initial (assessment-v2-begin input)]
+    (is (= [] (:diff-chunks initial)) "no empty role invents a nonempty page or page zero")
+    (is (= (:components input) (:components initial)))
+    (is (false? (:ok? (review/record-evidence initial :deterministic "No empty observations yet."))))
+    (let [observed (reduce (fn [session component]
+                             (let [result (.call review/assess-diff-chunk nil session nil
+                                                 "Explicit zero-byte component observation."
+                                                 {:kind "empty-component" :component-ref component})]
+                               (is (:ok? result) (:role component))
+                               (is (= {:kind "empty-component" :component-ref component}
+                                      (:assessment result))
+                                   "actual empty-role observation is returned without a page id")
+                               ;; Retain actual predecessor state on refusal;
+                               ;; do not manufacture admitted coverage or traces.
+                               (let [actual (if (:ok? result) (:session result) session)]
+                                 (when (not= "log" (:role component))
+                                   (is (false? (:ok? (review/record-evidence
+                                                     actual :deterministic "Only a prefix of empty roles observed.")))))
+                                 actual)))
+                           initial (:components input))]
+      (is (:ok? (review/record-evidence observed :deterministic "Every empty role observed."))))
+    (doseq [component [(assoc-in (first (:components input)) [:role] "unknown")
+                       (assoc-in (first (:components input)) [:sha256] (apply str (repeat 64 "f")))]]
+      (is (false? (:ok? (.call review/assess-diff-chunk nil initial nil "Wrong empty identity."
+                              {:kind "empty-component" :component-ref component})))))
+    (let [raw (first (:components input))
+          first-result (.call review/assess-diff-chunk nil initial nil "Only raw empty role."
+                              {:kind "empty-component" :component-ref raw})
+          actual (if (:ok? first-result) (:session first-result) initial)
+          replay (.call review/assess-diff-chunk nil actual nil "Replaying raw does not observe summary/log."
+                        {:kind "empty-component" :component-ref raw})
+          replayed (if (:ok? replay) (:session replay) actual)]
+      (is (false? (:ok? (review/record-evidence replayed :deterministic "Other empty roles still absent.")))))
+    (let [mixed-input (assessment-v2-input ["" "{\"gate\":\"pass\"}" ""])
+          mixed (assessment-v2-begin mixed-input)
+          nonempty-assessed (reduce
+                             (fn [state page]
+                               (let [read (review/read-diff-chunk state (:id page))
+                                     result (.call review/assess-diff-chunk nil (:session read) (:id page)
+                                                   "Actual nonempty summary assessment."
+                                                   (assessment-v2-record (:chunk read)))]
+                                 (is (:ok? read))
+                                 (is (:ok? result))
+                                 (if (:ok? result) (:session result) (:session read))))
+                             mixed (:diff-chunks mixed))
+          empties (filterv #(zero? (:bytes %)) (:components mixed-input))]
+      (is (false? (:ok? (review/record-evidence nonempty-assessed :deterministic "Empty roles unobserved."))))
+      (let [complete (reduce
+                      (fn [state component]
+                        (let [result (.call review/assess-diff-chunk nil state nil "Actual mixed empty-role observation."
+                                            {:kind "empty-component" :component-ref component})
+                              actual (if (:ok? result) (:session result) state)]
+                          (is (:ok? result))
+                          (when (= "raw-diff" (:role component))
+                            (is (false? (:ok? (review/record-evidence actual :deterministic "Empty log still unobserved.")))))
+                          actual))
+                      nonempty-assessed empties)]
+        (is (:ok? (review/record-evidence complete :deterministic "Nonempty and empty roles all observed.")))))
+    (is (:ok? (review/record-evidence (review/begin "") :deterministic "Legacy empty diff.")))))
+
+(deftest ordinary-v2-partial-role-coverage-refuses-advancement-and-submission
+  (let [texts ["diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n"
+               "{\"gate\":\"pass\"}" (str "result: pass\n" (apply str (repeat 130 "log line\n")))]
+        input (assessment-v2-input texts)]
+    (doseq [omission [:summary :log :assessment :log-tail]]
+      (let [initial (assessment-v2-begin input)
+            pages (:diff-chunks initial)
+            log-pages (filterv #(= "log" (:role %)) pages)
+            last-log-id (:id (last log-pages))
+            summary-id (:id (first (filter #(= "summary" (:role %)) pages)))
+            include? (fn [page]
+                       (case omission
+                         :summary (not= "summary" (:role page))
+                         :log (not= "log" (:role page))
+                         :log-tail (not= last-log-id (:id page))
+                         true))
+            partial (reduce (fn [state page]
+                              (if (include? page)
+                                (let [read (review/read-diff-chunk state (:id page))]
+                                  (is (:ok? read))
+                                  (if (and (= omission :assessment) (= summary-id (:id page)))
+                                    (:session read)
+                                    (let [result (.call review/assess-diff-chunk nil (:session read) (:id page)
+                                                        "Actual returned partial-role assessment."
+                                                        (assessment-v2-record (:chunk read)))]
+                                      (is (:ok? result))
+                                      (if (:ok? result) (:session result) (:session read)))))
+                                state))
+                            initial pages)
+            stage (review/record-evidence partial :deterministic "Missing required role/page/assessment.")]
+        (is (<= 2 (count log-pages)) "valid neighbor must expose the actual multi-page log")
+        (is (some? summary-id) "valid neighbor must expose the actual summary page")
+        (is (false? (:ok? stage)) (name omission))
+        (is (nil? (:session stage)) "refusal supplies no advanced state")
+        ;; Do not issue more stages after a refusal. On the actual predecessor's
+        ;; wrong acceptance, advance only through its actual returned results.
+        (let [advanced (if (:ok? stage)
+                         (reduce (fn [state next-stage]
+                                   (let [result (review/record-evidence state next-stage "Actual predecessor result.")]
+                                     (if (:ok? result) (:session result) (reduced state))))
+                                 (:session stage) (rest review/stages))
+                         partial)]
+          (is (false? (:ok? (review/submission advanced "Partial support cannot complete.")))
+              (name omission)))))))
+
+(deftest ordinary-v2-nonempty-payload-references-reject-empty-quotes
+  (let [input (assessment-v2-input ["raw context" " " " \t\n"])
+        initial (assessment-v2-begin input)]
+    (doseq [page (:diff-chunks initial)]
+      (let [read (review/read-diff-chunk initial (:id page))
+            actual (:chunk read)
+            valid (assessment-v2-record actual)
+            empty-quote (-> valid
+                            (assoc-in [:observations 0 :text-span] [0 0])
+                            (assoc-in [:observations 0 :text] ""))
+            assess #(.call review/assess-diff-chunk nil (:session read) (:id page)
+                           "Actual nonempty payload reference." %)]
+        (is (:ok? read))
+        (is (:ok? (assess valid)) "nonempty whitespace is an actual permissible supporting slice")
+        (is (false? (:ok? (assess empty-quote)))
+            "correct kind/reason/page cannot replace a payload observation with an empty span")))))
 
 (deftest deterministic-requires-complete-input-without-advancing
   (let [diff (str "diff --git a/tail b/tail\n--- a/tail\n+++ b/tail\n@@ -0,0 +1,130 @@\n"
@@ -752,3 +1056,87 @@
         (is (= sample-diff (get-in reread [:chunk :text])))
         (is (= restart-refusal-message (get-in reread [:session :restart-error])))
         (is (false? (:ok? (review/assess-diff-chunk (:session reread) 1 "Both latches remain permanent."))))))))
+
+
+(defn- delivered-observation-record [page kind quote fields]
+  (let [start (str/index-of (:text page) quote)]
+    {:page-ref (select-keys page assessment-page-identity-keys)
+     :kind kind
+     :observations [(merge {:kind kind :text-span [start (+ start (count quote))]
+                            :text quote} fields)]}))
+
+(deftest support-assessments-require-the-declared-evidence-categories
+  (let [input (assessment-v2-input
+               ["diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n"
+                "{\"gate\":\"pass\",\"status\":\"success\",\"limitation\":\"fixture-only\",\"duration\":12,\"author\":\"fixture\"}"
+                "result: pass\nfailure: absent\nenvironment: loopback\nhello\nresultExtra: pass\n"])
+        session (assessment-v2-begin input)]
+    (doseq [page (filter #(#{"summary" "log"} (:role %)) (:diff-chunks session))]
+      (let [read (review/read-diff-chunk session (:id page))
+            actual (:chunk read)
+            assess #(review/assess-diff-chunk (:session read) (:id actual)
+                                             "Exact actual delivered category reference." %)
+            [kind positives negatives]
+            (case (:role actual)
+              "summary" ["summary-field"
+                         [["\"gate\":\"pass\"" {:field "gate" :value "pass"}]
+                          ["\"status\":\"success\"" {:field "status" :value "success"}]
+                          ["\"limitation\":\"fixture-only\"" {:field "limitation" :value "fixture-only"}]]
+                         [["\"duration\":12" {:field "duration" :value "12"}]
+                          ["\"author\":\"fixture\"" {:field "author" :value "fixture"}]]]
+              "log" ["log-observation"
+                     [["result: pass" {:context "result" :value "pass"}]
+                      ["failure: absent" {:context "failure" :value "absent"}]
+                      ["environment: loopback" {:context "environment" :value "loopback"}]]
+                     [["hello" {:context "h" :value "ello"}]
+                      ["resultExtra: pass" {:context "resultExtra" :value "pass"}]]])]
+        (is (:ok? read))
+        (doseq [[quote fields] positives]
+          (is (:ok? (assess (delivered-observation-record actual kind quote fields)))
+              "actual required-category references are admitted neighbors"))
+        (doseq [[quote fields] negatives]
+          (let [record (delivered-observation-record actual kind quote fields)]
+            (is (= quote (get-in record [:observations 0 :text])))
+            (is (false? (:ok? (assess record)))
+                "a matching lexical substring from unrelated metadata is not category evidence")))
+        (let [record (delivered-observation-record
+                      actual "no-relevant-evidence" (:text actual)
+                      {:reason "This synthetic payload is cited without making a truth judgment."})]
+          (is (:ok? (assess record))
+              "typed nonempty no-relevant-evidence still references actual payload"))))))
+
+(deftest raw-diff-hunk-continuation-cannot-receive-no-hunk-credit
+  (let [header "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -0,0 +1,140 @@\n"
+        line-bounded (str header (apply str (map #(str "+added-" % "\n") (range 140))))
+        byte-header "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1,2 @@\n"
+        unit-bounded (str byte-header " " (.repeat "x" (- 8192 (count byte-header) 2))
+                          "\n+changed-at-next-page\n")]
+    (doseq [[label raw] [["128-line boundary" line-bounded] ["8192-unit boundary" unit-bounded]]]
+      (let [session (assessment-v2-begin (assessment-v2-input [raw "{}" "fixture log"]))
+            pages (filterv #(= "raw-diff" (:role %)) (:diff-chunks session))
+            first-read (review/read-diff-chunk session (:id (first pages)))
+            read (review/read-diff-chunk session (:id (second pages)))
+            chunk (:chunk read)
+            quote (first (str/split (:text chunk) #"\n"))
+            changed (delivered-observation-record chunk "changed-hunk" quote {})
+            no-hunk (delivered-observation-record chunk "no-changed-hunk" (:text chunk)
+                                                  {:reason "This slice has no local header."})]
+        (is (= 2 (count pages)) label)
+        (is (:ok? first-read))
+        (is (:ok? (review/assess-diff-chunk (:session first-read) (:id (first pages))
+                                          "Actual first hunk page." (assessment-v2-record (:chunk first-read)))))
+        (is (:ok? read))
+        (is (str/starts-with? quote "+") "actual continuation contains a changed source line")
+        (is (not (str/includes? (:text chunk) "@@")) "the actual page has no repeated hunk header")
+        (is (:ok? (review/assess-diff-chunk (:session read) (:id chunk)
+                                          "Actual continuation changed-line reference." changed))
+            "a genuine changed-line observation must remain possible on a continuation")
+        (is (false? (:ok? (review/assess-diff-chunk (:session read) (:id chunk)
+                                                  "A missing local header does not erase hunk membership." no-hunk)))
+            "no-changed-hunk is reserved for a slice outside a hunk")))
+    (let [session (assessment-v2-begin
+                   (assessment-v2-input ["diff --git a/x b/x\n--- a/x\n+++ b/x\n" "{}" "fixture log"]))
+          read (review/read-diff-chunk session 1)]
+      (is (:ok? (review/assess-diff-chunk (:session read) 1
+                                        "Actual file-header-only page outside any hunk."
+                                        (assessment-v2-record (:chunk read))))))))

@@ -19,11 +19,15 @@
 
 (defn- decode-tool-ctx [ctx]
   (when ctx
-    {:session/id (.-sessionID ctx)
+    (cond-> {:session/id (.-sessionID ctx)
      :message/id (.-messageID ctx)
      :agent      (.-agent ctx)
      :directory  (.-directory ctx)
-     :worktree   (.-worktree ctx)}))
+     :worktree   (.-worktree ctx)}
+     ;; Selected/injected by the host, outside model tool arguments. Decoding
+     ;; describes supplied data; native authentication remains the host's duty.
+      (some? (.-reviewInputContext ctx))
+      (assoc :review-input-context (js->clj (.-reviewInputContext ctx) :keywordize-keys true)))))
 
 (defn- encode-result
   "Handlers return plain CLJS data. Strings pass through; a map with an

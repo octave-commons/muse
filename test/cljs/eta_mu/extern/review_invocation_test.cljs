@@ -3,6 +3,8 @@
    optional retained authentic DATA probes execute only the new owned code."
   (:require [cljs.test :refer [deftest is]]
             [clojure.string :as str]
+            [eta-mu.domain.review :as review]
+            [eta-mu.domain.review-test :as assessment-fixture]
             [eta-mu.extern.review-invocation :as extern]
             [eta-mu.extern.json :as input-json]
             [eta-mu.extern.review-input :as input-edge]
@@ -321,7 +323,8 @@
                        :keywordize-keys true)]
     (is (some? prepared) "transport must admit the valid independently bound originals")
     (is (false? (:ok result)))
-    (is (= "trusted-context-unestablished" (:code result)))
+    (is (= "returned-page-binding" (:code result))
+        "established V2 context still refuses a generic whole-view page without component identity")
     (is (nil? (:acceptedInvocation result)))
     ;; Positive neighbor: the same complete eight-tool/five-stage generic trace
     ;; retains legitimate legacy behavior. Only the explicit input contract varies.
@@ -332,6 +335,223 @@
           legacy (js->clj (extern/verify-review-invocation (response legacy-events) (json legacy-submission) legacy-context)
                          :keywordize-keys true)]
       (is (:ok legacy)))))
+
+(defn actual-v2-owner-invocation [input file]
+  ;; Instrument existing pure owner calls, using the same event encoder and
+  ;; result projections as the real plugin. This is not a fabricated successful
+  ;; plugin trace: failed owner results stop collection without relabeling them.
+  (let [v2? (= "open-hax.review-input/v2" (get-in input [:manifest :schema]))
+        initial (if v2? (assessment-fixture/assessment-v2-begin input)
+                    ;; Match the existing plugin's legacy byte-verified source
+                    ;; projection after the actual public preparation below.
+                    (assoc (review/begin (:text input)) :input-source (:manifest input)))
+        state* (atom initial) events* (atom []) stopped* (atom false) envelope* (atom nil)
+        emit! (fn [tool args result]
+                (swap! events* conj (fixture/tool-event (inc (count @events*)) tool args
+                                                      (dissoc result :session)))
+                (when-not (:ok? result) (reset! stopped* true))
+                (when (and (:ok? result) (:session result)) (reset! state* (:session result))))]
+    ;; begin is a constructor; the real plugin projects its admitted session.
+    ;; Source/coverage/stats are the actual admitted session/plugin projection,
+    ;; never fabricated coverage after an ignored predecessor argument.
+    (emit! "review_begin" {}
+           {:ok? true :stage (name (:stage initial)) :stages (mapv name review/stages)
+            :input-source (:input-source initial) :diff-stats (:diff-stats initial)
+            :input-coverage (review/input-coverage initial)
+            :components (:components initial) :view (:view initial)})
+    (emit! "review_status" {}
+           (assoc (review/status initial) :ok? true :stage (name (:stage initial))
+                  :stages (mapv name review/stages)))
+    (doseq [page (:diff-chunks initial)]
+      (when-not @stopped*
+        (let [id (:id page) read (review/read-diff-chunk @state* id)]
+          (emit! "review_read_diff_chunk" {:id id} read)
+          (when-not @stopped*
+            (let [record (if v2? (assessment-fixture/assessment-v2-record (:chunk read))
+                                (:legacy-assessment input))
+                  note "Actual returned component assessment."
+                  assessed (.call review/assess-diff-chunk nil @state* id note record)]
+              (emit! "review_assess_diff_chunk" (cond-> {:id id :note note}
+                                                record (assoc :assessment record)) assessed))))))
+    (doseq [stage review/stages]
+      (when-not @stopped*
+        (let [note "Actual owner stage result." result (review/record-evidence @state* stage note)]
+          (emit! "review_record_evidence" {:stage (name stage) :note note} result))))
+    (when-not @stopped*
+      (let [summary "Synthetic complete owner invocation; no native review."
+            submitted (review/submission @state* summary)]
+        (reset! envelope* (:envelope submitted))
+        (emit! "review_submit" {:summary summary}
+               (if (:ok? submitted)
+                 {:ok? (:ok? submitted) :event (get-in submitted [:envelope :event])
+                  :file file :inline-comments (count (get-in submitted [:envelope :comments]))}
+                 submitted))))
+    {:initial initial :final @state* :submission @envelope*
+     :events (conj @events* (fixture/terminal (inc (count @events*))))}))
+
+(deftest ordinary-v2-actual-owner-trace-requires-independent-component-invocation-admission
+  (let [texts ["diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n"
+               "{\"gate\":\"pass\"}" (str "result: pass\n" (apply str (repeat 130 "log line\n")))]
+        {:keys [source view trusted]} (fixture/ordinary-v2-fixture texts)
+        ;; Construct this synthetic held identity before any candidate read.
+        source (assoc source :provenance (:provenance fixture/manifest))
+        trusted (assoc trusted :input_source source)
+        input (assoc (extern/prepare-ordinary-v2-originals
+                       source (mapv #(js/Buffer.from % "utf8") texts) trusted)
+                     :manifest source)
+        tools (clj->js (:review-tools fixture/context)) file "/fixture/v2-submission.json"
+        prepared (prepare-v2-context view (json source) tools file trusted)
+        ctx (js->clj prepared :keywordize-keys true)
+        expected {:input-source (:inputSource ctx) :pages (:pages ctx) :page-count (:pageCount ctx)
+                  :components (:components ctx) :component-pages (:componentPages ctx) :view (:view ctx)
+                  :full-input-sha256 (:fullInputSha256 ctx) :review-tools (:reviewTools ctx)
+                  :submission-file (:submissionFile ctx)}
+        {:keys [events submission final]} (actual-v2-owner-invocation input file)
+        reads (filterv #(= "review_read_diff_chunk" (get-in % [:part :tool])) events)
+        roles (mapv #(get-in % [:part :state :output :chunk :role]) reads)
+        assess-calls (filterv #(= "review_assess_diff_chunk" (get-in % [:part :tool])) events)
+        pure (invocation/verify events submission expected)
+        public (js->clj (extern/verify-review-invocation (response events) (json submission) prepared)
+                       :keywordize-keys true)]
+    (is (some? prepared))
+    (is (= #{"raw-diff" "summary" "log"} (set roles)))
+    (is (<= 2 (count (filter #(= "log" %) roles))) "actual returned log spans include its tail")
+    (doseq [call assess-calls]
+      (is (= (get-in call [:part :state :input :assessment])
+             (get-in call [:part :state :output :assessment]))))
+    (is (:ok? pure) "complete actual role-bound owner results must qualify in the pure law")
+    (is (:ok public) "the same actual results must qualify through the existing public verifier")
+    ;; No specialized refusal credit is possible while the healthy neighbor is
+    ;; universally refused. These mutations execute only after actual admission.
+    (when (and (:ok? pure) (:ok public))
+      ;; The exact same trace/submission must use the actual preparation object
+      ;; retained in this caller, not its equally coherent serialized copy.
+      ;; This witnesses local preparation memory, never native producer auth.
+      (doseq [copy [(json ctx) (js/Buffer.from (json ctx) "utf8") (clj->js ctx)]]
+        (let [copied (js->clj (extern/verify-review-invocation
+                               (response events) (json submission) copy)
+                             :keywordize-keys true)]
+          (is (false? (:ok copied)) "serialized/cloned V2 context alone is unauthenticated")
+          (is (nil? (:acceptedInvocation copied)))))
+      (let [fresh #(prepare-v2-context view (json source) tools file trusted)
+            check #(js->clj (extern/verify-review-invocation (response events) (json submission) %)
+                           :keywordize-keys true)]
+        (doseq [[label mutate!] [["changed registered tools" #(aset % "reviewTools" (clj->js (conj (:reviewTools ctx) "read")))]
+                                 ["changed registered caller content" #(aset % "inputContext"
+                                                                           (clj->js (assoc-in (:inputContext ctx) [:content :authorization]
+                                                                                             (if (= "public" (get-in ctx [:inputContext :content :authorization]))
+                                                                                               "explicit" "public"))))]
+                                 ["changed registered page text" #(aset % "componentPages"
+                                                                        (clj->js (assoc-in (:componentPages ctx) [0 :text] "replacement")))]]]
+          (let [actual (fresh)]
+            (is (:ok (check actual)) "fresh actual preparation is the positive neighbor")
+            (mutate! actual)
+            (is (false? (:ok (check actual))) label)))
+        (doseq [carrier [view (js/Buffer.from view "utf8") (js/Uint8Array. (js/Buffer.from view "utf8"))]]
+          (let [actual (fresh)]
+            (aset actual "sessionID" (:session-id (first events)))
+            (aset actual "fullDiff" carrier)
+            (is (:ok (check actual)) "actual-object session binding and full-byte revalidation remain legal")))
+        (let [actual (fresh)]
+          (aset actual "fullDiff" (str view "corrupt"))
+          (is (false? (:ok (check actual))) "full bytes must match the immutable preparation")))
+      (let [read-role #(get-in % [:part :state :output :chunk :role])
+            assess-role #(get-in % [:part :state :input :assessment :page-ref :role])
+            omit-role (fn [role] (filterv #(and (not= role (read-role %))
+                                               (not= role (assess-role %))) events))
+            log-id (get-in (last (filter #(= "log" (read-role %)) reads)) [:part :state :input :id])
+            first-assess-index (first (keep-indexed #(when (= "review_assess_diff_chunk" (get-in %2 [:part :tool])) %1) events))
+            late-read (review/read-diff-chunk final 1)
+            late (conj (conj (pop events)
+                             (fixture/tool-event (count events) "review_read_diff_chunk" {:id 1}
+                                                 (dissoc late-read :session)))
+                       (fixture/terminal (inc (count events))))]
+        (doseq [[label changed-trace changed-submission]
+                [["omit summary role" (omit-role "summary") submission]
+                 ["omit log role" (omit-role "log") submission]
+                 ["omit delivered-page assessment"
+                  (filterv #(not (and (= "review_assess_diff_chunk" (get-in % [:part :tool]))
+                                     (= log-id (get-in % [:part :state :input :id])))) events) submission]
+                 ["omit log tail"
+                  (filterv #(not (and (#{"review_read_diff_chunk" "review_assess_diff_chunk"} (get-in % [:part :tool]))
+                                     (= log-id (get-in % [:part :state :input :id])))) events) submission]
+                 ["wrong role reference"
+                  (assoc-in events [first-assess-index :part :state :input :assessment :page-ref :role] "log") submission]
+                 ["wrong digest reference"
+                  (assoc-in events [first-assess-index :part :state :input :assessment :page-ref :component-sha256]
+                            (apply str (repeat 64 "f"))) submission]
+                 ["wrong observation span"
+                  (assoc-in events [first-assess-index :part :state :input :assessment :observations 0 :text-span] [-1 1]) submission]
+                 ["serialized reference mismatch" events
+                  (assoc-in submission [:input-assessments 0 :assessment :page-ref :role] "log")]
+                 ["actual late reread" late submission]]]
+          (let [bad-pure (invocation/verify changed-trace changed-submission expected)
+                bad-public (js->clj (extern/verify-review-invocation
+                                     (response changed-trace) (json changed-submission) prepared)
+                                   :keywordize-keys true)]
+            (is (false? (:ok? bad-pure)) label)
+            (is (false? (:ok bad-public)) label)
+            (is (nil? (:acceptedInvocation bad-public)) label)))))))
+
+(deftest legacy-extra-assessment-metadata-retains-actual-invocation-acceptance
+  (let [source fixture/manifest file "/fixture/legacy-extra-metadata.json"
+        tools (clj->js (:review-tools fixture/context))]
+    (doseq [metadata [nil {:kind "empty-component"}]]
+      (let [prepared (extern/prepare-review-invocation-context "diff" (json source) tools file)
+            ctx (js->clj prepared :keywordize-keys true)
+            expected {:input-source (:inputSource ctx) :pages (:pages ctx) :page-count (:pageCount ctx)
+                      :full-input-sha256 (:fullInputSha256 ctx) :review-tools (:reviewTools ctx)
+                      :submission-file (:submissionFile ctx)}
+            actual (actual-v2-owner-invocation {:text "diff" :manifest source :legacy-assessment metadata} file)
+            pure (invocation/verify (:events actual) (:submission actual) expected)
+            public (js->clj (extern/verify-review-invocation (response (:events actual))
+                                                            (json (:submission actual)) prepared)
+                            :keywordize-keys true)]
+        (is (:ok? pure) "irrelevant metadata does not turn a positive-id legacy assessment into an empty role")
+        (is (:ok public))
+        (is (= 1 (:pageCount public)))
+        (is (= "Actual returned component assessment."
+               (get-in actual [:submission :input-assessments 0 :note])))))))
+
+(deftest ordinary-v2-preparation-binds-component-delivery-geometry-separately-from-view
+  (doseq [texts [["diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+ημ 😀\n"
+                 "{\"gate\":\"pass\"}\r\n" "result: pass\r\nlog tail 😀\n"]
+                ["" "{\"gate\":\"pass\"}" ""]
+                ["diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n"
+                 "{\"gate\":\"pass\"}" (str "result: pass\n" (apply str (repeat 130 "log line\n")))]]]
+    (let [{:keys [source view trusted]} (fixture/ordinary-v2-fixture texts)
+          tools (clj->js (:review-tools fixture/context))
+          file (:submission-file fixture/context)
+          expected-roles (vec (mapcat (fn [[component text]]
+                                       (repeat (count (review/diff-chunks text)) (:role component)))
+                                     (map vector (:components source) texts)))]
+      (doseq [carrier [view (js/Buffer.from view "utf8")
+                       (js/Uint8Array. (js/Buffer.from view "utf8"))]]
+        (let [prepared (prepare-v2-context carrier (json source) tools file trusted)
+              ctx (js->clj prepared :keywordize-keys true)
+              pages (:componentPages ctx)]
+          (is (some? prepared) "same actual five-argument preparation with independently held originals")
+          (is (= source (:inputSource ctx)))
+          (is (= (:components source) (:components ctx)) "empty role identities remain held")
+          (is (= (:view source) (:view ctx)))
+          (is (= (get-in source [:view :page_count]) (:pageCount ctx))
+              "component delivery geometry must not rewrite assembled transport identity")
+          (is (vector? pages) "component geometry must actually be returned, not inferred from success")
+          (is (= expected-roles (mapv :role pages)))
+          (doseq [[component original] (map vector (:components source) texts)]
+            (let [role-pages (filterv #(= (:role component) (:role %)) pages)
+                  reconstructed (apply str (map (fn [page]
+                                                  (let [[start end] (:view-text-span page)] (subs view start end)))
+                                                role-pages))]
+              (is (= original reconstructed) (:role component))
+              (is (= (select-keys component [:bytes :sha256])
+                     (select-keys (fixture/byte-descriptor (:path component) reconstructed) [:bytes :sha256])))))
+          (doseq [page pages]
+            (let [component (first (filter #(= (:role %) (:role page)) (:components source)))]
+              (is (= (:sha256 component) (:component-sha256 page)))
+              (is (= [(:start page) (:end page)] (:view-text-span page)))
+              (is (vector? (:component-byte-span page)))
+              (is (vector? (:component-text-span page))))))))))
 
 (deftest native-byte-preparation-preserves-bom-only-and-prefixed-page-geometry
   (doseq [text ["\uFEFF" "\uFEFForiginal context ημ 😀\n" "\uFEFF\uFEFFcontext"]]
@@ -725,3 +945,201 @@
                       (str "{\"ignored\":{\"x\":1,\"x\":2}," (subs (json source) 1))
                       (str "\uFEFF" (json source))]]
       (is (thrown? js/Error (extern/prepare-review-invocation-context bytes manifest tools "/fixture/submission.json"))))))
+
+
+(deftest ordinary-v2-public-preparation-enforces-the-combined-page-ceiling
+  (doseq [[log-lines expected] [[130816 1024] [130817 1025] [131070 1026]]]
+    (let [{:keys [source view trusted]} (fixture/ordinary-v2-fixture
+                                        ["\n" "\n" (.repeat "\n" log-lines)])
+          tools (clj->js (:review-tools fixture/context))]
+      (is (invocation/ordinary-v2-origin-bound? source trusted))
+      (if (= expected 1024)
+        (let [prepared (js->clj (prepare-v2-context view (json source) tools
+                                                   "/fixture/page-cap.json" trusted)
+                               :keywordize-keys true)]
+          (is (= expected (count (:componentPages prepared)))))
+        (is (thrown? js/Error (prepare-v2-context view (json source) tools
+                                                "/fixture/page-cap.json" trusted))
+            "actual five-argument preparation must refuse the combined overflow")))))
+
+(defn actual-v2-length-prefix [input stage-count]
+  ;; Actual owner constructor/results only. This deliberately never submits;
+  ;; length is the synthetic host terminal observation, not a completed review.
+  (let [initial (assessment-fixture/assessment-v2-begin input)
+        state* (atom initial) events* (atom [])
+        emit! (fn [tool args result]
+                (swap! events* conj (fixture/tool-event (inc (count @events*)) tool args
+                                                      (dissoc result :session)))
+                (when (:session result) (reset! state* (:session result))))]
+    (emit! "review_begin" {}
+           {:ok? true :stage (name (:stage initial)) :stages (mapv name review/stages)
+            :input-source (:input-source initial) :diff-stats (:diff-stats initial)
+            :input-coverage (review/input-coverage initial)
+            :components (:components initial) :view (:view initial)})
+    (doseq [page (:diff-chunks initial)]
+      (let [id (:id page) read (review/read-diff-chunk @state* id)
+            note "Actual delivered component assessed before length termination."
+            record (assessment-fixture/assessment-v2-record (:chunk read))]
+        (emit! "review_read_diff_chunk" {:id id} read)
+        (emit! "review_assess_diff_chunk" {:id id :note note :assessment record}
+               (review/assess-diff-chunk @state* id note record))))
+    (doseq [component (filter #(zero? (:bytes %)) (:components initial))]
+      (let [record {:kind "empty-component" :component-ref component}
+            note "Explicit actual zero-byte role observation."]
+        (emit! "review_assess_diff_chunk" {:note note :assessment record}
+               (review/assess-diff-chunk @state* nil note record))))
+    (doseq [stage (take stage-count review/stages)]
+      (let [note "Actual successful stage prefix; invocation has not submitted."]
+        (emit! "review_record_evidence" {:stage (name stage) :note note}
+               (review/record-evidence @state* stage note))))
+    {:events (conj @events* (assoc-in (fixture/terminal (inc (count @events*)))
+                                    [:part :reason] "length"))
+     :session @state*}))
+
+(defn prepared-v2-owner-context [prepared view]
+  (let [ctx (js->clj prepared :keywordize-keys true)]
+    {:input-source (:inputSource ctx) :pages (:pages ctx) :page-count (:pageCount ctx)
+     :components (:components ctx) :component-pages (:componentPages ctx) :view (:view ctx)
+     :full-input-sha256 (:fullInputSha256 ctx) :review-tools (:reviewTools ctx)
+     :submission-file (:submissionFile ctx) :full-input-text view}))
+
+(deftest ordinary-v2-length-recovery-uses-actual-complete-role-and-empty-coverage
+  (doseq [texts [["diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n"
+                  "{\"gate\":\"pass\"}" (str "result: pass\n" (.repeat "tail\n" 130))]
+                 ["" "{\"gate\":\"pass\"}" ""]
+                 ["" "" ""]]
+          stage-count (range 1 6)]
+    (let [{:keys [source view trusted]} (fixture/ordinary-v2-fixture texts)
+          source (assoc source :provenance (:provenance fixture/manifest))
+          trusted (assoc trusted :input_source source)
+          input (assoc (extern/prepare-ordinary-v2-originals
+                        source (mapv #(js/Buffer.from % "utf8") texts) trusted)
+                       :manifest source)
+          file "/fixture/component-length-submission.json"
+          tools (clj->js (:review-tools fixture/context))
+          fresh #(prepare-v2-context view (json source) tools file trusted)
+          prepared (fresh) context (prepared-v2-owner-context prepared view)
+          {:keys [events session]} (actual-v2-length-prefix input stage-count)
+          raw (response events)
+          calls (filter #(= "tool_use" (:type %)) events)
+          pure (fixture/length-classification events nil context (fixture/length-custody context))
+          strict (invocation/verify events nil context)]
+      (is (every? #(true? (get-in % [:part :state :output :ok?])) calls)
+          "every retained tool result is genuinely successful; no flags are replaced")
+      (is (= [] (:missing (review/input-coverage session))))
+      (is (every? #(or (not (:empty? %)) (:empty-observed? %))
+                  (vals (:roles (review/input-coverage session)))))
+      (is (false? (:ok? strict)) "length eligibility never accepts this unfinished invocation")
+      (is (nil? (:accepted-invocation strict)))
+      (is (:eligible? pure) "complete role-bound actual prefix must permit a fresh invocation")
+      (is (= :new-complete-invocation-required (:code pure)))
+      (is (= (count (:component-pages context)) (:page-count pure)))
+      (is (= (vec (take stage-count invocation/stages)) (:recorded-stages pure)))
+      (is (every? #(not (contains? pure %)) [:ok? :accepted-invocation :approval]))
+      (doseq [carrier [view (js/Buffer.from view "utf8") (js/Uint8Array. (js/Buffer.from view "utf8"))]]
+        (let [actual (fresh) _ (aset actual "fullDiff" carrier)
+              custody (length-custody-js raw actual)
+              public (classify-length raw nil actual custody)]
+          (is (:eligible public) "actual prepared V2 object and native held snapshots remain admissible")
+          (is (= "new-complete-invocation-required" (:code public)))
+          (is (= (count (:component-pages context)) (:pageCount public)))
+          (is (every? #(not (contains? public %)) [:ok :acceptedInvocation :approval]))
+          ;; Specialized refusal credit requires this exact healthy neighbor.
+          (when (:eligible public)
+            (doseq [candidate [(js/JSON.stringify actual)
+                               (js/Buffer.from (js/JSON.stringify actual) "utf8")
+                               (clj->js (js->clj actual :keywordize-keys true))]]
+              (is (false? (:eligible (classify-length raw nil candidate custody)))))
+            (doseq [changed [(js/Object.assign #js {} custody #js {:contextBefore (js/JSON.parse (js/JSON.stringify actual))})
+                             (js/Object.assign #js {} custody #js {:contextAfter (js/JSON.parse (js/JSON.stringify actual))})
+                             (js/Object.assign #js {} custody #js {:responseSha256After (.repeat "f" 64)})]]
+              (is (false? (:eligible (classify-length raw nil actual changed)))))
+            (is (false? (:eligible (classify-length raw nil actual (js/JSON.stringify custody))))))))
+      (when (:eligible? pure)
+        (let [remove-calls (fn [pred] (fixture/ordered-fixture-events (remove pred events)))
+              assessment? #(= "review_assess_diff_chunk" (get-in % [:part :tool]))
+              last-assessment (last (filter assessment? events))
+              omit-last (remove-calls #(= % last-assessment))
+              corrupted (mapv #(if (= % last-assessment)
+                                 (assoc-in % [:part :state :output :coverage :assessed]
+                                           (inc (get-in % [:part :state :output :coverage :assessed]))) %) events)]
+          (doseq [changed [omit-last corrupted (pop events)]]
+            (is (false? (:eligible? (fixture/length-classification
+                                    changed nil context (fixture/length-custody context))))))
+          (doseq [role ["raw-diff" "summary" "log"]]
+            (let [changed (remove-calls #(or (= role (get-in % [:part :state :output :chunk :role]))
+                                             (= role (get-in % [:part :state :input :assessment :page-ref :role]))
+                                             (= role (get-in % [:part :state :input :assessment :component-ref :role]))))]
+              (is (false? (:eligible? (fixture/length-classification
+                                      changed nil context (fixture/length-custody context)))))))
+          (is (false? (:eligible? (fixture/length-classification
+                                  events {} context (fixture/length-custody context)))))
+          (is (false? (:eligible? (fixture/length-classification
+                                  events nil context (assoc (fixture/length-custody context) :exit-code 1))))))))))
+
+
+(defn- complete-v2-actual-descriptor-trace [input file]
+  ;; Reuse actual owner results, including all empty-role observations. The
+  ;; additional begin fields mirror the existing plugin's real projection of
+  ;; the admitted constructor; failed results are never relabeled successful.
+  (let [{:keys [events session]} (actual-v2-length-prefix input 5)
+        events (update-in (pop events) [0 :part :state :output]
+                          assoc :components (:components session) :view (:view session))
+        summary "Actual complete component results; synthetic fixture only."
+        submitted (review/submission session summary)
+        envelope (:envelope submitted)
+        result (if (:ok? submitted)
+                 {:ok? true :event (:event envelope) :file file
+                  :inline-comments (count (:comments envelope))}
+                 submitted)
+        submit (fixture/tool-event (inc (count events)) "review_submit" {:summary summary} result)]
+    {:events (conj events submit (fixture/terminal (+ 2 (count events))))
+     :submission envelope :session session}))
+
+(deftest v2-begin-descriptors-bind-the-actual-independent-invocation
+  (doseq [texts [["diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n"
+                  "{\"gate\":\"pass\"}" "result: pass\n"]
+                 ["" "" ""]]]
+    (let [{:keys [source view trusted]} (fixture/ordinary-v2-fixture texts)
+          source (assoc source :provenance (:provenance fixture/manifest))
+          trusted (assoc trusted :input_source source)
+          input (assoc (extern/prepare-ordinary-v2-originals
+                        source (mapv #(js/Buffer.from % "utf8") texts) trusted) :manifest source)
+          file "/fixture/begin-descriptors-submission.json"
+          prepared (prepare-v2-context view (json source) (clj->js (:review-tools fixture/context)) file trusted)
+          context (prepared-v2-owner-context prepared view)
+          {:keys [events submission]} (complete-v2-actual-descriptor-trace input file)
+          pure (invocation/verify events submission context)
+          public (js->clj (extern/verify-review-invocation (response events) (json submission) prepared)
+                         :keywordize-keys true)]
+      (is (= (:components source) (get-in events [0 :part :state :output :components])))
+      (is (= (:view source) (get-in events [0 :part :state :output :view])))
+      (is (every? #(true? (get-in % [:part :state :output :ok?]))
+                  (filter #(= "tool_use" (:type %)) events)))
+      (is (:ok? pure) "genuine complete actual-result neighbor first admits")
+      (is (:ok public) "the existing prepared public object admits that same neighbor")
+      (when (and (:ok? pure) (:ok public))
+        (doseq [[label change]
+                [["omitted component universe" #(dissoc % :components)]
+                 ["omitted ordered view" #(dissoc % :view)]
+                 ["foreign component identity" #(assoc-in % [:components 0 :sha256] (.repeat "f" 64))]
+                 ["foreign view identity" #(assoc-in % [:view :sha256] (.repeat "f" 64))]
+                 ["reordered component universe" #(update % :components (comp vec reverse))]
+                 ["foreign view geometry" #(update-in % [:view :bytes] inc)]]]
+          (let [changed (update-in events [0 :part :state :output] change)
+                refused (invocation/verify changed submission context)
+                public-refused (js->clj (extern/verify-review-invocation
+                                         (response changed) (json submission) prepared) :keywordize-keys true)]
+            (is (false? (:ok? refused)) label)
+            (is (nil? (:accepted-invocation refused)) label)
+            (is (false? (:ok public-refused)) label)
+            (is (nil? (:acceptedInvocation public-refused)) label))))))
+  ;; An irrelevant extra field does not strengthen or change legacy admission.
+  (let [file (:submission-file fixture/context)
+        prepared (extern/prepare-review-invocation-context "diff" (json fixture/manifest)
+                                                           (clj->js (:review-tools fixture/context)) file)
+        {:keys [events submission]} (actual-v2-owner-invocation {:text "diff" :manifest fixture/manifest} file)
+        changed (update-in events [0 :part :state :output] assoc :components [] :view {:bytes -1})
+        result (js->clj (extern/verify-review-invocation (response changed) (json submission) prepared)
+                       :keywordize-keys true)]
+    (is (:ok result) "legacy behavior tolerates unrelated descriptor metadata")))

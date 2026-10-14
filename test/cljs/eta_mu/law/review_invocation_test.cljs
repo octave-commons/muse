@@ -3,6 +3,7 @@
   (:require [cljs.test :refer [deftest is testing]]
             [eta-mu.domain.review :as review]
             [eta-mu.law.review-invocation :as invocation]
+            [eta-mu.shape.review-coverage :as coverage]
             ["node:crypto" :as crypto]))
 
 (defn byte-descriptor [path text]
@@ -98,6 +99,18 @@
       (is (= source (:input_source trusted))
           (str label " cannot fail merely from a held-source mismatch"))
       (is (false? (invocation/ordinary-v2-origin-bound? source trusted)) label))))
+
+(deftest legacy-last-read-includes-assessment-despite-unrelated-empty-metadata
+  ;; This is the original standalone LAST predicate over shaped calls, not a
+  ;; fabricated completed invocation or producer/authentication assertion.
+  (let [call (fn [position tool args] {:position position :part {:tool tool :state {:input args}}})
+        calls [(call 1 "review_read_diff_chunk" {:id 7})
+               (call 2 "review_assess_diff_chunk" {:id 7 :note "Original legacy assessment."
+                                                   :assessment {:kind "empty-component"}})
+               (call 3 "review_read_diff_chunk" {:id 7})]]
+    (is (= [{:id 7 :assessment-position 2 :last-read-position 3}]
+           (invocation/last-read-violations calls))
+        "a candidate tag cannot remove a positive-id legacy assessment from ALL-call LAST")))
 
 (defn ordinary-v2-coherent-stale-candidates
   "Recompute candidate descriptors and view from replaced originals, retaining
@@ -1417,3 +1430,31 @@
           (is (false? (invocation/context-valid? changed)))
           (is (= :trusted-context-unestablished (:code result)))
           (is (nil? (:accepted-invocation result))))))))
+
+
+(deftest coverage-predicate-validates-actual-higher-layer-projections
+  (let [pages [{:id 1 :role "raw-diff"} {:id 2 :role "log"}]
+        components [{:role "raw-diff" :bytes 1 :sha256 (apply str (repeat 64 "a"))}
+                    {:role "summary" :bytes 0 :sha256 (apply str (repeat 64 "b"))}
+                    {:role "log" :bytes 1 :sha256 (apply str (repeat 64 "c"))}]]
+    (doseq [[delivered assessed empty-observed] [[#{} #{} #{}] [#{1} #{} #{}]
+                                                [#{1 2} #{1} #{"summary"}]
+                                                [#{1 2} #{1 2} #{"summary"}]]]
+      (let [reported (coverage/component-coverage pages components delivered assessed empty-observed)
+            valid? #(invocation/coverage-valid? % pages components delivered assessed empty-observed)]
+        (is (valid? reported) "the actual shape-produced partial or complete state is valid")
+        (doseq [changed [(update reported :chunks inc)
+                         (update reported :delivered inc)
+                         (update reported :assessed inc)
+                         (update reported :missing conj 999)
+                         (update reported :roles dissoc :summary)
+                         (assoc-in reported [:roles :summary :empty-observed?]
+                                   (not (get-in reported [:roles :summary :empty-observed?])))
+                         (assoc-in reported [:roles :raw-diff :sha256] (apply str (repeat 64 "f")))
+                         (update-in reported [:roles :log :chunks] inc)
+                         (assoc-in reported [:roles :raw-diff :bytes] 2)]]
+          (is (false? (valid? changed)) "reported coverage cannot declare its own completion"))))
+    (let [legacy (coverage/component-coverage pages nil #{1 2} #{1 2} #{})]
+      (is (invocation/coverage-valid? legacy pages nil #{1 2} #{1 2} #{}))
+      (is (= #{:chunks :delivered :assessed :missing} (set (keys legacy))))
+      (is (false? (invocation/coverage-valid? (assoc legacy :roles {}) pages nil #{1 2} #{1 2} #{}))))))

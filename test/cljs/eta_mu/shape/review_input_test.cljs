@@ -104,3 +104,47 @@
   (is (false? (invocation/context-valid?
                (assoc fixture/context :input-source fixture/cohort-manifest
                       :full-input-sha256 (apply str (repeat 64 "f")))))))
+
+
+(deftest ordinary-v2-combined-component-page-ceiling-precedes-materialization
+  ;; The fixed ceiling bounds delivered component pages, independently of the
+  ;; transport view geometry. Each witness remains under every byte ceiling.
+  (doseq [[log-lines expected] [[130816 1024] [130817 1025] [131070 1026]]]
+    (let [texts ["\n" "\n" (.repeat "\n" log-lines)]
+          {:keys [source view]} (fixture/ordinary-v2-fixture texts)
+          materialize shape/diff-chunks calls* (atom [])]
+      (is (invocation/ordinary-v2-contract-valid? source))
+      (is (<= (get-in source [:view :page_count]) 1024)
+          "the aggregate view is admitted, even when role boundaries add pages")
+      (is (= expected (reduce + (map shape/bounded-page-count texts))))
+      (with-redefs [shape/diff-chunks (fn [text]
+                                      (swap! calls* conj (count text))
+                                      (materialize text))]
+        (if (= expected 1024)
+          (let [pages (shape/component-chunks source view)]
+            (is (= 1024 (count pages)))
+            (is (= view (apply str (map :text pages))))
+            (is (= 3 (count @calls*))))
+          (do
+            (is (thrown? js/Error (shape/component-chunks source view))
+                "combined component cap must refuse the +1 and native +2 cases")
+            (is (= [] @calls*)
+                "all component counts must be admitted before collecting any pages")))))))
+
+
+(deftest raw-hunk-spans-stop-at-counts-and-preserve-exact-page-text
+  (let [raw "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\r\n+😀new\r\n\\ No newline at end of file\noutside\n"
+        {:keys [source view]} (fixture/ordinary-v2-fixture [raw "{}" "fixture log"])
+        pages (shape/component-chunks source view)
+        page (first pages)
+        spans (:hunk-spans page)
+        changed (:changed-spans page)]
+    (is (= raw (:text page)))
+    (is (= [(.indexOf raw "@@") (.indexOf raw "outside")] (first spans)))
+    (is (= (.indexOf raw "-old") (first (first changed))))
+    (is (= (.indexOf raw "\\ No newline") (second (first changed))))
+    (is (invocation/component-pages-valid? source (:components source) (:view source) pages))
+    (doseq [changed-pages [(assoc-in pages [0 :hunk-spans] [[0 (inc (count raw))]])
+                           (assoc-in pages [0 :changed-spans] [[0 1]])
+                           (assoc-in pages [0 :hunk-spans] [[1 0]])]]
+      (is (false? (invocation/component-pages-valid? source (:components source) (:view source) changed-pages))))))

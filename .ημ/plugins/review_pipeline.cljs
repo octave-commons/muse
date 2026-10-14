@@ -48,7 +48,9 @@
               (bfs/remove-file! (bfs/join (evidence-dir ctx) submission-file-name)))
             (record-event! ctx kind (merge {:ok true :chunk-id (or (:chunk-id result) (get-in result [:chunk :id]))}
                                            (select-keys result [:coverage :restart-required?])
-                                           (when (= "assess-diff-chunk" kind) {:note (second args)})))
+                                           (when (= "assess-diff-chunk" kind)
+                                             (cond-> {:note (second args)}
+                                               (:assessment result) (assoc :assessment (:assessment result))))))
             (dissoc result :session))
         (do (record-event! ctx kind {:ok false :error (:error result)})
             result)))
@@ -60,7 +62,7 @@
 
 (deftool begin
   {:id          :review/begin
-   :description "Begin an evidence-first pull-request review. Verifies input-manifest.json and the complete basehead.diff in .opencode/review-evidence, indexes changed lines and returns the bounded-reader contract. Call this first. Input repair belongs to the host; a failed begin ends this invocation without submission, retry or restart. After successful admission, complete one bounded review pass. A second begin requires a fresh model process."
+   :description "Begin one evidence-first review. Legacy input verifies the full diff/native input. Ordinary v2 is selected only through independently supplied host context, verifies every raw-diff/summary/log original, indexes only raw diff, and returns all role descriptors and required coverage. Model args or candidate metadata cannot supply missing host trust. Call first; any refusal ends this invocation. A second begin requires a fresh model process."
    :args        [:map]
    :tags        #{:review}}
   [_params ctx]
@@ -72,8 +74,13 @@
       (dissoc result :session))
     (try
         (bfs/remove-file! (bfs/join (evidence-dir ctx) submission-file-name))
-        (let [{:keys [text manifest]} (bfs/read-review-input (evidence-dir ctx))
-              session (assoc (review/begin text) :input-source manifest)
+        (let [{:keys [text manifest] :as prepared}
+              (if-let [trusted (:review-input-context ctx)]
+                (bfs/read-review-input (evidence-dir ctx) trusted)
+                (bfs/read-review-input (evidence-dir ctx)))
+              session (if (= "open-hax.review-input/v2" (:schema manifest))
+                        (review/begin text prepared)
+                        (assoc (review/begin text) :input-source manifest))
               _ (when (#{"open-hax.actionability-input/v1"
                          "open-hax.rejection-assessment-input/v1"
                          "open-hax.positive-cohort-assessment-input/v1"} (:schema manifest))
@@ -89,25 +96,27 @@
               context (when (bfs/exists? context-file) (bfs/read-text context-file))]
           (swap! !sessions assoc (session-key ctx) session)
           (record-event! ctx "begin" {:files (get-in session [:diff-stats :files]) :input-source manifest})
-          {:ok? true :stage (name (:stage session)) :stages (mapv name review/stages)
+          (cond-> {:ok? true :stage (name (:stage session)) :stages (mapv name review/stages)
            :diff-stats (:diff-stats session) :input-source manifest
            :input-coverage (review/input-coverage session) :pr-context context
-           :contract "Read every full-input page with review_read_diff_chunk, then assess each with review_assess_diff_chunk BEFORE the first deterministic stage note. Delivery alone is not assessment. Finish every page read and assessment before recording any stage evidence; retain the returned content for later stages. A later reread permanently invalidates this invocation. Record all five stage notes in order, propose/classify candidates and submit only after complete input assessment. Any failed review call ends this invocation; the host alone owns verified bounded recovery. pr.diff is a preview, never complete review input."})
+           :contract "Read every full-input page with review_read_diff_chunk, then assess each with review_assess_diff_chunk BEFORE the first deterministic stage note. Delivery alone is not assessment. Finish every page read and assessment before recording any stage evidence; retain the returned content for later stages. A later reread permanently invalidates this invocation. Record all five stage notes in order, propose/classify candidates and submit only after complete input assessment. Any failed review call ends this invocation; the host alone owns verified bounded recovery. pr.diff is a preview, never complete review input."}
+            (:components session) (assoc :components (:components session) :view (:view session))))
       (catch :default e {:ok? false :error (str "Full input unavailable: " (.-message e))}))))
 
 (deftool read-diff-chunk
   {:id :review/read_diff_chunk
-   :description "Read one lossless bounded page of the verified immutable full diff. Read every page; this records delivery, not assessment. Pair each page read with review_assess_diff_chunk for that same page id; use the assessment result's coverage.missing to track unassessed pages. Retain the returned page content for later stages. Finish all reads of a page before assessing it. Rereading an assessed page invalidates this invocation; same-session restart or reassessment cannot repair its history."
+   :description "Read one lossless bounded page of verified input. Ordinary v2 pages name raw-diff, summary or log, component digest, component-local byte/text spans and view spans. Each page belongs to one role. Read every global page id and pair it with a matching structured assessment. Use coverage.missing and coverage.roles; zero-byte roles require empty observations without page ids. Retain actual payload for later stages. Finish all reads before assessing; a later reread irreversibly invalidates this invocation."
    :args [:map [:id :int]] :tags #{:review}}
   [{:keys [id]} ctx]
   (apply-step! ctx "read-diff-chunk" review/read-diff-chunk id))
 
 (deftool assess-diff-chunk
   {:id :review/assess_diff_chunk
-   :description "Record your changed-hunk assessment of an already delivered page: changed invariants, candidate risks or why no defect is supported. Use the same page id as review_read_diff_chunk. The returned coverage distinguishes delivered from assessed pages and lists every missing assessment; continue until coverage.missing is empty. Complete all page reads and assessments before the FIRST deterministic stage note; do not reassess after stage evidence."
-   :args [:map [:id :int] [:note [:string {:min 1}]]] :tags #{:review}}
-  [{:keys [id note]} ctx]
-  (apply-step! ctx "assess-diff-chunk" review/assess-diff-chunk id note))
+   :description "Assess actual delivered input. Legacy uses id+note. Ordinary v2 also requires assessment:{page-ref:{id,role,component-sha256,component-byte-span,component-text-span,view-byte-span,view-text-span,start,end},kind,observations:[{kind,text-span,text,...}]}. Observation text-span is local to the returned page; text must match exactly. Raw diff carries page-local hunk-spans and changed-spans across page boundaries. Use changed-hunk with an actual header or changed-span reference; a context-only hunk slice still references its hunk-spans. Use no-changed-hunk with reason only when hunk-spans is empty. Summary-field names gate, status or limitation with exact lexical field/value. Log-observation names result, failure or environment with the exact delimited context/value. Summary/log may use no-relevant-evidence with reason and exact slice reference. Empty roles omit id and use assessment:{kind:empty-component,component-ref:<exact source descriptor>}. Complete every role/page/empty observation before FIRST deterministic evidence. Any refusal ends the invocation."
+   :args [:map [:id {:optional true} [:maybe :int]] [:note [:string {:min 1}]]
+          [:assessment {:optional true} :map]] :tags #{:review}}
+  [{:keys [id note assessment]} ctx]
+  (apply-step! ctx "assess-diff-chunk" review/assess-diff-chunk id note assessment))
 
 (deftool record-evidence
   {:id          :review/record_evidence

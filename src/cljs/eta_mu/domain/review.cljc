@@ -8,7 +8,9 @@
 
    No I/O lives in this namespace."
   (:require [clojure.string :as str]
+            [eta-mu.law.review-invocation :as invocation]
             [eta-mu.shape.git-diff-path :as diff-path]
+            [eta-mu.shape.review-coverage :as coverage]
             [eta-mu.shape.review-input :as input-shape]))
 
 ;; ---------------------------------------------------------------------------
@@ -81,8 +83,9 @@
   input-shape/diff-chunks)
 
 (defn begin
-  "Start a review session over staged diff text."
-  [diff-text]
+  "Start over original diff, or separately prepared ordinary-v2 components.
+   The caller/byte edge owns admission; support never contributes locations."
+  ([diff-text]
   (let [changed (parse-diff-added-lines diff-text)]
     {:stage         :deterministic
      :evidence      []
@@ -96,6 +99,14 @@
      :diff-stats    {:files          (count (re-seq #"(?m)^diff --git " (or diff-text "")))
                      :bytes          (count (or diff-text ""))
                      :truncated?     (boolean (and diff-text (re-find #"(?m)^\[eta-mu review\] diff truncated at [0-9]+ bytes \(was [0-9]+\)\.$" diff-text)))}}))
+  ([text {:keys [manifest components view raw-diff] :as prepared}]
+   (let [pages (input-shape/component-chunks manifest text)]
+     (when-not (and (= text (:text prepared))
+                   (= raw-diff (subs text 0 (second (:text_span (first components)))))
+                   (invocation/component-pages-valid? manifest components view pages))
+       (throw (ex-info "Prepared component geometry differs from original input" {})))
+     (assoc (begin raw-diff) :diff-chunks pages :input-source manifest
+            :components components :view view :empty-assessments {}))))
 
 (defn- err [msg] {:ok? false :error msg})
 
@@ -104,10 +115,10 @@
 (defn input-coverage
   "Delivery and assessment are separate observations, never proof by metadata."
   [session]
-  (let [ids (set (map :id (:diff-chunks session)))]
-    {:chunks (count ids) :delivered (count (:delivered-chunks session))
-     :assessed (count (:assessed-chunks session))
-     :missing (vec (sort (remove #(contains? (:assessed-chunks session) %) ids)))}))
+  (coverage/component-coverage (:diff-chunks session) (:components session)
+                                 (:delivered-chunks session)
+                                 (set (keys (:assessed-chunks session)))
+                                 (set (keys (:empty-assessments session)))))
 
 (defn restart-required?
   "Whether an admitted session has a latched restart or reread violation."
@@ -144,15 +155,30 @@
   "Record a substantive model assessment only after delivery, while the
    session has no latched restart or read-after-assessment violation and
    before the first deterministic evidence advances the stage."
-  [session id note]
+  ([session id note] (assess-diff-chunk session id note nil))
+  ([session id note assessment]
+  (let [v2? (some? (:components session))
+        empty? (= "empty-component" (:kind assessment))
+        page (when (and (integer? id) (pos? id)) (get (:diff-chunks session) (dec id)))]
   (cond
     (restart-required? session) (err (chronology-error session))
-    (not (contains? (:delivered-chunks session) id)) (err "Read the diff chunk before assessing it.")
+    (and (not (and v2? empty? (nil? id)))
+         (not (contains? (:delivered-chunks session) id))) (err "Read the diff chunk before assessing it.")
     (not (non-blank note)) (err "Explain the changed-hunk assessment in a non-empty note.")
     (not= :deterministic (:stage session))
     (err "Assess every diff chunk before recording deterministic evidence; post-stage reassessment is refused.")
-    :else {:ok? true :session (assoc-in session [:assessed-chunks id] note)
-           :chunk-id id :coverage (input-coverage (assoc-in session [:assessed-chunks id] note))}))
+    (and v2? (not (if empty?
+                    (and (nil? id) (invocation/empty-assessment-valid? (:components session) assessment))
+                    (invocation/page-assessment-valid? page assessment))))
+    (err "Assessment must match the actual component, payload, role and spans.")
+    :else
+    (let [state (if (and v2? empty?)
+                  (assoc-in session [:empty-assessments (get-in assessment [:component-ref :role])]
+                            {:note note :assessment assessment})
+                  (assoc-in session [:assessed-chunks id]
+                            (if v2? {:note note :assessment assessment} note)))]
+      (cond-> {:ok? true :session state :chunk-id id :coverage (input-coverage state)}
+        v2? (assoc :assessment assessment)))))))
 
 (defn- full-input-error [session]
   (cond
@@ -161,6 +187,10 @@
 
     (get-in session [:diff-stats :truncated?])
     "The staged input is a truncated preview. Recover the full immutable diff before publishing."
+
+    (some #(and (:empty? %) (not (:empty-observed? %)))
+          (vals (:roles (input-coverage session))))
+    "Empty input components require explicit observations before publishing."
 
     (seq (:missing (input-coverage session)))
     (str "Unassessed full-input chunks remain: " (str/join ", " (:missing (input-coverage session)))
@@ -350,15 +380,21 @@
                                :body     body})
                             confirmed)]
         {:ok?      true
-         :envelope {:schema  "open-hax.github-review/v1"
+         :envelope (cond-> {:schema  "open-hax.github-review/v1"
                     :event   event
                     :summary summary
                     :input-source (:input-source session)
                     :input-coverage (input-coverage session)
-                    :input-assessments (mapv #(assoc (select-keys % [:id :start :end])
-                                                    :note (get (:assessed-chunks session) (:id %)))
+                    :input-assessments (mapv #(merge (select-keys % [:id :start :end])
+                                                     (if (:components session)
+                                                       (get (:assessed-chunks session) (:id %))
+                                                       {:note (get (:assessed-chunks session) (:id %))}))
                                              (:diff-chunks session))
-                    :comments comments}}))))
+                    :comments comments}
+                     (:components session)
+                     (assoc :empty-component-assessments
+                            (mapv #(get (:empty-assessments session) (:role %))
+                                  (filter #(zero? (:bytes %)) (:components session)))))}))))
 
 (defn status
   "Read-only projection of a session for the reviewer."
