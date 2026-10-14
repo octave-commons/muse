@@ -1,11 +1,12 @@
 ---
 uuid: "0bd45066-9d1c-4cc4-a28e-fcfecf7eac7a"
 title: "Require assessment of complete immutable review input"
-status: incoming
-priority: P1
-points: 3
-labels: review, full-input, completeness, 3sp
-category: repair
+status: "incoming"
+priority: "P1"
+points: "3"
+labels: "review, full-input, completeness, 3sp"
+category: "repair"
+write-id: "1791955603840-0.c6la3fdusfaghyen605"
 ---
 
 # Require assessment of complete immutable review input
@@ -199,3 +200,25 @@ append a typed correction receipt and reflection. Parent alone publishes an
 ordinary successor; fresh full native review, current CI, all finding
 settlements and the normal merge gate remain required. This card content is
 manually authored planning; operational status remains unchanged.
+
+---
+2026-10-14 scoped deployment repair: ordinary complete supporting review input.
+
+Scoped repair plan for “Require assessment of complete immutable review input” (UUID 0bd45066-9d1c-4cc4-a28e-fcfecf7eac7a): ordinary code review must receive and assess the complete raw Git diff, summary.json and deterministic.log through the existing canonical page tools. The observed T350 attempt 2 published a real APPROVED review and read/assessed all 167 diff pages, but omitted 1,868 supporting log lines and received 17 clipped lines. Preserve those outcomes with their limitation; they do not qualify the repaired supporting-input scope.
+
+Extend the Muse-owned ordinary transport as an explicit `open-hax.review-input/v2`. Preserve `full_diff` as the actual basehead.diff byte identity, all raw Git base/head/provenance/preview obligations, ordinary v1 compatibility and the three existing native assessment schemas. Add exact, nonredirectable descriptors for the complete summary.json and deterministic.log. Muse assembles and hashes a deterministic lossless code/evidence view from the three original byte arrays, and the existing eight tools page and assess all of that view. A physical combined carrier is optional; a filename or directory alias is never a raw-diff contract extension. Changed-line indexing and raw diff statistics/truncation checks use only basehead.diff. Support content containing diff headers or truncation-like text must not create reviewable source locations or alter raw diff geometry.
+
+API scope is the existing `law.review-invocation/input-source-valid?` and `context-valid?`; `shape.review-input` descriptor/component projection and canonical view shaping; `boundaries.node.fs/read-review-input`; `domain.review/begin` and existing lossless `diff-chunks`; the plugin's `review_begin` admission; and `extern.review-invocation/prepare-review-invocation-context` plus its CJS export. A dedicated canonical component-preparation export may be added in shadow-cljs.edn if required to keep filesystem and caller preparation identical. Raw diff, each support component and the paged view have separate byte/hash identities. Extend the ordinary prompt/reviewer guide to identify the full code/evidence view and complete paging, retaining actual deterministic results and all five stages. No new review tool, copied trace validator, assessment substitution, provider/account route, permission grant or publisher identity is in scope.
+
+Acceptance and RED/GREEN controls:
+
+- Exercise the predecessor's existing compiled law/filesystem/begin/prepare APIs with a complete proposed v2 input. The meaningful RED is unsupported ordinary support admission or missing support delivery at the actual owner boundary, never a missing new export, absent dependencies or setup error. Preserve every inherited v1/native assertion.
+- With the actual cold eight-tool fixture, read and assess every page; concatenate delivered text exactly and recover each complete original byte array and independent digest. Include logs above the HOST 50 KB cap, lines longer than 2,000 characters, CRLF, leading BOM, Unicode/surrogate boundaries, empty raw diff and diff-like supporting text. Also execute a private full-real-byte assembly readback using the retained T350 original files (2,058,316 bytes before framing), without a model or publication.
+- Omitted/skipped/clipped support pages, omitted assessments, malformed fixed descriptors and mutations to any original/view/manifest must refuse before accepted deterministic-stage advancement, submission or invocation admission. All unchanged controls must complete the five stages and exact submission normally.
+- Preserve read-before-assess, irreversible reread and second-begin guards, STOP after failure, MAX2 caller recovery, eight exact registry names, strict UTF8/JSON decoding, isolated model environment, Bash true-only, anonymous dynamic latest free OpenCode MiMo selection, and unchanged native publisher behavior.
+- Qualify the complete Muse test suite, plugin/invocation builds, cold host/input scripts and zero-warning lint. Consume only the reviewed owner commit in T350's existing workflow/recovery/ordinary owner tests, independently checking the raw Git diff and each complete support component before and after each child and before publication. Close descriptors after deterministic output files are finalized; retain raw artifacts and producer/run/attempt/source custody. Exact encoded runner mirror remains required.
+
+Measured retained inputs: raw diff 1,274,799 bytes; summary 1,043 bytes; deterministic log 782,474 bytes. Choose the actual invocation budget after canonical view geometry is measured. The current ordinary whole-job budget is 60–180 minutes, default 120; explicit 180 is a candidate for the first full-support native qualification, without a completion guarantee or weakening any guard. No implementation starts until this owner card's planning review and lawful readiness are established through Rheos.
+
+This dated scope advances the current authorized Website/CMS deployment. Earlier preparation holds and non-goals remain historical scope records; this addition requests planning review before implementation, not readiness or qualification.
+---

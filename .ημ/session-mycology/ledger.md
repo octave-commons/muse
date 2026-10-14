@@ -240,3 +240,12 @@
   spore: none
   receipt-refs: 5d1d9871b055be38c66d4857dfe3952cf2cd6e9343560638421e49c1e0fdf0f8
   note: Separate decoder/session custody and singular target laws; preserve actual failed controls. Use restricted syscall observations to identify current ENOSPC before changing tests. Bounded live capacity repair restored normal315 without source/timer changes; prior causes remain unassigned. No spore or deployment credit.
+- ts: 2026-10-14T05:29:03.982777450Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: Scope ordinary complete supporting input through the existing Muse owner card
+  p-efficiency: 0.73
+  p-friction: 0.62
+  p-skill-candidate: 0.0
+  spore: none
+  receipt-refs: 46f99800d63382c73c89f4b09b46815a1fb479191e79a56831e30ab499762d24
+  note: Current owner main has explicit raw-Git ordinary v1 and assessment-only fixed-input extensions. A canonical engine comment now records the smallest ordinary v2 complete summary/log paging plan on the existing incoming card. Exact readback and historical ledger prefix are preserved; no status transition or readiness is claimed. Qualify real full byte assembly and refuse skipped, clipped, changed and unassessed support while preserving raw geometry, eight tools, five stages, strict chronology, anonymous dynamic free OpenCode MiMo and MAX2. Prior native green and APPROVED outcomes remain paired with the actual supporting-input gap. Planning review precedes implementation; no spore.
