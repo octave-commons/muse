@@ -5,6 +5,7 @@
             [clojure.string :as str]
             [eta-mu.extern.review-invocation :as extern]
             [eta-mu.extern.json :as input-json]
+            [eta-mu.extern.review-input :as input-edge]
             [eta-mu.law.review-invocation-test :as fixture]
             [eta-mu.law.review-invocation :as invocation]
             [eta-mu.shape.review-input :as input-shape]
@@ -63,6 +64,45 @@
       :shared (let [view (js/Uint8Array. (js/SharedArrayBuffer. (.-length bytes)))]
                 (.set view bytes)
                 view))))
+
+(deftest ordinary-v2-byte-boundary-caps-intrinsic-size-and-owns-its-snapshot
+  (doseq [kind [:buffer :uint8 :shared]]
+    (let [ordinary (mutable-byte-carrier kind "four")
+          oversized (mutable-byte-carrier kind "fives")]
+      (is (= "four" (input-json/decode-text (input-edge/bounded-bytes ordinary 4)))
+          (str kind " unchanged exact-cap bytes remain legal"))
+      ;; A caller-controlled property is not the native viewed byte count.
+      (js/Object.defineProperty oversized "length" #js {:value 0})
+      (is (= 0 (.-length oversized)) "the cap-bypass fixture really shadows length")
+      (is (thrown? js/Error (input-edge/bounded-bytes oversized 4))
+          (str kind " actual five-byte view cannot fit an observed cap of four"))
+      (let [snapshot (input-edge/bounded-bytes ordinary 4)]
+        (.set ordinary (js/Buffer.from "edit" "utf8"))
+        (is (= "edit" (input-json/decode-text ordinary)))
+        (is (= "four" (input-json/decode-text snapshot))
+            (str kind " later caller mutation cannot change the admitted owned bytes"))))))
+
+(deftest ordinary-v2-byte-snapshot-keeps-admitted-size-after-backing-growth
+  ;; Synchronous native growth is deterministic. Unsupported host capabilities
+  ;; are not simulated; the actual gate runtime records which branches execute.
+  (doseq [[kind backing grow!]
+          [[:shared (js/SharedArrayBuffer. 4 #js {:maxByteLength 8})
+            (fn [buffer] (.grow buffer 8))]
+           [:resizable (js/ArrayBuffer. 4 #js {:maxByteLength 8})
+            (fn [buffer] (.resize buffer 8))]]]
+    (when (if (= kind :shared) (some? (.-grow backing)) (some? (.-resize backing)))
+      (let [raw (js/Uint8Array. backing)]
+        (.set raw (js/Buffer.from "four" "utf8"))
+        (let [snapshot (input-edge/bounded-bytes raw 4)]
+          (is (= "four" (input-json/decode-text snapshot)))
+          (grow! backing)
+          (.set raw (js/Buffer.from "changed!" "utf8"))
+          (is (= 8 (.-length raw)) (str kind " real native growth was exercised"))
+          (is (= "changed!" (input-json/decode-text raw)))
+          (is (= 4 (.-length snapshot))
+              (str kind " admitted snapshot cannot expand after cap verification"))
+          (is (= "four" (input-json/decode-text snapshot))
+              (str kind " admitted snapshot keeps original bytes after growth")))))))
 
 (deftest ordinary-v2-byte-preparation-cannot-admit-a-hash-decode-interleaving
   ;; Interpose only the scheduler point at the existing real decoder boundary.
