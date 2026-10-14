@@ -11,6 +11,81 @@
 (defn- read-native-input [dir]
   (try (bfs/read-review-input dir) (catch :default _ nil)))
 
+(deftest ordinary-v2-filesystem-requires-current-or-successfully-reused-attempt
+  (let [{:keys [source texts view trusted]} (fixture/ordinary-v2-fixture)
+        dir (.mkdtempSync fs (.join path (.tmpdir os) "muse-v2-producer-attempt-"))
+        manifest-path (.join path dir "input-manifest.json")]
+    (try
+      (doseq [[component text] (map vector (:components source) texts)]
+        (.writeFileSync fs (.join path dir (:path component)) (js/Buffer.from text "utf8")))
+      (bfs/write-text! manifest-path (js/JSON.stringify (clj->js source)))
+      (is (= view (:text (.call bfs/read-review-input nil dir trusted))))
+      (is (= view (:text (.call bfs/read-review-input nil dir
+                               (-> trusted (assoc :reviewer_run_attempt "1")
+                                   (dissoc :producer_reuse))))))
+      (doseq [{:keys [label source trusted]} (fixture/ordinary-v2-attempt-refusal-cases)]
+        (bfs/write-text! manifest-path (js/JSON.stringify (clj->js source)))
+        (is (thrown? js/Error (.call bfs/read-review-input nil dir trusted)) label))
+      (finally (.rmSync fs dir #js {:recursive true :force true})))))
+
+(deftest ordinary-v2-filesystem-refuses-coherent-stale-originals
+  (let [{:keys [source texts view trusted] :as held} (fixture/ordinary-v2-fixture)
+        dir (.mkdtempSync fs (.join path (.tmpdir os) "muse-v2-held-originals-"))
+        manifest-path (.join path dir "input-manifest.json")]
+    (try
+      (doseq [[component text] (map vector (:components source) texts)]
+        (.writeFileSync fs (.join path dir (:path component)) (js/Buffer.from text "utf8")))
+      (bfs/write-text! manifest-path (js/JSON.stringify (clj->js source)))
+      (is (= view (:text (.call bfs/read-review-input nil dir trusted)))
+          "actual unchanged originals are readable with their independently held identity")
+      (is (thrown? js/Error (.call bfs/read-review-input nil dir (dissoc trusted :input_source)))
+          "filesystem preparation requires independently held original identity")
+      (doseq [{candidate :source originals :texts label :label}
+              (fixture/ordinary-v2-coherent-stale-candidates held)]
+        (doseq [[component text] (map vector (:components candidate) originals)]
+          (.writeFileSync fs (.join path dir (:path component)) (js/Buffer.from text "utf8")))
+        (bfs/write-text! manifest-path (js/JSON.stringify (clj->js candidate)))
+        (is (thrown? js/Error (.call bfs/read-review-input nil dir trusted))
+            (str label " must refuse after coherent actual file and manifest replacement")))
+      (finally (.rmSync fs dir #js {:recursive true :force true})))))
+
+(deftest ordinary-v2-filesystem-reads-the-three-originals-without-a-composite-file
+  (let [{:keys [source texts view trusted]} (fixture/ordinary-v2-fixture)
+        dir (.mkdtempSync fs (.join path (.tmpdir os) "muse-ordinary-v2-"))
+        manifest-path (.join path dir "input-manifest.json")]
+    (try
+      (doseq [[component text] (map vector (:components source) texts)]
+        (.writeFileSync fs (.join path dir (:path component)) (js/Buffer.from text "utf8")))
+      (bfs/write-text! manifest-path (js/JSON.stringify (clj->js source)))
+      (is (false? (.existsSync fs (.join path dir "combined-input.txt"))))
+      ;; JS .call reaches the same existing function with an additional pure
+      ;; caller context. The predecessor ignores that extra argument and reaches
+      ;; its real unsupported-v2 refusal, rather than a CLJS arity error.
+      (let [actual (try (.call bfs/read-review-input nil dir trusted) (catch :default _ nil))]
+        (is (some? actual) "existing filesystem boundary must admit complete v2 originals")
+        (is (= source (:manifest actual)))
+        (is (= view (:text actual)))
+        (is (= (.toString (js/Buffer.from view "utf8") "hex")
+               (when actual (.toString (js/Buffer.from (:text actual) "utf8") "hex")))))
+      (is (thrown? js/Error (bfs/read-review-input dir))
+          "complete v2 originals without separately supplied context must refuse")
+      (doseq [changed [(assoc-in trusted [:producer :head_sha] (apply str (repeat 40 "f")))
+                       (assoc-in trusted [:content :authorization] "unauthorized")
+                       (assoc-in trusted [:content :authorization] "unknown")
+                       (assoc-in trusted [:content :classification] "sensitive")
+                       (assoc-in trusted [:content :credential_canary] true)]]
+        (is (thrown? js/Error (.call bfs/read-review-input nil dir changed))))
+      ;; These specialized refusal obligations need the admitted positive above
+      ;; to turn green; predecessor blanket-v2 refusal supplies no enforcement credit.
+      (doseq [[component text] (map vector (:components source) texts)]
+        (let [full (.join path dir (:path component)) bytes (js/Buffer.from text "utf8")]
+          (.writeFileSync fs full (.subarray bytes 0 (max 0 (dec (.-length bytes)))))
+          (is (thrown? js/Error (.call bfs/read-review-input nil dir trusted)))
+          (.writeFileSync fs full bytes)))
+      (.unlinkSync fs (.join path dir "summary.json"))
+      (is (thrown? js/Error (.call bfs/read-review-input nil dir trusted)))
+      (finally (.rmSync fs dir #js {:recursive true :force true})))))
+
 (defn- with-native-input [bytes f]
   (let [dir (.mkdtempSync fs (.join path (.tmpdir os) "muse-native-input-"))
         full (.join path dir "actionability-input.txt")
@@ -23,6 +98,60 @@
       (bfs/write-text! manifest-path (js/JSON.stringify (clj->js manifest)))
       (f dir full manifest-path manifest)
       (finally (.rmSync fs dir #js {:recursive true :force true})))))
+
+(deftest ordinary-v2-bounded-reader-refuses-before-allocation-and-file-races
+  (let [dir (.mkdtempSync fs (.join path (.tmpdir os) "muse-bounded-read-"))
+        file (.join path dir "basehead.diff")
+        alloc (.-alloc js/Buffer) read-sync (.-readSync fs) allocations (atom [])]
+    (try
+      (.writeFileSync fs file "short original")
+      (is (= "short original" (.toString (bfs/read-bounded-file file 4194304 nil) "utf8")))
+      (.truncateSync fs file 4194305)
+      (set! (.-alloc js/Buffer) (fn [size] (swap! allocations conj size) (.call alloc js/Buffer size)))
+      (is (thrown? js/Error (bfs/read-bounded-file file 4194304 nil)))
+      (is (empty? @allocations) "oversized actual stat refuses before byte-buffer allocation")
+      (set! (.-alloc js/Buffer) alloc)
+      (.writeFileSync fs file "short original")
+      (let [grew? (atom false)]
+        (set! (.-readSync fs)
+              (fn [fd buffer offset length position]
+                (let [n (.call read-sync fs fd buffer offset length position)]
+                  (when (and (pos? n) (compare-and-set! grew? false true)) (.appendFileSync fs file "!"))
+                  n)))
+        (is (thrown-with-msg? js/Error #"changed during" (bfs/read-bounded-file file 4194304 nil))))
+      (set! (.-readSync fs) (fn [& _] 0))
+      (is (thrown-with-msg? js/Error #"short read" (bfs/read-bounded-file file 4194304 nil)))
+      (finally
+        (set! (.-alloc js/Buffer) alloc)
+        (set! (.-readSync fs) read-sync)
+        (.rmSync fs dir #js {:recursive true :force true})))))
+
+(deftest ordinary-v2-metadata-profile-is-bounded-before-allocation
+  (let [{:keys [source texts view trusted]} (fixture/ordinary-v2-fixture)
+        dir (.mkdtempSync fs (.join path (.tmpdir os) "muse-v2-metadata-"))
+        file (.join path dir "input-manifest.json") cap 9437184
+        manifest (js/JSON.stringify (clj->js source)) alloc (.-alloc js/Buffer) allocations (atom [])]
+    (try
+      (doseq [[component text] (map vector (:components source) texts)]
+        (.writeFileSync fs (.join path dir (:path component)) text "utf8"))
+      (bfs/write-text! file (str manifest (.repeat " " (- cap (count manifest)))))
+      (is (= view (:text (.call bfs/read-review-input nil dir trusted))))
+      (.truncateSync fs file (inc cap))
+      (set! (.-alloc js/Buffer) (fn [size] (swap! allocations conj size) (.call alloc js/Buffer size)))
+      (is (thrown? js/Error (.call bfs/read-review-input nil dir trusted)))
+      (is (empty? @allocations) "v2-only oversized metadata stat refuses before allocation")
+      (set! (.-alloc js/Buffer) alloc)
+      (bfs/write-text! file (js/JSON.stringify (clj->js fixture/manifest)))
+      (is (thrown? js/Error (.call bfs/read-review-input nil dir trusted))
+          "explicit caller profile cannot downgrade to legacy schema")
+      (let [old (fixture/ordinary-v2-fixture ["older diff" "{}" "older log"])
+            head (apply str (repeat 40 "f"))
+            old-source (-> (:source old) (assoc :head_sha head) (assoc-in [:producer :head_sha] head))]
+        (doseq [[component text] (map vector (:components old-source) (:texts old))]
+          (.writeFileSync fs (.join path dir (:path component)) text "utf8"))
+        (bfs/write-text! file (js/JSON.stringify (clj->js old-source)))
+        (is (thrown? js/Error (.call bfs/read-review-input nil dir trusted))))
+      (finally (set! (.-alloc js/Buffer) alloc) (.rmSync fs dir #js {:recursive true :force true})))))
 
 (deftest native-input-retains-complete-unicode-bytes-and-cannot-read-diff-fallback
   (let [text (str (apply str (repeat 300001 "x")) "\noriginal body ημ 😀\n")
@@ -174,6 +303,18 @@
                                                (js/Buffer.from #js [255])
                                                (js/Buffer.from (str "\"," (subs json 1)))]))
         (is (thrown? js/Error (bfs/read-review-input dir)))))))
+
+(deftest derived-large-legacy-metadata-and-symlinks-keep-existing-policy
+  (with-input (js/Buffer.from "diff" "utf8")
+    (fn [dir full manifest-path manifest]
+      (bfs/write-text! manifest-path (str (js/JSON.stringify (clj->js manifest)) (.repeat " " 9437185)))
+      (is (= "diff" (:text (bfs/read-review-input dir))))
+      (let [manifest-target (.join path dir "owned-manifest.json") diff-target (.join path dir "owned.diff")]
+        (.renameSync fs manifest-path manifest-target)
+        (.renameSync fs full diff-target)
+        (.symlinkSync fs manifest-target manifest-path)
+        (.symlinkSync fs diff-target full)
+        (is (= {:manifest manifest :text "diff"} (bfs/read-review-input dir)))))))
 
 
 (defn- with-rejection-input [bytes f]

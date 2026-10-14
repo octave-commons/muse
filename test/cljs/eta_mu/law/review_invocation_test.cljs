@@ -2,7 +2,238 @@
   "Source-only synthetic controls in actual OpenCode host-event shape."
   (:require [cljs.test :refer [deftest is testing]]
             [eta-mu.domain.review :as review]
-            [eta-mu.law.review-invocation :as invocation]))
+            [eta-mu.law.review-invocation :as invocation]
+            ["node:crypto" :as crypto]))
+
+(defn byte-descriptor [path text]
+  (let [bytes (js/Buffer.from text "utf8")]
+    {:path path :bytes (.-length bytes)
+     :sha256 (-> (.createHash crypto "sha256") (.update bytes) (.digest "hex"))}))
+
+(defn ordinary-v2-fixture
+  "Synthetic original bytes and independently held caller coordinates. No native
+   authority, model, dispatcher, or completion/approval credit is supplied."
+  ([] (ordinary-v2-fixture ["\uFEFFdiff --git a/x b/x\r\n--- a/x\r\n+++ b/x\r\n@@ -1 +1 @@\r\n-old\r\n+ημ 😀\r\n"
+                           "{\"gate\":\"pass\",\"limitation\":\"synthetic only\"}\r\n"
+                           "deterministic result: pass\r\noriginal log tail 😀\n"]))
+  ([texts]
+   (let [roles ["raw-diff" "summary" "log"]
+         paths ["basehead.diff" "summary.json" "deterministic.log"]
+         components (loop [remaining (map vector roles paths texts) out [] bs 0 ts 0]
+                      (if-let [[role path text] (first remaining)]
+                        (let [descriptor (byte-descriptor path text)
+                              be (+ bs (:bytes descriptor)) te (+ ts (count text))]
+                          (recur (next remaining)
+                                 (conj out (assoc descriptor :role role :byte_span [bs be] :text_span [ts te]))
+                                 be te))
+                        out))
+         view (apply str texts)
+         producer {:repository "fixture/repo" :base_sha (apply str (repeat 40 "a"))
+                   :head_sha (apply str (repeat 40 "b")) :diff_base_sha (apply str (repeat 40 "a"))
+                   :workflow_path ".github/workflows/review.yml"
+                   :workflow_ref "fixture/repo/.github/workflows/review.yml@refs/pull/1/merge"
+                   :workflow_sha (apply str (repeat 40 "d"))
+                   :run_id "2" :run_attempt "1" :job_id "3" :artifact_id "4"
+                   :artifact_zip_sha256 (apply str (repeat 64 "e"))}
+         source {:schema "open-hax.review-input/v2"
+                 :base_sha (:base_sha producer) :head_sha (:head_sha producer)
+                 :diff_base_sha (:diff_base_sha producer)
+                 :full_diff (select-keys (first components) [:path :bytes :sha256])
+                 :components (vec components)
+                 :view (-> (byte-descriptor "unused" view) (dissoc :path)
+                           (assoc :text_units (count view) :page_count (count (review/diff-chunks view))))
+                 :producer producer}]
+     {:source source :texts texts :view view
+       :trusted {:producer producer :reviewer_run_attempt "2" :input_source source
+                :producer_reuse {:producer producer :conclusion "success"}
+                :content {:authorization "public" :classification "authorized" :credential_canary false}}})))
+
+(defn ordinary-v2-attempt-refusal-cases
+  "Synthetic caller-held attempts and successful prerequisite custody. Candidate
+   manifests never establish reuse; no native authentication is simulated."
+  []
+  (let [{:keys [source trusted]} (ordinary-v2-fixture)
+        producer-case (fn [label attempt reviewer]
+                        (let [candidate (assoc-in source [:producer :run_attempt] attempt)
+                              caller (-> trusted
+                                         (assoc :producer (:producer candidate)
+                                                :input_source candidate
+                                                :reviewer_run_attempt reviewer)
+                                         (assoc-in [:producer_reuse :producer] (:producer candidate)))]
+                          {:label label :source candidate :trusted caller}))
+        context-case (fn [label caller] {:label label :source source :trusted caller})
+        claimed (assoc source :producer_reuse (:producer_reuse trusted))]
+    [(producer-case "future producer attempt9 before reviewer1" "9" "1")
+     (producer-case "zero producer attempt" "0" "2")
+     (producer-case "noncanonical producer attempt" "01" "2")
+     (context-case "older producer without successful prerequisite custody"
+                   (dissoc trusted :producer_reuse))
+     (context-case "failed prerequisite cannot establish reuse"
+                   (assoc-in trusted [:producer_reuse :conclusion] "failure"))
+     (context-case "reuse without the independently held native producer tuple"
+                   (assoc trusted :producer_reuse {:conclusion "success"}))
+     (context-case "successful different job cannot establish this artifact's reuse"
+                   (assoc-in trusted [:producer_reuse :producer :job_id] "other-job"))
+     (context-case "successful different artifact cannot establish this artifact's reuse"
+                   (assoc-in trusted [:producer_reuse :producer :artifact_id] "other-artifact"))
+     (context-case "successful different workflow source cannot establish reuse"
+                   (assoc-in trusted [:producer_reuse :producer :workflow_sha]
+                             (apply str (repeat 40 "f"))))
+     (context-case "zero reviewer attempt" (assoc trusted :reviewer_run_attempt "0"))
+     (context-case "noncanonical reviewer attempt" (assoc trusted :reviewer_run_attempt "later"))
+     {:label "candidate-provided successful reuse is not caller-held evidence"
+      :source claimed :trusted (-> trusted (assoc :input_source claimed)
+                                 (dissoc :producer_reuse))}]))
+
+(deftest ordinary-v2-attempt-admission-requires-current-or-bound-successful-reuse
+  (let [{:keys [source trusted]} (ordinary-v2-fixture)
+        current (-> trusted (assoc :reviewer_run_attempt "1") (dissoc :producer_reuse))]
+    (is (invocation/ordinary-v2-origin-bound? source current)
+        "actual current producer attempt remains legal without invented reuse")
+    (is (invocation/ordinary-v2-origin-bound? source trusted)
+        "earlier producer remains legal with independently held successful native tuple")
+    (doseq [{:keys [label source trusted]} (ordinary-v2-attempt-refusal-cases)]
+      (is (invocation/ordinary-v2-contract-valid? source)
+          (str label " retains structurally intact original descriptors"))
+      (is (= source (:input_source trusted))
+          (str label " cannot fail merely from a held-source mismatch"))
+      (is (false? (invocation/ordinary-v2-origin-bound? source trusted)) label))))
+
+(defn ordinary-v2-coherent-stale-candidates
+  "Recompute candidate descriptors and view from replaced originals, retaining
+   the current producer coordinates. No candidate supplies the caller's held
+   input_source or native authentication."
+  [{:keys [texts]}]
+  (let [stale ["diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+older\n"
+               "{\"gate\":\"older\",\"limitation\":\"synthetic replacement\"}\n"
+               "previous deterministic run: synthetic older log\n"]]
+    (mapv (fn [[label replaced]]
+            (assoc (select-keys (ordinary-v2-fixture replaced) [:source :texts :view]) :label label))
+          [["raw-diff" (assoc texts 0 (nth stale 0))]
+           ["summary" (assoc texts 1 (nth stale 1))]
+           ["log" (assoc texts 2 (nth stale 2))]
+           ["all originals" stale]])))
+
+(deftest ordinary-v2-origin-refuses-coherent-stale-originals-with-current-producer
+  (let [{:keys [source trusted] :as held} (ordinary-v2-fixture)]
+    (is (invocation/ordinary-v2-contract-valid? (:input_source trusted)))
+    (is (invocation/ordinary-v2-trusted-context-valid? trusted))
+    (is (invocation/ordinary-v2-origin-bound? source trusted)
+        "the unchanged producer's original identity remains legal for a later reviewer")
+    (doseq [{candidate :source label :label} (ordinary-v2-coherent-stale-candidates held)]
+      (is (invocation/ordinary-v2-contract-valid? candidate) label)
+      (is (= (:producer source) (:producer candidate)) label)
+      (is (false? (invocation/ordinary-v2-origin-bound? candidate trusted))
+          (str label " must refuse against the independently held original identity")))
+    (let [unbound (dissoc trusted :input_source)]
+      (is (false? (invocation/ordinary-v2-trusted-context-valid? unbound))
+          "current producer coordinates without held original identity are insufficient")
+      (is (false? (invocation/ordinary-v2-origin-bound? source unbound))
+          "a candidate cannot supply its own missing trusted original identity"))))
+
+(deftest ordinary-v2-contract-keeps-original-identities-and-separate-span-units
+  (doseq [texts [["" "{}" ""]
+                 ["\uFEFF\r\nημ 😀" "{}\r\n" "\uFEFFtail 😀\n"]
+                 ["diff" "{}" (str (apply str (repeat 8191 "x")) "😀tail")]]]
+    (let [{:keys [source view trusted]} (ordinary-v2-fixture texts)]
+      (is (invocation/ordinary-v2-contract-valid? source))
+      (is (invocation/ordinary-v2-origin-bound? source trusted))
+      (is (= (:full_diff source) (byte-descriptor "basehead.diff" (first texts))))
+      (is (= (get-in source [:view :sha256]) (:sha256 (byte-descriptor "unused" view))))
+      (is (= (count view) (get-in source [:view :text_units])))
+      (testing "the existing predecessor admission must gain the explicit v2 contract"
+        (is (true? (invocation/input-source-valid? source)))))))
+
+(deftest ordinary-v2-contract-refuses-path-order-span-and-digest-corruption
+  (let [{:keys [source]} (ordinary-v2-fixture)]
+    (doseq [changed [(assoc-in source [:components 1 :path] "../summary.json")
+                     (assoc source :components (vec (reverse (:components source))))
+                     (assoc-in source [:components 1 :byte_span 0] 0)
+                     (assoc-in source [:components 1 :text_span 0] 0)
+                     (assoc-in source [:components 2 :sha256] (apply str (repeat 64 "z")))
+                     (assoc-in source [:full_diff :sha256] (apply str (repeat 64 "f")))
+                     (update-in source [:view :bytes] inc)
+                     (update-in source [:view :text_units] inc)]]
+      (is (false? (invocation/ordinary-v2-contract-valid? changed))))))
+
+(deftest ordinary-v2-origin-is-separate-from-internal-self-consistency
+  (let [{:keys [source trusted]} (ordinary-v2-fixture)]
+    (doseq [field [:repository :workflow_path :workflow_ref :workflow_sha :run_id
+                   :run_attempt :job_id :artifact_id :artifact_zip_sha256]]
+      (let [replacement (if (#{:workflow_sha :artifact_zip_sha256} field)
+                          (apply str (repeat (if (= field :workflow_sha) 40 64) "f"))
+                          "other-producer")
+            substituted (assoc-in source [:producer field] replacement)]
+        (is (invocation/ordinary-v2-contract-valid? substituted))
+        (is (false? (invocation/ordinary-v2-origin-bound? substituted trusted)))))
+    (doseq [field [:head_sha :base_sha :diff_base_sha]]
+      (let [sha (apply str (repeat 40 "f"))
+            substituted (-> source (assoc field sha) (assoc-in [:producer field] sha))]
+        (is (invocation/ordinary-v2-contract-valid? substituted))
+        (is (false? (invocation/ordinary-v2-origin-bound? substituted trusted)))))
+    (testing "actual producer attempt one may be reused by reviewer attempt two"
+      (is (invocation/ordinary-v2-origin-bound? source trusted)))
+    (doseq [changed [nil (dissoc trusted :producer)
+                     (assoc-in trusted [:content :authorization] "unknown")
+                     (assoc-in trusted [:content :classification] "sensitive")
+                     (assoc-in trusted [:content :credential_canary] true)]]
+      (is (false? (invocation/ordinary-v2-origin-bound? source changed))))))
+
+(deftest ordinary-v2-refuses-self-consistent-blank-producer-coordinates
+  ;; Regression for native root 4271575526: matching candidate/caller strings
+  ;; cannot stand in for nonblank coordinates. This supplies no native evidence.
+  (let [{:keys [source trusted]} (ordinary-v2-fixture)]
+    (testing "honest earlier producer and distinct reviewer remain admissible"
+      (is (= ["1" "2"] [(get-in source [:producer :run_attempt])
+                         (:reviewer_run_attempt trusted)]))
+      (is (invocation/ordinary-v2-contract-valid? source))
+      (is (invocation/ordinary-v2-trusted-context-valid? trusted))
+      (is (invocation/ordinary-v2-origin-bound? source trusted)))
+    (doseq [field [:repository :workflow_path :workflow_ref :run_id
+                   :run_attempt :job_id :artifact_id]
+            blank [" " "\t\n"]]
+      (let [candidate (assoc-in source [:producer field] blank)
+            caller (-> trusted (assoc-in [:producer field] blank)
+                       (assoc :input_source candidate)
+                       (assoc-in [:producer_reuse :producer] (:producer candidate)))
+            label (str "matching nonempty blank producer " field " " (pr-str blank))]
+        (is (false? (invocation/ordinary-v2-contract-valid? candidate)) label)
+        (is (false? (invocation/ordinary-v2-trusted-context-valid? caller)) label)
+        (is (false? (invocation/ordinary-v2-origin-bound? candidate caller)) label)))
+    (doseq [blank [" " "\t\n"]]
+      (let [caller (assoc trusted :reviewer_run_attempt blank)
+            label (str "nonempty blank reviewer attempt " (pr-str blank))]
+        (is (false? (invocation/ordinary-v2-trusted-context-valid? caller)) label)
+        (is (false? (invocation/ordinary-v2-origin-bound? source caller)) label)))
+    (testing "existing empty-string refusal is a control, not causal RED credit"
+      (let [candidate (assoc-in source [:producer :repository] "")
+            caller (-> trusted (assoc-in [:producer :repository] "")
+                       (assoc :input_source candidate))]
+        (is (false? (invocation/ordinary-v2-contract-valid? candidate)))
+        (is (false? (invocation/ordinary-v2-trusted-context-valid? caller)))
+        (is (false? (invocation/ordinary-v2-origin-bound? candidate caller)))))))
+
+(deftest ordinary-v2-finite-contract-boundaries-and-lossless-page-count
+  (let [validate-component (fn [role] (invocation/ordinary-v2-validator role))
+        {:keys [source]} (ordinary-v2-fixture)]
+    (doseq [[index role limit] [[0 ::invocation/V2RawDiff 4194304]
+                                [1 ::invocation/V2Summary 262144]
+                                [2 ::invocation/V2Log 4194304]]]
+      (let [component (assoc (nth (:components source) index) :bytes limit)]
+        (is ((validate-component role) component))
+        (is (false? ((validate-component role) (assoc component :bytes (inc limit)))))))
+    (let [validate-view (invocation/ordinary-v2-validator ::invocation/V2View)
+          view (assoc (:view source) :bytes 9437184 :page_count 1024)]
+      (is (validate-view view))
+      (is (false? (validate-view (assoc view :bytes 9437185))))
+      (is (false? (validate-view (assoc view :page_count 1025))))))
+  ;; The 9 MiB aggregate descriptor guard is deliberately isolated above: the
+  ;; three admitted component maxima total 8.25 MiB, so a full 9 MiB neighbor
+  ;; cannot honestly establish an aggregate-only runtime boundary.
+  (doseq [[lines expected] [[131072 1024] [131073 1025]]]
+    (let [{:keys [source]} (ordinary-v2-fixture ["" "" (apply str (repeat lines "\n"))])]
+      (is (= expected (get-in source [:view :page_count])))
+      (is (= (= expected 1024) (invocation/ordinary-v2-contract-valid? source))))))
 
 (def manifest
   {:schema "open-hax.review-input/v1"

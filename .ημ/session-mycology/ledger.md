@@ -240,3 +240,102 @@
   spore: none
   receipt-refs: 5d1d9871b055be38c66d4857dfe3952cf2cd6e9343560638421e49c1e0fdf0f8
   note: Separate decoder/session custody and singular target laws; preserve actual failed controls. Use restricted syscall observations to identify current ENOSPC before changing tests. Bounded live capacity repair restored normal315 without source/timer changes; prior causes remain unassigned. No spore or deployment credit.
+- ts: 2026-10-14T05:29:03.982777450Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: Scope ordinary complete supporting input through the existing Muse owner card
+  p-efficiency: 0.73
+  p-friction: 0.62
+  p-skill-candidate: 0.0
+  spore: none
+  receipt-refs: 46f99800d63382c73c89f4b09b46815a1fb479191e79a56831e30ab499762d24
+  note: Current owner main has explicit raw-Git ordinary v1 and assessment-only fixed-input extensions. A canonical engine comment now records the smallest ordinary v2 complete summary/log paging plan on the existing incoming card. Exact readback and historical ledger prefix are preserved; no status transition or readiness is claimed. Qualify real full byte assembly and refuse skipped, clipped, changed and unassessed support while preserving raw geometry, eight tools, five stages, strict chronology, anonymous dynamic free OpenCode MiMo and MAX2. Prior native green and APPROVED outcomes remain paired with the actual supporting-input gap. Planning review precedes implementation; no spore.
+- ts: 2026-10-14T08:46:47.041430017Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: Author and publish visible independent owner plans for complete supporting review input
+  p-efficiency: 0.85
+  p-friction: 0.28
+  p-skill-candidate: 0.0
+  spore: none
+  receipt-refs: 3b4cac1053de0ccc3ca5005fe1410c3309fb25dbda07a96ebf70d176f6d96eaa
+  note: Initial first-class Markdown cards are visible to actual canonical read-task, with real owner UUIDs, scoped decomposition and honest downstream qualification. Preserve the old card/frontmatter and historical ledger bytes; exact one-newline correction improves rendering. Source plans are committed and ready for native planning review; no implementation, readiness, complete supporting review scope, native approval or production rollout claimed. Cross-repository links do not invent completion enforcement. No spore.
+- ts: 2026-10-14T09:15:21.975158285Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: Correct canonical dependency shapes and external narrative ownership
+  p-efficiency: 0.77
+  p-friction: 0.42
+  p-skill-candidate: 0.0
+  spore: none
+  receipt-refs: a4d7ea3b81543d6cf49fae3ab603556c890be6c3ed97afe429a95d151c51acc1
+  note: Fresh native planning feedback exposed a scalar dependency admitted by raw card readback but invalid under the planning law. Use actual canonical field operations and verify vector plus correlated engine event/write ID; preserve incoming status, points and ledger prefix. Name the narrative task external owner without adding a dependency. Manual initial creation remains authorized and its absent generated event is not fabricated. Native current-head review convergence and full CMS deployment remain outstanding; no spore.
+- ts: 2026-10-14T10:20:42.422344410Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: Apply verified owning planning corrections for M28
+  p-efficiency: 0.70
+  p-friction: 0.85
+  p-skill-candidate: 0.10
+  spore: none
+  receipt-refs: d627ae061dd08fcd2d7c3e95ae8eba09978921c237b6a5990d27b47b9a761ab9
+  note: Source-only corrections and genuine metadata custody advanced. Keep first-class initial authoring distinct from creation events; preserve protected relationships and shared identity-law ownership. All implementation, native review, qualification and deployment obligations remain; no new spore.
+- ts: 2026-10-14T11:22:10.783854420Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: Record finite native handoff and concrete operator closure correction
+  p-efficiency: 0.65
+  p-friction: 0.84
+  p-skill-candidate: 0.00
+  spore: none
+  receipt-refs: 84d428f6927284c1c86822936536c71f20e93433391813293e678dce61beda91
+  note: Follow the actual finding alternatives and accepted owner boundary. Keep source/input/handoff exits finite; private archives do not extend native admission. Preserve canonical one-attempt event/readback custody and distinguish planning/source progress from deployed product. No new spore.
+- ts: 2026-10-14T12:40:23.748715237Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: ordinary-v2-transport-independent-context-RED
+  p-efficiency: 0.83
+  p-friction: 0.37
+  p-skill-candidate: 0.1
+  spore: none
+  receipt-refs: dd0596c40a0789b2e2572ec26c0ce17414bda34fad374c3e15af1571e5c62dd8
+  note: A secure candidate positive must supply independent caller context. Preserve the historical contextless RED, revise only the fixture seam, and demonstrate same existing native functions ignore the extra context and fail for unsupported contract rather than an arity or import error. Commit corrected causal RED before GREEN. Blank v2 refusals do not prove specialized origin/content enforcement; descriptor bounds are not bounded I/O and native authentication is a caller obligation. Keep original pagination/native/tool behavior and all ledger prefixes. No additional spore or promotion.
+- ts: 2026-10-14T13:35:16.375774486Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: ordinary-v2-transport-GREEN-and-cold-filesystem-qualification
+  p-efficiency: 0.76
+  p-friction: 0.52
+  p-skill-candidate: 0.00
+  spore: none
+  receipt-refs: e892ebdfaef7b39b55c97eb8d670f7d9cffcfebb,00d0df62a6f7c576dc1ed481bb3379466527e20d9acffc33a855f88acef256c3
+  note: Independent qualification must execute the exact changed filesystem entry from a cold checkout; a host build and separate preparation export do not supply that execution. Close the gap through the existing compiled owner tests without a new production API or assessment scope. Distinguish normal FS compilation, advanced CJS preparation, inherited integration skips, historical byte audit and genuine native admission. Commit causal RED before GREEN, preserve initial optimized failure and exact source/ledger custody, then obtain hosted source review before activation. No new spore or promotion.
+- ts: 2026-10-14T14:32:32.105304895Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: exact-hosted-toolchain-and-native-coordinate-review-repair
+  p-efficiency: 0.74
+  p-friction: 0.53
+  p-skill-candidate: 0.00
+  spore: none
+  receipt-refs: f65e982fa23451d68c6525618858d9695d91e3e9,b7bab3ed07c5fccc280e3e8d1dfc2c3357a72b709ce443ff30b32d5595f789bc
+  note: A passing old local linter does not verify the pinned hosted toolchain; reproduce with the official exact binary before correcting actual fixture inference. Matching candidate and caller fields cannot authenticate missing coordinates: nonempty whitespace needs causal wrong-acceptance tests and shared schema refusal. Preserve committed RED, optimized exports, cold bytes and actual HEAD/index chronology; Git rename projection requires no-renames plus NUL path guards for exact staging. Publish and settle actual fixes without claiming native approval or deployment from local green. No new spore or promotion.
+- ts: 2026-10-14T15:57:12.900574048Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: Repair independent original identity and lower byte adapter in Muse transport
+  p-efficiency: 0.70
+  p-friction: 0.66
+  p-skill-candidate: 0.0
+  spore: none
+  receipt-refs: 95f93eb653020a5dd54c47de26fc8ade9bdfa099601be9f35cfc2e30e169e4a7
+  note: Finish already passing bounded gates, preserve actual source/stage chronology, and commit exact paths before broader workflow changes. Index-byte changes require logical stage/blob checks; unknown cause stays unknown. No new spore or promotion.
+- ts: 2026-10-14T16:14:17.875260557Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: Publish qualified transport and start existing assessment story
+  p-efficiency: 0.76
+  p-friction: 0.50
+  p-skill-candidate: 0.0
+  spore: none
+  receipt-refs: 2958f3ac2cf601e72baa465284d4f6d32261c8c1ecf61d385e96e9fb3ea20403
+  note: Review concise PR scope wording before the effect, finish exact source publication with same-effect readback, then walk existing lawful card hops and start actual causal tests. Board admission does not invent predecessor completion. No new spore/promotion.
+- ts: 2026-10-14T16:54:58.641042818Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: Close actual attempt-reuse and mutable-byte transport defects
+  p-efficiency: 0.80
+  p-friction: 0.58
+  p-skill-candidate: 0.0
+  spore: none
+  receipt-refs: 8864777b9147f53f526349eb33c45e1da85d62830852018f6a0ebefeee1b442f
+  note: A bounded full-card review found the intrinsic length issue before publication; actual52causal failures and cold51control qualification close it. Preserve authored assessment work privately rather than contaminating predecessor gates. Commit alreadyqualified paths promptly. No spore/promotion.

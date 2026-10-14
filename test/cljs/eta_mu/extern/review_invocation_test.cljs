@@ -4,7 +4,11 @@
   (:require [cljs.test :refer [deftest is]]
             [clojure.string :as str]
             [eta-mu.extern.review-invocation :as extern]
+            [eta-mu.extern.json :as input-json]
+            [eta-mu.extern.review-input :as input-edge]
             [eta-mu.law.review-invocation-test :as fixture]
+            [eta-mu.law.review-invocation :as invocation]
+            [eta-mu.shape.review-input :as input-shape]
             ["node:fs" :as fs]
             ["node:crypto" :as crypto]))
 
@@ -34,6 +38,300 @@
 (defn- prepare-native-context [raw manifest tools file]
   (try (extern/prepare-review-invocation-context raw manifest tools file)
        (catch :default _ nil)))
+
+(defn- prepare-v2-context [raw manifest tools file trusted]
+  ;; Native call intentionally supplies an additional caller-held context to the
+  ;; existing compiled function. The predecessor ignores it, then rejects v2 at
+  ;; its actual admission boundary; no CLJS arity dispatch or new export is used.
+  (.call extern/prepare-review-invocation-context nil raw manifest tools file (clj->js trusted)))
+
+(deftest ordinary-v2-public-preparation-requires-current-or-successfully-reused-attempt
+  (let [{:keys [source view trusted]} (fixture/ordinary-v2-fixture)
+        tools (clj->js (:review-tools fixture/context))
+        file "/fixture/submission.json"]
+    (is (some? (prepare-v2-context view (json source) tools file trusted)))
+    (is (some? (prepare-v2-context view (json source) tools file
+                                 (-> trusted (assoc :reviewer_run_attempt "1")
+                                     (dissoc :producer_reuse)))))
+    (doseq [{:keys [label source trusted]} (fixture/ordinary-v2-attempt-refusal-cases)]
+      (is (thrown? js/Error (prepare-v2-context view (json source) tools file trusted)) label))))
+
+(defn- mutable-byte-carrier [kind text]
+  (let [bytes (js/Buffer.from text "utf8")]
+    (case kind
+      :buffer bytes
+      :uint8 (js/Uint8Array. bytes)
+      :shared (let [view (js/Uint8Array. (js/SharedArrayBuffer. (.-length bytes)))]
+                (.set view bytes)
+                view))))
+
+(deftest ordinary-v2-byte-boundary-caps-intrinsic-size-and-owns-its-snapshot
+  (doseq [kind [:buffer :uint8 :shared]]
+    (let [ordinary (mutable-byte-carrier kind "four")
+          oversized (mutable-byte-carrier kind "fives")]
+      (is (= "four" (input-json/decode-text (input-edge/bounded-bytes ordinary 4)))
+          (str kind " unchanged exact-cap bytes remain legal"))
+      ;; A caller-controlled property is not the native viewed byte count.
+      (js/Object.defineProperty oversized "length" #js {:value 0})
+      (is (= 0 (.-length oversized)) "the cap-bypass fixture really shadows length")
+      (is (thrown? js/Error (input-edge/bounded-bytes oversized 4))
+          (str kind " actual five-byte view cannot fit an observed cap of four"))
+      (let [snapshot (input-edge/bounded-bytes ordinary 4)]
+        (.set ordinary (js/Buffer.from "edit" "utf8"))
+        (is (= "edit" (input-json/decode-text ordinary)))
+        (is (= "four" (input-json/decode-text snapshot))
+            (str kind " later caller mutation cannot change the admitted owned bytes"))))))
+
+(deftest ordinary-v2-byte-snapshot-keeps-admitted-size-after-backing-growth
+  ;; Synchronous native growth is deterministic. Unsupported host capabilities
+  ;; are not simulated; the actual gate runtime records which branches execute.
+  (doseq [[kind backing grow!]
+          [[:shared (js/SharedArrayBuffer. 4 #js {:maxByteLength 8})
+            (fn [buffer] (.grow buffer 8))]
+           [:resizable (js/ArrayBuffer. 4 #js {:maxByteLength 8})
+            (fn [buffer] (.resize buffer 8))]]]
+    (when (if (= kind :shared) (some? (.-grow backing)) (some? (.-resize backing)))
+      (let [raw (js/Uint8Array. backing)]
+        (.set raw (js/Buffer.from "four" "utf8"))
+        (let [snapshot (input-edge/bounded-bytes raw 4)]
+          (is (= "four" (input-json/decode-text snapshot)))
+          (grow! backing)
+          (.set raw (js/Buffer.from "changed!" "utf8"))
+          (is (= 8 (.-length raw)) (str kind " real native growth was exercised"))
+          (is (= "changed!" (input-json/decode-text raw)))
+          (is (= 4 (.-length snapshot))
+              (str kind " admitted snapshot cannot expand after cap verification"))
+          (is (= "four" (input-json/decode-text snapshot))
+              (str kind " admitted snapshot keeps original bytes after growth")))))))
+
+(deftest ordinary-v2-byte-preparation-cannot-admit-a-hash-decode-interleaving
+  ;; Interpose only the scheduler point at the existing real decoder boundary.
+  ;; Hashes, source admission, UTF8 decoding and assembled-view verification are
+  ;; actual owner implementations. No worker race or synthetic digest is used.
+  (let [texts ["old\n" "{}" "log\n"]
+        {:keys [source view trusted]} (fixture/ordinary-v2-fixture texts)
+        replacement "new\n"
+        replaced-view (str replacement (second texts) (nth texts 2))
+        candidate (assoc-in source [:view :sha256]
+                            (:sha256 (fixture/byte-descriptor "unused" replaced-view)))
+        caller (assoc trusted :input_source candidate)
+        tools (clj->js (:review-tools fixture/context))
+        file "/fixture/submission.json"
+        real-decode input-json/decode-text]
+    (doseq [kind [:buffer :uint8 :shared]
+            entry [:originals :public-carrier]]
+      (let [make-raw #(mutable-byte-carrier kind (if (= entry :originals) (first texts) view))
+            prepare (fn [raw metadata context]
+                      (if (= entry :originals)
+                        (extern/prepare-ordinary-v2-originals metadata
+                                                             [raw (second texts) (nth texts 2)] context)
+                        (prepare-v2-context raw (json metadata) tools file context)))
+            raw (make-raw)
+            interleaved* (atom false)
+            hashed-original* (atom nil)
+            decoded* (atom nil)
+            result* (atom nil)
+            refused* (atom false)]
+        (is (some? (prepare (make-raw) source trusted))
+            (str kind " " entry " unchanged bytes remain legal"))
+        (is (thrown? js/Error (prepare (make-raw) candidate caller))
+            (str kind " " entry " mixed identities refuse without the interleaving"))
+        (with-redefs [input-json/decode-text
+                      (fn [bytes]
+                        (if (and (instance? js/Uint8Array bytes)
+                                 (= (.-length bytes) (get-in source [:components 0 :bytes]))
+                                 (compare-and-set! interleaved* false true))
+                          (do
+                            (reset! hashed-original*
+                                    (-> (.createHash crypto "sha256") (.update bytes) (.digest "hex")))
+                            ;; The caller changes its backing store AFTER the
+                            ;; component hash and BEFORE real fatal UTF8 decoding.
+                            (.set raw (js/Buffer.from replacement "utf8") 0)
+                            (let [text (real-decode bytes)]
+                              (reset! decoded* text)
+                              text))
+                          (real-decode bytes)))]
+          (try (reset! result* (prepare raw candidate caller))
+               (catch :default _ (reset! refused* true))))
+        (is @interleaved* (str kind " " entry " actual hash/decode timing seam reached"))
+        (is (= (get-in source [:components 0 :sha256]) @hashed-original*)
+            "real decoder was reached with the original component identity")
+        (is (= replacement (real-decode (.subarray raw 0 (get-in source [:components 0 :bytes]))))
+            "only caller-owned storage was changed")
+        (is @refused*
+            (str kind " " entry " must refuse the pre-hash/post-decode identity mix; decoded="
+                 (pr-str @decoded*) " admitted=" (some? @result*)))))))
+
+(deftest ordinary-v2-public-preparation-refuses-coherent-stale-originals
+  (let [{:keys [source view trusted] :as held} (fixture/ordinary-v2-fixture)
+        tools (clj->js (:review-tools fixture/context))
+        file "/fixture/submission.json"]
+    (is (some? (prepare-v2-context view (json source) tools file trusted))
+        "unchanged held originals remain legal before testing replacement refusal")
+    (doseq [{candidate :source carrier :view label :label}
+            (fixture/ordinary-v2-coherent-stale-candidates held)]
+      (is (thrown? js/Error (prepare-v2-context carrier (json candidate) tools file trusted))
+          (str label " must refuse despite matching current producer coordinates")))
+    (is (thrown? js/Error
+                 (prepare-v2-context view (json source) tools file (dissoc trusted :input_source)))
+        "public preparation requires independently held original identity")))
+
+(deftest ordinary-v2-preparation-uses-existing-api-and-original-byte-identities
+  (let [{:keys [source view trusted]} (fixture/ordinary-v2-fixture)
+        tools (clj->js (:review-tools fixture/context))
+        bytes (js/Buffer.from view "utf8")]
+    ;; No new symbol or wrong-arity call is used. The predecessor's actual safe
+    ;; unsupported-v2 refusal is caught so RED reports admission/identity failures.
+    (doseq [raw [view bytes (js/Uint8Array. bytes)]]
+      (let [prepared (try (prepare-v2-context raw (json source) tools "/fixture/submission.json" trusted)
+                          (catch :default _ nil))
+            ctx (js->clj prepared
+                        :keywordize-keys true)]
+        (is (some? ctx) "complete structurally valid v2 must be admitted by existing preparation")
+        (is (= source (:inputSource ctx)))
+        (is (= (get-in source [:view :sha256]) (:fullInputSha256 ctx)))
+        (is (= (get-in source [:view :page_count]) (:pageCount ctx)))))
+    (doseq [[raw manifest] [[(.subarray bytes 0 (dec (.-length bytes))) (json source)]
+                            [(js/Uint8Array. #js [255]) (json source)]
+                            [view (str "{\"schema\":\"other\"," (subs (json source) 1))]
+                            [view (str "{\"ignored\":1e309," (subs (json source) 1))]]]
+      (is (thrown? js/Error (prepare-v2-context raw manifest tools "/fixture/submission.json" trusted))))
+    (doseq [raw [view bytes (js/Uint8Array. bytes)]]
+      (is (thrown? js/Error (extern/prepare-review-invocation-context raw (json source) tools "/fixture/submission.json"))
+          "ordinary-v2 without an independent caller context must refuse")
+      (doseq [changed [(assoc-in trusted [:producer :head_sha] (apply str (repeat 40 "f")))
+                       (assoc-in trusted [:content :authorization] "unauthorized")
+                       (assoc-in trusted [:content :authorization] "unknown")
+                       (assoc-in trusted [:content :classification] "sensitive")
+                       (assoc-in trusted [:content :credential_canary] true)]]
+        (is (thrown? js/Error (prepare-v2-context raw (json source) tools "/fixture/submission.json" changed))))))
+  ;; Independent producer/content enforcement cannot be inferred from these
+  ;; predecessor refusals: all v2 is presently rejected, even the positive neighbor.
+  (doseq [source [fixture/manifest fixture/native-manifest fixture/rejection-manifest fixture/cohort-manifest]]
+    (is (some? (prepare-native-context "diff" (json source)
+                                       (clj->js (:review-tools fixture/context)) "/fixture/submission.json")))))
+
+(deftest ordinary-v2-public-preparation-refuses-self-consistent-blank-coordinates
+  (let [{:keys [source view trusted]} (fixture/ordinary-v2-fixture)
+        tools (clj->js (:review-tools fixture/context))
+        file "/fixture/submission.json"
+        prepared (prepare-v2-context view (json source) tools file trusted)]
+    ;; The existing five-argument native API admits this valid neighbor. Changed
+    ;; metadata still uses intact originals and a separately supplied caller map.
+    (is (some? prepared))
+    (is (= source (:inputSource (js->clj prepared :keywordize-keys true))))
+    (doseq [field [:repository :workflow_path :workflow_ref :run_id
+                   :run_attempt :job_id :artifact_id]
+            blank [" " "\t\n"]]
+      (let [candidate (assoc-in source [:producer field] blank)
+            caller (-> trusted (assoc-in [:producer field] blank)
+                       (assoc :input_source candidate)
+                       (assoc-in [:producer_reuse :producer] (:producer candidate)))]
+        (is (thrown? js/Error (prepare-v2-context view (json candidate) tools file caller))
+            (str "matching nonempty blank producer " field " " (pr-str blank)))))
+    (doseq [blank [" " "\t\n"]]
+      (is (thrown? js/Error
+                   (prepare-v2-context view (json source) tools file
+                                       (assoc trusted :reviewer_run_attempt blank)))
+          (str "nonempty blank reviewer attempt " (pr-str blank))))
+    ;; Empty-string refusal already passes :min 1 and supplies no causal credit.
+    (is (thrown? js/Error
+                 (prepare-v2-context view (json (assoc-in source [:producer :repository] "")) tools file
+                                      (-> trusted (assoc-in [:producer :repository] "")
+                                          (assoc :input_source (assoc-in source [:producer :repository] ""))))))))
+
+(deftest ordinary-v2-counts-real-pages-before-complete-materialization
+  (let [tools (clj->js (:review-tools fixture/context))
+        materialize input-shape/diff-chunks]
+    (doseq [[lines expected] [[131072 1024] [131073 1025]]]
+      (let [{:keys [source view trusted]} (fixture/ordinary-v2-fixture ["" "" (.repeat "\n" lines)])
+            claimed (assoc-in source [:view :page_count] 1024)
+            calls (atom 0)]
+        (with-redefs [input-shape/diff-chunks (fn [text] (swap! calls inc) (materialize text))]
+          (if (= expected 1024)
+            (let [ctx (js->clj (prepare-v2-context view (json claimed) tools "/fixture/submission.json" trusted)
+                              :keywordize-keys true)]
+              (is (= 1024 (:pageCount ctx)))
+              (is (= 1 @calls)))
+            (do
+              (is (thrown? js/Error (prepare-v2-context view (json claimed) tools "/fixture/submission.json" trusted)))
+              (is (zero? @calls) "actual page 1025 must refuse before collecting complete pages"))))))))
+
+(deftest ordinary-v2-byte-boundaries-and-original-reconstruction
+  (let [tools (clj->js (:review-tools fixture/context))]
+    (doseq [[index limit unit repetitions] [[0 4194304 "x" 4194304]
+                                          [1 262144 "é" 131072]
+                                          [2 4194304 "x" 4194304]]]
+      (let [text (.repeat unit repetitions)
+            {:keys [source view trusted]} (fixture/ordinary-v2-fixture (assoc ["" "" ""] index text))]
+        (is (= limit (get-in source [:components index :bytes])))
+        (is (some? (prepare-v2-context view (json source) tools "/fixture/submission.json" trusted)))
+        (let [{over-source :source over-view :view over-trusted :trusted}
+              (fixture/ordinary-v2-fixture (assoc ["" "" ""] index (str text "x")))]
+          (is (thrown? js/Error (prepare-v2-context over-view (json over-source) tools "/fixture/submission.json" over-trusted))))))
+    (doseq [texts [["" "{}\r\n" ""]
+                   [(str (.repeat "x" 8191) "😀\r\n") "{}\r\n" "\uFEFFtail ημ 😀\r\n"]]]
+      (let [{:keys [source view trusted]} (fixture/ordinary-v2-fixture texts)
+            bytes (js/Buffer.from view "utf8")
+            ctx (js->clj (prepare-v2-context bytes (json source) tools "/fixture/submission.json" trusted)
+                         :keywordize-keys true)]
+        (is (= (:components source) (:components ctx)))
+        (is (= (:view source) (:view ctx)))
+        (is (= view (apply str (map #(subs view (:start %) (:end %)) (:pages ctx)))))
+        (doseq [[component original] (map vector (:components ctx) texts)]
+          (let [[bs be] (:byte_span component) [ts te] (:text_span component)]
+            (is (= original (subs view ts te)))
+            (is (= (.toString (js/Buffer.from original "utf8") "hex")
+                   (.toString (.subarray bytes bs be) "hex")))))))))
+
+(deftest ordinary-v2-explicit-profile-and-self-consistent-predecessor-refuse
+  (let [{:keys [trusted]} (fixture/ordinary-v2-fixture)
+        {old-source :source old-view :view} (fixture/ordinary-v2-fixture ["older diff" "{}" "older log"])
+        old-head (apply str (repeat 40 "f"))
+        old-source (-> old-source (assoc :head_sha old-head) (assoc-in [:producer :head_sha] old-head))
+        tools (clj->js (:review-tools fixture/context))]
+    (is (invocation/ordinary-v2-contract-valid? old-source))
+    (is (thrown? js/Error (prepare-v2-context old-view (json old-source) tools "/fixture/submission.json" trusted)))
+    (is (thrown? js/Error (prepare-v2-context "diff" (json fixture/manifest) tools "/fixture/submission.json" trusted))
+        "candidate cannot downgrade the caller-selected v2 entry to legacy")
+    (let [source (:source (fixture/ordinary-v2-fixture)) view (:view (fixture/ordinary-v2-fixture))
+          manifest (json source) cap 9437184
+          padded (str manifest (.repeat " " (- cap (count manifest))))]
+      (is (some? (prepare-v2-context view padded tools "/fixture/submission.json" trusted)))
+      (is (thrown? js/Error (prepare-v2-context view (str padded " ") tools "/fixture/submission.json" trusted))))
+    (let [legacy (str (json fixture/manifest) (.repeat " " 9437185))]
+      (is (some? (prepare-native-context "diff" legacy tools "/fixture/submission.json"))
+          "derived large legacy metadata retains its existing unbounded policy"))))
+
+(deftest prepared-v2-cannot-admit-generic-whole-view-assessment-as-an-invocation
+  (let [{:keys [source view trusted]} (fixture/ordinary-v2-fixture)
+        source (assoc source :provenance (:provenance fixture/manifest))
+        trusted (assoc trusted :input_source source)
+        file (:submission-file fixture/context)
+        tools (clj->js (:review-tools fixture/context))
+        prepared (prepare-v2-context view (json source) tools file trusted)
+        end (count view)
+        events (-> (fixture/trace)
+                   (assoc-in [0 :part :state :output :input-source] source)
+                   (assoc-in [0 :part :state :output :diff-stats :bytes] end)
+                   (assoc-in [1 :part :state :output :chunk] {:id 1 :start 0 :end end :text view}))
+        submission (assoc fixture/submission :input-source source
+                          :input-assessments [{:id 1 :start 0 :end end :note "whole-page assessment"}])
+        result (js->clj (extern/verify-review-invocation (response events) (json submission) prepared)
+                       :keywordize-keys true)]
+    (is (some? prepared) "transport must admit the valid independently bound originals")
+    (is (false? (:ok result)))
+    (is (= "trusted-context-unestablished" (:code result)))
+    (is (nil? (:acceptedInvocation result)))
+    ;; Positive neighbor: the same complete eight-tool/five-stage generic trace
+    ;; retains legitimate legacy behavior. Only the explicit input contract varies.
+    (let [legacy-source (assoc fixture/manifest :full_diff (fixture/byte-descriptor "basehead.diff" view))
+          legacy-context (extern/prepare-review-invocation-context view (json legacy-source) tools file)
+          legacy-events (assoc-in events [0 :part :state :output :input-source] legacy-source)
+          legacy-submission (assoc submission :input-source legacy-source)
+          legacy (js->clj (extern/verify-review-invocation (response legacy-events) (json legacy-submission) legacy-context)
+                         :keywordize-keys true)]
+      (is (:ok legacy)))))
 
 (deftest native-byte-preparation-preserves-bom-only-and-prefixed-page-geometry
   (doseq [text ["\uFEFF" "\uFEFForiginal context ημ 😀\n" "\uFEFF\uFEFFcontext"]]

@@ -69,6 +69,12 @@
                                               :pages [] :page-count 0)))))
 
 
+(deftest ordinary-v2-descriptor-selects-the-view-without-changing-raw-diff
+  (let [{:keys [source texts]} (fixture/ordinary-v2-fixture)]
+    (is (= (:view source) (shape/input-descriptor source)))
+    (is (= (fixture/byte-descriptor "basehead.diff" (first texts)) (:full_diff source)))
+    (is (not= (get-in source [:full_diff :sha256]) (get-in source [:view :sha256])))))
+
 (deftest rejection-descriptor-is-the-original-validated-full-input-map
   (let [descriptor (assoc (:full_input fixture/rejection-manifest) :retained-extra "original carrier data")
         source (assoc fixture/rejection-manifest :full_input descriptor)]
