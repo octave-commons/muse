@@ -320,6 +320,30 @@ for (const [representation, encode] of [['string', bytes => bytes.toString('utf8
     result.pass = true;
   } catch (error) { result.pass = false; result.error = {name: error.name, message: error.message}; }
   results.push(result);
+  const blankRefusal = {representation, purpose: 'ordinary-v2-blank-coordinate-refusal',
+    assertions: 0, native_origin: false};
+  try {
+    for (const field of ['repository', 'workflow_path', 'workflow_ref', 'run_id',
+      'run_attempt', 'job_id', 'artifact_id']) {
+      for (const blank of [' ', '\t\n']) {
+        const producer = {...v2Producer, [field]: blank};
+        const candidate = {...v2Source, producer};
+        const caller = {...v2Trusted, producer: {...producer}};
+        blankRefusal.assertions++;
+        assert.throws(() => verifier.prepareReviewInvocationContext.call(null, encode(v2View),
+          encode(Buffer.from(JSON.stringify(candidate))), tools, submissionFile, caller),
+          `matching blank producer ${field} ${JSON.stringify(blank)}`);
+      }
+    }
+    for (const blank of [' ', '\t\n']) {
+      blankRefusal.assertions++;
+      assert.throws(() => verifier.prepareReviewInvocationContext.call(null, encode(v2View),
+        encode(Buffer.from(JSON.stringify(v2Source))), tools, submissionFile,
+        {...v2Trusted, reviewer_run_attempt: blank}), `blank reviewer attempt ${JSON.stringify(blank)}`);
+    }
+    blankRefusal.pass = true;
+  } catch (error) { blankRefusal.pass = false; blankRefusal.error = {name: error.name, message: error.message}; }
+  results.push(blankRefusal);
 }
 const failures = results.filter(result => !result.pass).length;
 console.log(JSON.stringify({result: failures ? 'fail' : 'pass', runtime: process.version, modulePath,

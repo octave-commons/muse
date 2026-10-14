@@ -34,7 +34,8 @@
   "Named transport contracts, independent of runtime admission. Coordinates and
    typed authorization alone do not authenticate a producer. Spans are half-open;
    byte spans count UTF-8 bytes, text spans count UTF-16 units. Empty roles remain."
-  {::V2Span [:tuple [:int {:min 0 :max 9437184}] [:int {:min 0 :max 9437184}]]
+  {::V2Coordinate [:and [:string {:min 1}] [:fn nonblank?]]
+   ::V2Span [:tuple [:int {:min 0 :max 9437184}] [:int {:min 0 :max 9437184}]]
    ::V2Descriptor [:map [:path :string] [:bytes [:int {:min 0 :max 9437184}]]
                    [:sha256 [:string {:min 64 :max 64}]]]
    ::V2Component [:map [:role :string] [:path :string]
@@ -55,15 +56,15 @@
              [:text_units [:int {:min 0 :max 9437184}]]
              [:page_count [:int {:min 0 :max 1024}]]]
    ::V2Producer [:map
-                 [:repository [:string {:min 1}]]
+                 [:repository [:ref ::V2Coordinate]]
                  [:head_sha [:string {:min 40 :max 64}]]
                  [:base_sha [:string {:min 40 :max 64}]]
                  [:diff_base_sha [:string {:min 40 :max 64}]]
-                 [:workflow_path [:string {:min 1}]]
-                 [:workflow_ref [:string {:min 1}]]
+                 [:workflow_path [:ref ::V2Coordinate]]
+                 [:workflow_ref [:ref ::V2Coordinate]]
                  [:workflow_sha [:string {:min 40 :max 64}]]
-                 [:run_id [:string {:min 1}]] [:run_attempt [:string {:min 1}]]
-                 [:job_id [:string {:min 1}]] [:artifact_id [:string {:min 1}]]
+                 [:run_id [:ref ::V2Coordinate]] [:run_attempt [:ref ::V2Coordinate]]
+                 [:job_id [:ref ::V2Coordinate]] [:artifact_id [:ref ::V2Coordinate]]
                  [:artifact_zip_sha256 [:string {:min 64 :max 64}]]]
    ::OrdinaryV2 [:map
                  [:schema [:= "open-hax.review-input/v2"]]
@@ -75,7 +76,7 @@
                  [:view [:ref ::V2View]] [:producer [:ref ::V2Producer]]]
    ::V2TrustedContext [:map
                        [:producer [:ref ::V2Producer]]
-                       [:reviewer_run_attempt [:string {:min 1}]]
+                       [:reviewer_run_attempt [:ref ::V2Coordinate]]
                        [:content [:map
                                   [:authorization [:enum "public" "explicit"]]
                                   [:classification [:= "authorized"]]
