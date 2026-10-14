@@ -1059,7 +1059,8 @@
               last-assessment (last (filter assessment? events))
               omit-last (remove-calls #(= % last-assessment))
               corrupted (mapv #(if (= % last-assessment)
-                                 (assoc-in % [:part :state :output :coverage :assessed] 0) %) events)]
+                                 (assoc-in % [:part :state :output :coverage :assessed]
+                                           (inc (get-in % [:part :state :output :coverage :assessed]))) %) events)]
           (doseq [changed [omit-last corrupted (pop events)]]
             (is (false? (:eligible? (fixture/length-classification
                                     changed nil context (fixture/length-custody context))))))
