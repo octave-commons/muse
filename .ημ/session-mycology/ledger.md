@@ -267,3 +267,12 @@
   spore: none
   receipt-refs: a4d7ea3b81543d6cf49fae3ab603556c890be6c3ed97afe429a95d151c51acc1
   note: Fresh native planning feedback exposed a scalar dependency admitted by raw card readback but invalid under the planning law. Use actual canonical field operations and verify vector plus correlated engine event/write ID; preserve incoming status, points and ledger prefix. Name the narrative task external owner without adding a dependency. Manual initial creation remains authorized and its absent generated event is not fabricated. Native current-head review convergence and full CMS deployment remain outstanding; no spore.
+- ts: 2026-10-14T10:20:42.422344410Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: Apply verified owning planning corrections for M28
+  p-efficiency: 0.70
+  p-friction: 0.85
+  p-skill-candidate: 0.10
+  spore: none
+  receipt-refs: d627ae061dd08fcd2d7c3e95ae8eba09978921c237b6a5990d27b47b9a761ab9
+  note: Source-only corrections and genuine metadata custody advanced. Keep first-class initial authoring distinct from creation events; preserve protected relationships and shared identity-law ownership. All implementation, native review, qualification and deployment obligations remain; no new spore.
