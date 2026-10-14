@@ -22,6 +22,50 @@
         (js-invoke "update" bytes)
         (js-invoke "digest" "hex"))))
 
+(defn- bounded-bytes [raw ceiling]
+  (cond
+    (string? raw)
+    (do (input-shape/bounded-utf8-size raw ceiling)
+        (.encode (js/TextEncoder.) raw))
+    (instance? js/Uint8Array raw)
+    (do (when (> (.-length raw) ceiling) (invalid!)) raw)
+    :else (invalid!)))
+
+(defn prepare-ordinary-v2-originals
+  "Shared edge verification for FS and public preparation. The caller supplies
+   separately established native producer/content context; this function does
+   not authenticate that caller. It verifies each original before pure shaping.
+   No model, state, tool delivery or invocation admission is performed."
+  [source raw-originals trusted-context]
+  (when-not (and (law/ordinary-v2-origin-bound? source trusted-context)
+                (vector? raw-originals) (= 3 (count raw-originals)))
+    (invalid!))
+  (let [ceilings [(:raw-diff-bytes law/ordinary-v2-limits)
+                  (:summary-bytes law/ordinary-v2-limits)
+                  (:log-bytes law/ordinary-v2-limits)]
+        originals (mapv (fn [raw descriptor ceiling]
+                          (let [bytes (bounded-bytes raw ceiling)
+                                digest (-> (js-invoke crypto "createHash" "sha256")
+                                           (js-invoke "update" bytes) (js-invoke "digest" "hex"))]
+                            (when-not (and (= (.-length bytes) (:bytes descriptor))
+                                            (= digest (:sha256 descriptor))) (invalid!))
+                            {:text (raw-text bytes) :bytes (.-length bytes) :sha256 digest}))
+                        raw-originals (:components source) ceilings)
+        shaped (input-shape/assemble-v2 source originals)
+        bytes (bounded-bytes (:text shaped) (:view-bytes law/ordinary-v2-limits))
+        digest (-> (js-invoke crypto "createHash" "sha256")
+                   (js-invoke "update" bytes) (js-invoke "digest" "hex"))]
+    (when-not (= digest (get-in source [:view :sha256])) (invalid!))
+    (assoc shaped :raw-diff (:text (first originals)))))
+
+(defn- prepare-v2-carrier [raw source trusted-context]
+  (when-not (law/ordinary-v2-origin-bound? source trusted-context) (invalid!))
+  (let [bytes (bounded-bytes raw (:view-bytes law/ordinary-v2-limits))]
+    (when-not (= (.-length bytes) (get-in source [:view :bytes])) (invalid!))
+    (prepare-ordinary-v2-originals
+     source (mapv (fn [{[start end] :byte_span}] (.subarray bytes start end)) (:components source))
+     trusted-context)))
+
 (def strict-json
   "Shared duplicate-member/nonfinite-rejecting JSON boundary."
   json/strict-json)
@@ -57,22 +101,53 @@
       (invalid!))
     ctx))
 
-(defn prepare-review-invocation-context
-  "CJS prepareReviewInvocationContext(rawFullInput, rawManifest, JS tools[],
-   submissionFile): fatal UTF8/strict JSON/exact SHA256 byte count; canonical
-   review/diff-chunks geometry. Throws only a safe typed message on refusal.
-   Caller independently binds actual Git/native source before and after child;
-   hold this returned context in trusted supervisor memory, not artifact JSON."
-  [raw-full-diff raw-manifest raw-review-tools submission-file]
+(defn- prepare-context [raw-full-diff raw-manifest raw-review-tools submission-file trusted-context v2?]
   (try
     (when-not (js/Array.isArray raw-review-tools) (invalid!))
-    (let [ctx (context-from-input raw-full-diff (strict-json (raw-text raw-manifest))
-                                  (js->clj raw-review-tools) submission-file)]
-      (clj->js {:inputSource (:input-source ctx) :pages (:pages ctx) :pageCount (:page-count ctx)
-                :fullInputSha256 (:full-input-sha256 ctx) :reviewTools (:review-tools ctx)
-                :submissionFile (:submission-file ctx)}))
+    (when (and v2? (not (law/ordinary-v2-trusted-context-valid? trusted-context))) (invalid!))
+    (let [manifest-bytes (if v2? (bounded-bytes raw-manifest (:view-bytes law/ordinary-v2-limits)) raw-manifest)
+          source (strict-json (raw-text manifest-bytes))
+          tools (js->clj raw-review-tools)
+          ctx (if v2?
+                (do
+                  (when-not (= "open-hax.review-input/v2" (:schema source)) (invalid!))
+                  (let [shaped (prepare-v2-carrier raw-full-diff source trusted-context)]
+                    (when-not (and (vector? tools) (every? string? tools)
+                                    (= (count tools) (count (set tools)))
+                                    (every? (set tools) law/review-tools)
+                                    (string? submission-file) (not (str/blank? submission-file)))
+                      (invalid!))
+                    ;; Transport geometry only: independent invocation admission
+                    ;; still refuses v2 until the assessment owner's coverage law.
+                    {:input-source source
+                     :pages (mapv #(select-keys % [:id :start :end]) (input-shape/diff-chunks (:text shaped)))
+                     :page-count (:page-count shaped) :full-input-sha256 (get-in shaped [:view :sha256])
+                     :review-tools tools :submission-file submission-file
+                     :components (:components shaped) :view (:view shaped)}))
+                (do
+                  (when (= "open-hax.review-input/v2" (:schema source)) (invalid!))
+                  (context-from-input raw-full-diff source tools submission-file)))]
+      (clj->js (cond-> {:inputSource (:input-source ctx) :pages (:pages ctx) :pageCount (:page-count ctx)
+                       :fullInputSha256 (:full-input-sha256 ctx) :reviewTools (:review-tools ctx)
+                       :submissionFile (:submission-file ctx)}
+                (:components ctx) (assoc :components (:components ctx) :view (:view ctx)))))
     (catch :default _
       (throw (js/Error. "unestablished-review-trace: invalid full-input context")))))
+
+(defn prepare-review-invocation-context
+  "CJS prepareReviewInvocationContext(input, manifest, JS tools[], file[, context]).
+   Four arguments preserve v1/native policy. Five select bounded ordinary-v2;
+   independently supplied native JS producer/content context is mandatory before
+   decoding candidate bytes. The caller authenticates native origin and retains
+   the returned context in supervisor memory. No v2 invocation credit is granted."
+  ([raw-full-diff raw-manifest raw-review-tools submission-file]
+   (prepare-context raw-full-diff raw-manifest raw-review-tools submission-file nil false))
+  ([raw-full-diff raw-manifest raw-review-tools submission-file raw-trusted-context]
+   (try
+     (prepare-context raw-full-diff raw-manifest raw-review-tools submission-file
+                      (js->clj raw-trusted-context :keywordize-keys true) true)
+     (catch :default _
+       (throw (js/Error. "unestablished-review-trace: invalid full-input context"))))))
 
 (defn- decode-context [raw]
   (let [ctx (if (or (string? raw) (instance? js/Uint8Array raw))

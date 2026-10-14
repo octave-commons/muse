@@ -88,6 +88,15 @@
 (def ^:private v2-shape-valid? (ordinary-v2-validator ::OrdinaryV2))
 (def ^:private v2-trust-shape-valid? (ordinary-v2-validator ::V2TrustedContext))
 
+(defn ordinary-v2-trusted-context-valid?
+  "Typed caller context can select the bounded v2 entry before reading candidate
+   metadata. Its native observations/authentication remain the caller's duty."
+  [context]
+  (boolean (and (v2-trust-shape-valid? context)
+                (every? #(oid? (get (:producer context) %))
+                        [:base_sha :head_sha :diff_base_sha :workflow_sha])
+                (sha? 64 (get-in context [:producer :artifact_zip_sha256])))))
+
 (defn ordinary-v2-contract-valid?
   "Describe descriptor integrity, not byte verification or native origin. Runtime
    adapters still must verify originals before admitting this contract."
@@ -119,7 +128,7 @@
   [source trusted-context]
   (boolean
    (and (ordinary-v2-contract-valid? source)
-        (v2-trust-shape-valid? trusted-context)
+        (ordinary-v2-trusted-context-valid? trusted-context)
         (= (:producer source) (:producer trusted-context)))))
 (defn- success? [call] (true? (get-in call [:part :state :output :ok?])))
 (defn- tool [call] (get-in call [:part :tool]))
@@ -156,6 +165,8 @@
   (let [diff (:full_diff source) full (:full_input source) target (:target source)]
     (boolean
      (or
+      (and (= "open-hax.review-input/v2" (:schema source))
+           (ordinary-v2-contract-valid? source))
       (and (map? source) (= "open-hax.review-input/v1" (:schema source))
            (every? #(oid? (get source %)) [:base_sha :head_sha :diff_base_sha])
            (map? diff) (= "basehead.diff" (:path diff))

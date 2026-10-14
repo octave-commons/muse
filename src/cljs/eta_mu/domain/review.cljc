@@ -8,7 +8,8 @@
 
    No I/O lives in this namespace."
   (:require [clojure.string :as str]
-            [eta-mu.shape.git-diff-path :as diff-path]))
+            [eta-mu.shape.git-diff-path :as diff-path]
+            [eta-mu.shape.review-input :as input-shape]))
 
 ;; ---------------------------------------------------------------------------
 ;; Stages
@@ -75,25 +76,9 @@
 ;; Session
 ;; ---------------------------------------------------------------------------
 
-(defn diff-chunks
-  "Lossless bounded reader pages: at most 8192 UTF-16 units/128 lines.
-   Never split a surrogate pair; pages concatenate to the exact input text."
-  [text]
-  (let [text (or text "") size (count text)]
-    (loop [start 0 chunks []]
-      (if (= start size) chunks
-        (let [bound (min size (+ start 8192))
-              bound (if (and (< bound size)
-                             (<= 0xD800 #?(:clj (int (.charAt ^String text (dec bound)))
-                                           :cljs (.charCodeAt text (dec bound))) 0xDBFF))
-                      (dec bound) bound)
-              page (subs text start bound)
-              end (loop [at 0 lines 0]
-                    (if-let [newline (str/index-of page "\n" at)]
-                      (if (= 127 lines) (+ start (inc newline)) (recur (inc newline) (inc lines)))
-                      bound))]
-          (recur end (conj chunks {:id (inc (count chunks)) :start start :end end
-                                  :text (subs text start end)})))))))
+(def diff-chunks
+  "Existing public pagination API, shared with transport shaping; state unchanged."
+  input-shape/diff-chunks)
 
 (defn begin
   "Start a review session over staged diff text."

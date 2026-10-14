@@ -767,7 +767,8 @@ try {
     native_context_carrier_only: true, native_review: false}));
   // Run public transport controls against THIS fresh optimized module, rather
   // than an unrelated warm repository bundle. Preserve inherited eight-tool and
-  // native controls above; unsupported ordinary-v2 is the intended RED below.
+  // native controls above; valid independently bound v2 preparation must pass,
+  // while generic v2 invocation and unsuitable context remain refused.
   // The transport verifier supplies its separate trusted caller context through
   // the same native export's fifth-argument seam and checks contextless refusals.
   const transport = spawnSync(process.execPath,
@@ -777,4 +778,26 @@ try {
   process.stdout.write(transport.stdout || '');
   process.stderr.write(transport.stderr || '');
   assert.equal(transport.status, 0, transport.error?.message || 'cold public transport controls failed');
+  // Compile and execute the existing owning FS tests from this same fresh source
+  // checkout. The node-test target retains its normal compiler/interop options;
+  // only namespace selection and the owned output path are narrowed here.
+  const fsOutput = path.join(checkout, 'target/test/cold-fs.cjs');
+  const fsMerge = '{:ns-regexp "^eta-mu[.]boundaries[.]node[.]fs-test$" :output-to "target/test/cold-fs.cjs"}';
+  const fsCompile = spawnSync('shadow-cljs', ['compile', 'test', '--config-merge', fsMerge],
+    {cwd: checkout, env, encoding: 'utf8', timeout: 120000, maxBuffer: 8 * 1024 * 1024});
+  process.stdout.write(fsCompile.stdout || '');
+  process.stderr.write(fsCompile.stderr || '');
+  assert.equal(fsCompile.status, 0, fsCompile.error?.message || fsCompile.stderr);
+  const fsTests = spawnSync(process.execPath, [fsOutput],
+    {cwd: checkout, env, encoding: 'utf8', timeout: 60000, maxBuffer: 8 * 1024 * 1024});
+  process.stdout.write(fsTests.stdout || '');
+  process.stderr.write(fsTests.stderr || '');
+  assert.equal(fsTests.status, 0, fsTests.error?.message || fsTests.stderr);
+  assert.match(fsTests.stdout, /Testing eta-mu\.boundaries\.node\.fs-test/);
+  const fsSummary = fsTests.stdout.match(/Ran (\d+) tests containing (\d+) assertions\.\s+0 failures, 0 errors\./);
+  assert.ok(fsSummary && Number(fsSummary[1]) > 0 && Number(fsSummary[2]) > 0,
+    'cold owning filesystem tests must actually execute and pass');
+  console.log(JSON.stringify({cold_v2_filesystem: 'pass', tests: Number(fsSummary[1]),
+    assertions: Number(fsSummary[2]), moduleSha256: createHash('sha256').update(fs.readFileSync(fsOutput)).digest('hex'),
+    namespace: 'eta-mu.boundaries.node.fs-test', native_review: false}));
 } finally {fs.rmSync(fixture, {recursive: true, force: true});}

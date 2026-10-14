@@ -309,6 +309,14 @@ for (const [representation, encode] of [['string', bytes => bytes.toString('utf8
       [context.inputSource.full_diff, source.full_diff]]) {
       result.assertions++; assert.deepEqual(actual, expected);
     }
+    // Transport success does not open invocation admission. The assessment
+    // owner must establish role/component references; generic whole-view notes
+    // remain refused even with a complete legacy-shaped eight-tool/five-stage trace.
+    const generic = smokeInvocation(context, v2View);
+    const verdict = verifier.verifyReviewInvocation(generic.response, generic.submission, context);
+    result.assertions++; assert.equal(verdict.ok, false);
+    result.assertions++; assert.equal(verdict.code, 'trusted-context-unestablished');
+    result.assertions++; assert.equal(verdict.acceptedInvocation, null);
     result.pass = true;
   } catch (error) { result.pass = false; result.error = {name: error.name, message: error.message}; }
   results.push(result);

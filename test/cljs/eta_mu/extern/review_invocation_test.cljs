@@ -5,6 +5,8 @@
             [clojure.string :as str]
             [eta-mu.extern.review-invocation :as extern]
             [eta-mu.law.review-invocation-test :as fixture]
+            [eta-mu.law.review-invocation :as invocation]
+            [eta-mu.shape.review-input :as input-shape]
             ["node:fs" :as fs]
             ["node:crypto" :as crypto]))
 
@@ -75,6 +77,98 @@
   (doseq [source [fixture/manifest fixture/native-manifest fixture/rejection-manifest fixture/cohort-manifest]]
     (is (some? (prepare-native-context "diff" (json source)
                                        (clj->js (:review-tools fixture/context)) "/fixture/submission.json")))))
+
+(deftest ordinary-v2-counts-real-pages-before-complete-materialization
+  (let [tools (clj->js (:review-tools fixture/context))
+        materialize input-shape/diff-chunks]
+    (doseq [[lines expected] [[131072 1024] [131073 1025]]]
+      (let [{:keys [source view trusted]} (fixture/ordinary-v2-fixture ["" "" (.repeat "\n" lines)])
+            claimed (assoc-in source [:view :page_count] 1024)
+            calls (atom 0)]
+        (with-redefs [input-shape/diff-chunks (fn [text] (swap! calls inc) (materialize text))]
+          (if (= expected 1024)
+            (let [ctx (js->clj (prepare-v2-context view (json claimed) tools "/fixture/submission.json" trusted)
+                              :keywordize-keys true)]
+              (is (= 1024 (:pageCount ctx)))
+              (is (= 1 @calls)))
+            (do
+              (is (thrown? js/Error (prepare-v2-context view (json claimed) tools "/fixture/submission.json" trusted)))
+              (is (zero? @calls) "actual page 1025 must refuse before collecting complete pages"))))))))
+
+(deftest ordinary-v2-byte-boundaries-and-original-reconstruction
+  (let [tools (clj->js (:review-tools fixture/context))]
+    (doseq [[index limit unit repetitions] [[0 4194304 "x" 4194304]
+                                          [1 262144 "é" 131072]
+                                          [2 4194304 "x" 4194304]]]
+      (let [text (.repeat unit repetitions)
+            {:keys [source view trusted]} (fixture/ordinary-v2-fixture (assoc ["" "" ""] index text))]
+        (is (= limit (get-in source [:components index :bytes])))
+        (is (some? (prepare-v2-context view (json source) tools "/fixture/submission.json" trusted)))
+        (let [{over-source :source over-view :view over-trusted :trusted}
+              (fixture/ordinary-v2-fixture (assoc ["" "" ""] index (str text "x")))]
+          (is (thrown? js/Error (prepare-v2-context over-view (json over-source) tools "/fixture/submission.json" over-trusted))))))
+    (doseq [texts [["" "{}\r\n" ""]
+                   [(str (.repeat "x" 8191) "😀\r\n") "{}\r\n" "\uFEFFtail ημ 😀\r\n"]]]
+      (let [{:keys [source view trusted]} (fixture/ordinary-v2-fixture texts)
+            bytes (js/Buffer.from view "utf8")
+            ctx (js->clj (prepare-v2-context bytes (json source) tools "/fixture/submission.json" trusted)
+                         :keywordize-keys true)]
+        (is (= (:components source) (:components ctx)))
+        (is (= (:view source) (:view ctx)))
+        (is (= view (apply str (map #(subs view (:start %) (:end %)) (:pages ctx)))))
+        (doseq [[component original] (map vector (:components ctx) texts)]
+          (let [[bs be] (:byte_span component) [ts te] (:text_span component)]
+            (is (= original (subs view ts te)))
+            (is (= (.toString (js/Buffer.from original "utf8") "hex")
+                   (.toString (.subarray bytes bs be) "hex")))))))))
+
+(deftest ordinary-v2-explicit-profile-and-self-consistent-predecessor-refuse
+  (let [{:keys [trusted]} (fixture/ordinary-v2-fixture)
+        {old-source :source old-view :view} (fixture/ordinary-v2-fixture ["older diff" "{}" "older log"])
+        old-head (apply str (repeat 40 "f"))
+        old-source (-> old-source (assoc :head_sha old-head) (assoc-in [:producer :head_sha] old-head))
+        tools (clj->js (:review-tools fixture/context))]
+    (is (invocation/ordinary-v2-contract-valid? old-source))
+    (is (thrown? js/Error (prepare-v2-context old-view (json old-source) tools "/fixture/submission.json" trusted)))
+    (is (thrown? js/Error (prepare-v2-context "diff" (json fixture/manifest) tools "/fixture/submission.json" trusted))
+        "candidate cannot downgrade the caller-selected v2 entry to legacy")
+    (let [source (:source (fixture/ordinary-v2-fixture)) view (:view (fixture/ordinary-v2-fixture))
+          manifest (json source) cap 9437184
+          padded (str manifest (.repeat " " (- cap (count manifest))))]
+      (is (some? (prepare-v2-context view padded tools "/fixture/submission.json" trusted)))
+      (is (thrown? js/Error (prepare-v2-context view (str padded " ") tools "/fixture/submission.json" trusted))))
+    (let [legacy (str (json fixture/manifest) (.repeat " " 9437185))]
+      (is (some? (prepare-native-context "diff" legacy tools "/fixture/submission.json"))
+          "derived large legacy metadata retains its existing unbounded policy"))))
+
+(deftest prepared-v2-cannot-admit-generic-whole-view-assessment-as-an-invocation
+  (let [{:keys [source view trusted]} (fixture/ordinary-v2-fixture)
+        source (assoc source :provenance (:provenance fixture/manifest))
+        file (:submission-file fixture/context)
+        tools (clj->js (:review-tools fixture/context))
+        prepared (prepare-v2-context view (json source) tools file trusted)
+        end (count view)
+        events (-> (fixture/trace)
+                   (assoc-in [0 :part :state :output :input-source] source)
+                   (assoc-in [0 :part :state :output :diff-stats :bytes] end)
+                   (assoc-in [1 :part :state :output :chunk] {:id 1 :start 0 :end end :text view}))
+        submission (assoc fixture/submission :input-source source
+                          :input-assessments [{:id 1 :start 0 :end end :note "whole-page assessment"}])
+        result (js->clj (extern/verify-review-invocation (response events) (json submission) prepared)
+                       :keywordize-keys true)]
+    (is (some? prepared) "transport must admit the valid independently bound originals")
+    (is (false? (:ok result)))
+    (is (= "trusted-context-unestablished" (:code result)))
+    (is (nil? (:acceptedInvocation result)))
+    ;; Positive neighbor: the same complete eight-tool/five-stage generic trace
+    ;; retains legitimate legacy behavior. Only the explicit input contract varies.
+    (let [legacy-source (assoc fixture/manifest :full_diff (fixture/byte-descriptor "basehead.diff" view))
+          legacy-context (extern/prepare-review-invocation-context view (json legacy-source) tools file)
+          legacy-events (assoc-in events [0 :part :state :output :input-source] legacy-source)
+          legacy-submission (assoc submission :input-source legacy-source)
+          legacy (js->clj (extern/verify-review-invocation (response legacy-events) (json legacy-submission) legacy-context)
+                         :keywordize-keys true)]
+      (is (:ok legacy)))))
 
 (deftest native-byte-preparation-preserves-bom-only-and-prefixed-page-geometry
   (doseq [text ["\uFEFF" "\uFEFForiginal context ημ 😀\n" "\uFEFF\uFEFFcontext"]]
