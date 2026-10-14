@@ -312,3 +312,12 @@
   spore: none
   receipt-refs: f65e982fa23451d68c6525618858d9695d91e3e9,b7bab3ed07c5fccc280e3e8d1dfc2c3357a72b709ce443ff30b32d5595f789bc
   note: A passing old local linter does not verify the pinned hosted toolchain; reproduce with the official exact binary before correcting actual fixture inference. Matching candidate and caller fields cannot authenticate missing coordinates: nonempty whitespace needs causal wrong-acceptance tests and shared schema refusal. Preserve committed RED, optimized exports, cold bytes and actual HEAD/index chronology; Git rename projection requires no-renames plus NUL path guards for exact staging. Publish and settle actual fixes without claiming native approval or deployment from local green. No new spore or promotion.
+- ts: 2026-10-14T15:57:12.900574048Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: Repair independent original identity and lower byte adapter in Muse transport
+  p-efficiency: 0.70
+  p-friction: 0.66
+  p-skill-candidate: 0.0
+  spore: none
+  receipt-refs: 95f93eb653020a5dd54c47de26fc8ade9bdfa099601be9f35cfc2e30e169e4a7
+  note: Finish already passing bounded gates, preserve actual source/stage chronology, and commit exact paths before broader workflow changes. Index-byte changes require logical stage/blob checks; unknown cause stays unknown. No new spore or promotion.
