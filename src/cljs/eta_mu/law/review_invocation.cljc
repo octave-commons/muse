@@ -3,7 +3,8 @@
    authentication, or authority to invoke a model. GPL-3.0-or-later."
   (:require [clojure.string :as str]
             [malli.core :as m]
-            [malli.registry :as mr]))
+            [malli.registry :as mr]
+            [eta-mu.shape.review-coverage :as coverage]))
 
 (def stages ["deterministic" "map-change" "generate-candidates"
              "adversarial-validate" "publish"])
@@ -259,24 +260,6 @@
   (boolean (and (empty-assessment-shape? assessment)
                 (some #(and (zero? (:bytes %)) (= % (:component-ref assessment))) components))))
 
-(defn component-coverage
-  "Describe delivery/assessment observations using the same closure in domain
-   state and independent trace checks; empty roles never invent page IDs."
-  [pages components delivered assessed empty-observed]
-  (let [ids (set (map :id pages))
-        base {:chunks (count ids) :delivered (count delivered) :assessed (count assessed)
-              :missing (vec (sort (remove assessed ids)))}]
-    (if (nil? components) base
-      (assoc base :roles
-             (into {} (map (fn [{:keys [role bytes sha256]}]
-                             (let [role-ids (set (map :id (filter #(= role (:role %)) pages)))]
-                               [(keyword role) {:bytes bytes :sha256 sha256 :chunks (count role-ids)
-                                      :delivered (count (filter delivered role-ids))
-                                      :assessed (count (filter assessed role-ids))
-                                      :missing (vec (sort (remove assessed role-ids)))
-                                      :empty? (zero? bytes)
-                                      :empty-observed? (contains? empty-observed role)}])) components))))))
-
 (defn- success? [call] (true? (get-in call [:part :state :output :ok?])))
 (defn- tool [call] (get-in call [:part :tool]))
 (defn- input [call] (get-in call [:part :state :input]))
@@ -414,7 +397,7 @@
         reads (filter #(= "review_read_diff_chunk" (tool %)) successful)
         assessed (filter #(and (= "review_assess_diff_chunk" (tool %)) (not (empty-call? %))) successful)
         empties (filter #(and (= "review_assess_diff_chunk" (tool %)) (empty-call? %)) successful)]
-    (component-coverage (delivery-pages context)
+    (coverage/component-coverage (delivery-pages context)
                         (when (= "open-hax.review-input/v2" (get-in context [:input-source :schema]))
                           (:components context))
                         (set (map #(:id (input %)) reads))
@@ -520,7 +503,7 @@
           assessments (:input-assessments submission)
           empty-records (mapv #(select-keys (get by-role (:role %)) [:note :assessment])
                              (filter #(zero? (:bytes %)) (:components context)))
-          complete (component-coverage pages (when v2? (:components context)) (set (map :id pages))
+          complete (coverage/component-coverage pages (when v2? (:components context)) (set (map :id pages))
                                        (set (map :id pages)) (set (keys by-role)))]
       (cond
         (not (and (map? submission) (= "open-hax.github-review/v1" (:schema submission))
@@ -562,7 +545,7 @@
                                                  (first (:text_span (first (:components context)))))
                                               (or (:end (last (:pages context))) 0))
                                             (get-in began [:diff-stats :bytes]))
-                                         (= (component-coverage (delivery-pages context)
+                                         (= (coverage/component-coverage (delivery-pages context)
                                                                 (when (= "open-hax.review-input/v2" (get-in context [:input-source :schema]))
                                                                   (:components context)) #{} #{} #{})
                                             (:input-coverage began))))) :begin-source-binding)
@@ -716,7 +699,7 @@
                    (when-not (and (< (:position begin) (:position (first stage-calls)))
                                   (input-before-first-stage? review-calls stage-calls context))
                      :input-after-first-stage)
-                   (when-not (= (component-coverage pages (when v2? (:components context))
+                   (when-not (= (coverage/component-coverage pages (when v2? (:components context))
                                                    ids ids empty-roles)
                                 (:coverage (output (last assessed))))
                      :complete-assessment-coverage-not-established))]

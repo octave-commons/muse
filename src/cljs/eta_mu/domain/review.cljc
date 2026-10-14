@@ -10,6 +10,7 @@
   (:require [clojure.string :as str]
             [eta-mu.law.review-invocation :as invocation]
             [eta-mu.shape.git-diff-path :as diff-path]
+            [eta-mu.shape.review-coverage :as coverage]
             [eta-mu.shape.review-input :as input-shape]))
 
 ;; ---------------------------------------------------------------------------
@@ -114,7 +115,7 @@
 (defn input-coverage
   "Delivery and assessment are separate observations, never proof by metadata."
   [session]
-  (invocation/component-coverage (:diff-chunks session) (:components session)
+  (coverage/component-coverage (:diff-chunks session) (:components session)
                                  (:delivered-chunks session)
                                  (set (keys (:assessed-chunks session)))
                                  (set (keys (:empty-assessments session)))))
