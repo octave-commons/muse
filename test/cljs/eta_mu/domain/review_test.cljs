@@ -1050,3 +1050,87 @@
         (is (= sample-diff (get-in reread [:chunk :text])))
         (is (= restart-refusal-message (get-in reread [:session :restart-error])))
         (is (false? (:ok? (review/assess-diff-chunk (:session reread) 1 "Both latches remain permanent."))))))))
+
+
+(defn- delivered-observation-record [page kind quote fields]
+  (let [start (str/index-of (:text page) quote)]
+    {:page-ref (select-keys page assessment-page-identity-keys)
+     :kind kind
+     :observations [(merge {:kind kind :text-span [start (+ start (count quote))]
+                            :text quote} fields)]}))
+
+(deftest support-assessments-require-the-declared-evidence-categories
+  (let [input (assessment-v2-input
+               ["diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n"
+                "{\"gate\":\"pass\",\"status\":\"success\",\"limitation\":\"fixture-only\",\"duration\":12,\"author\":\"fixture\"}"
+                "result: pass\nfailure: absent\nenvironment: loopback\nhello\nresultExtra: pass\n"])
+        session (assessment-v2-begin input)]
+    (doseq [page (filter #(#{"summary" "log"} (:role %)) (:diff-chunks session))]
+      (let [read (review/read-diff-chunk session (:id page))
+            actual (:chunk read)
+            assess #(review/assess-diff-chunk (:session read) (:id actual)
+                                             "Exact actual delivered category reference." %)
+            [kind positives negatives]
+            (case (:role actual)
+              "summary" ["summary-field"
+                         [["\"gate\":\"pass\"" {:field "gate" :value "pass"}]
+                          ["\"status\":\"success\"" {:field "status" :value "success"}]
+                          ["\"limitation\":\"fixture-only\"" {:field "limitation" :value "fixture-only"}]]
+                         [["\"duration\":12" {:field "duration" :value "12"}]
+                          ["\"author\":\"fixture\"" {:field "author" :value "fixture"}]]]
+              "log" ["log-observation"
+                     [["result: pass" {:context "result" :value "pass"}]
+                      ["failure: absent" {:context "failure" :value "absent"}]
+                      ["environment: loopback" {:context "environment" :value "loopback"}]]
+                     [["hello" {:context "h" :value "ello"}]
+                      ["resultExtra: pass" {:context "resultExtra" :value "pass"}]]])]
+        (is (:ok? read))
+        (doseq [[quote fields] positives]
+          (is (:ok? (assess (delivered-observation-record actual kind quote fields)))
+              "actual required-category references are admitted neighbors"))
+        (doseq [[quote fields] negatives]
+          (let [record (delivered-observation-record actual kind quote fields)]
+            (is (= quote (get-in record [:observations 0 :text])))
+            (is (false? (:ok? (assess record)))
+                "a matching lexical substring from unrelated metadata is not category evidence")))
+        (let [record (delivered-observation-record
+                      actual "no-relevant-evidence" (:text actual)
+                      {:reason "This synthetic payload is cited without making a truth judgment."})]
+          (is (:ok? (assess record))
+              "typed nonempty no-relevant-evidence still references actual payload"))))))
+
+(deftest raw-diff-hunk-continuation-cannot-receive-no-hunk-credit
+  (let [header "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -0,0 +1,140 @@\n"
+        line-bounded (str header (apply str (map #(str "+added-" % "\n") (range 140))))
+        byte-header "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1,2 @@\n"
+        unit-bounded (str byte-header " " (.repeat "x" (- 8192 (count byte-header) 2))
+                          "\n+changed-at-next-page\n")]
+    (doseq [[label raw] [["128-line boundary" line-bounded] ["8192-unit boundary" unit-bounded]]]
+      (let [session (assessment-v2-begin (assessment-v2-input [raw "{}" "fixture log"]))
+            pages (filterv #(= "raw-diff" (:role %)) (:diff-chunks session))
+            first-read (review/read-diff-chunk session (:id (first pages)))
+            read (review/read-diff-chunk session (:id (second pages)))
+            chunk (:chunk read)
+            quote (first (str/split (:text chunk) #"\n"))
+            changed (delivered-observation-record chunk "changed-hunk" quote {})
+            no-hunk (delivered-observation-record chunk "no-changed-hunk" (:text chunk)
+                                                  {:reason "This slice has no local header."})]
+        (is (= 2 (count pages)) label)
+        (is (:ok? first-read))
+        (is (:ok? (review/assess-diff-chunk (:session first-read) (:id (first pages))
+                                          "Actual first hunk page." (assessment-v2-record (:chunk first-read)))))
+        (is (:ok? read))
+        (is (str/starts-with? quote "+") "actual continuation contains a changed source line")
+        (is (not (str/includes? (:text chunk) "@@")) "the actual page has no repeated hunk header")
+        (is (:ok? (review/assess-diff-chunk (:session read) (:id chunk)
+                                          "Actual continuation changed-line reference." changed))
+            "a genuine changed-line observation must remain possible on a continuation")
+        (is (false? (:ok? (review/assess-diff-chunk (:session read) (:id chunk)
+                                                  "A missing local header does not erase hunk membership." no-hunk)))
+            "no-changed-hunk is reserved for a slice outside a hunk")))
+    (let [session (assessment-v2-begin
+                   (assessment-v2-input ["diff --git a/x b/x\n--- a/x\n+++ b/x\n" "{}" "fixture log"]))
+          read (review/read-diff-chunk session 1)]
+      (is (:ok? (review/assess-diff-chunk (:session read) 1
+                                        "Actual file-header-only page outside any hunk."
+                                        (assessment-v2-record (:chunk read))))))))

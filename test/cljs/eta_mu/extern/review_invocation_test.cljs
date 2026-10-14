@@ -1074,3 +1074,70 @@
                                   events {} context (fixture/length-custody context)))))
           (is (false? (:eligible? (fixture/length-classification
                                   events nil context (assoc (fixture/length-custody context) :exit-code 1))))))))))
+
+
+(defn- complete-v2-actual-descriptor-trace [input file]
+  ;; Reuse actual owner results, including all empty-role observations. The
+  ;; additional begin fields mirror the existing plugin's real projection of
+  ;; the admitted constructor; failed results are never relabeled successful.
+  (let [{:keys [events session]} (actual-v2-length-prefix input 5)
+        events (update-in (pop events) [0 :part :state :output]
+                          assoc :components (:components session) :view (:view session))
+        summary "Actual complete component results; synthetic fixture only."
+        submitted (review/submission session summary)
+        envelope (:envelope submitted)
+        result (if (:ok? submitted)
+                 {:ok? true :event (:event envelope) :file file
+                  :inline-comments (count (:comments envelope))}
+                 submitted)
+        submit (fixture/tool-event (inc (count events)) "review_submit" {:summary summary} result)]
+    {:events (conj events submit (fixture/terminal (+ 2 (count events))))
+     :submission envelope :session session}))
+
+(deftest v2-begin-descriptors-bind-the-actual-independent-invocation
+  (doseq [texts [["diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n"
+                  "{\"gate\":\"pass\"}" "result: pass\n"]
+                 ["" "" ""]]]
+    (let [{:keys [source view trusted]} (fixture/ordinary-v2-fixture texts)
+          source (assoc source :provenance (:provenance fixture/manifest))
+          trusted (assoc trusted :input_source source)
+          input (assoc (extern/prepare-ordinary-v2-originals
+                        source (mapv #(js/Buffer.from % "utf8") texts) trusted) :manifest source)
+          file "/fixture/begin-descriptors-submission.json"
+          prepared (prepare-v2-context view (json source) (clj->js (:review-tools fixture/context)) file trusted)
+          context (prepared-v2-owner-context prepared view)
+          {:keys [events submission]} (complete-v2-actual-descriptor-trace input file)
+          pure (invocation/verify events submission context)
+          public (js->clj (extern/verify-review-invocation (response events) (json submission) prepared)
+                         :keywordize-keys true)]
+      (is (= (:components source) (get-in events [0 :part :state :output :components])))
+      (is (= (:view source) (get-in events [0 :part :state :output :view])))
+      (is (every? #(true? (get-in % [:part :state :output :ok?]))
+                  (filter #(= "tool_use" (:type %)) events)))
+      (is (:ok? pure) "genuine complete actual-result neighbor first admits")
+      (is (:ok public) "the existing prepared public object admits that same neighbor")
+      (when (and (:ok? pure) (:ok public))
+        (doseq [[label change]
+                [["omitted component universe" #(dissoc % :components)]
+                 ["omitted ordered view" #(dissoc % :view)]
+                 ["foreign component identity" #(assoc-in % [:components 0 :sha256] (.repeat "f" 64))]
+                 ["foreign view identity" #(assoc-in % [:view :sha256] (.repeat "f" 64))]
+                 ["reordered component universe" #(update % :components (comp vec reverse))]
+                 ["foreign view geometry" #(update-in % [:view :bytes] inc)]]]
+          (let [changed (update-in events [0 :part :state :output] change)
+                refused (invocation/verify changed submission context)
+                public-refused (js->clj (extern/verify-review-invocation
+                                         (response changed) (json submission) prepared) :keywordize-keys true)]
+            (is (false? (:ok? refused)) label)
+            (is (nil? (:accepted-invocation refused)) label)
+            (is (false? (:ok public-refused)) label)
+            (is (nil? (:acceptedInvocation public-refused)) label))))))
+  ;; An irrelevant extra field does not strengthen or change legacy admission.
+  (let [file (:submission-file fixture/context)
+        prepared (extern/prepare-review-invocation-context "diff" (json fixture/manifest)
+                                                           (clj->js (:review-tools fixture/context)) file)
+        {:keys [events submission]} (actual-v2-owner-invocation {:text "diff" :manifest fixture/manifest} file)
+        changed (update-in events [0 :part :state :output] assoc :components [] :view {:bytes -1})
+        result (js->clj (extern/verify-review-invocation (response changed) (json submission) prepared)
+                       :keywordize-keys true)]
+    (is (:ok result) "legacy behavior tolerates unrelated descriptor metadata")))
