@@ -285,3 +285,12 @@
   spore: none
   receipt-refs: 84d428f6927284c1c86822936536c71f20e93433391813293e678dce61beda91
   note: Follow the actual finding alternatives and accepted owner boundary. Keep source/input/handoff exits finite; private archives do not extend native admission. Preserve canonical one-attempt event/readback custody and distinguish planning/source progress from deployed product. No new spore.
+- ts: 2026-10-14T12:40:23.748715237Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: ordinary-v2-transport-independent-context-RED
+  p-efficiency: 0.83
+  p-friction: 0.37
+  p-skill-candidate: 0.1
+  spore: none
+  receipt-refs: dd0596c40a0789b2e2572ec26c0ce17414bda34fad374c3e15af1571e5c62dd8
+  note: A secure candidate positive must supply independent caller context. Preserve the historical contextless RED, revise only the fixture seam, and demonstrate same existing native functions ignore the extra context and fail for unsupported contract rather than an arity or import error. Commit corrected causal RED before GREEN. Blank v2 refusals do not prove specialized origin/content enforcement; descriptor bounds are not bounded I/O and native authentication is a caller obligation. Keep original pagination/native/tool behavior and all ledger prefixes. No additional spore or promotion.
