@@ -43,6 +43,20 @@
   ;; its actual admission boundary; no CLJS arity dispatch or new export is used.
   (.call extern/prepare-review-invocation-context nil raw manifest tools file (clj->js trusted)))
 
+(deftest ordinary-v2-public-preparation-refuses-coherent-stale-originals
+  (let [{:keys [source view trusted] :as held} (fixture/ordinary-v2-fixture)
+        tools (clj->js (:review-tools fixture/context))
+        file "/fixture/submission.json"]
+    (is (some? (prepare-v2-context view (json source) tools file trusted))
+        "unchanged held originals remain legal before testing replacement refusal")
+    (doseq [{candidate :source carrier :view label :label}
+            (fixture/ordinary-v2-coherent-stale-candidates held)]
+      (is (thrown? js/Error (prepare-v2-context carrier (json candidate) tools file trusted))
+          (str label " must refuse despite matching current producer coordinates")))
+    (is (thrown? js/Error
+                 (prepare-v2-context view (json source) tools file (dissoc trusted :input_source)))
+        "public preparation requires independently held original identity")))
+
 (deftest ordinary-v2-preparation-uses-existing-api-and-original-byte-identities
   (let [{:keys [source view trusted]} (fixture/ordinary-v2-fixture)
         tools (clj->js (:review-tools fixture/context))
@@ -91,7 +105,8 @@
                    :run_attempt :job_id :artifact_id]
             blank [" " "\t\n"]]
       (let [candidate (assoc-in source [:producer field] blank)
-            caller (assoc-in trusted [:producer field] blank)]
+            caller (-> trusted (assoc-in [:producer field] blank)
+                       (assoc :input_source candidate))]
         (is (thrown? js/Error (prepare-v2-context view (json candidate) tools file caller))
             (str "matching nonempty blank producer " field " " (pr-str blank)))))
     (doseq [blank [" " "\t\n"]]
@@ -102,7 +117,8 @@
     ;; Empty-string refusal already passes :min 1 and supplies no causal credit.
     (is (thrown? js/Error
                  (prepare-v2-context view (json (assoc-in source [:producer :repository] "")) tools file
-                                     (assoc-in trusted [:producer :repository] ""))))))
+                                      (-> trusted (assoc-in [:producer :repository] "")
+                                          (assoc :input_source (assoc-in source [:producer :repository] ""))))))))
 
 (deftest ordinary-v2-counts-real-pages-before-complete-materialization
   (let [tools (clj->js (:review-tools fixture/context))

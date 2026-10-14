@@ -11,6 +11,27 @@
 (defn- read-native-input [dir]
   (try (bfs/read-review-input dir) (catch :default _ nil)))
 
+(deftest ordinary-v2-filesystem-refuses-coherent-stale-originals
+  (let [{:keys [source texts view trusted] :as held} (fixture/ordinary-v2-fixture)
+        dir (.mkdtempSync fs (.join path (.tmpdir os) "muse-v2-held-originals-"))
+        manifest-path (.join path dir "input-manifest.json")]
+    (try
+      (doseq [[component text] (map vector (:components source) texts)]
+        (.writeFileSync fs (.join path dir (:path component)) (js/Buffer.from text "utf8")))
+      (bfs/write-text! manifest-path (js/JSON.stringify (clj->js source)))
+      (is (= view (:text (.call bfs/read-review-input nil dir trusted)))
+          "actual unchanged originals are readable with their independently held identity")
+      (is (thrown? js/Error (.call bfs/read-review-input nil dir (dissoc trusted :input_source)))
+          "filesystem preparation requires independently held original identity")
+      (doseq [{candidate :source originals :texts label :label}
+              (fixture/ordinary-v2-coherent-stale-candidates held)]
+        (doseq [[component text] (map vector (:components candidate) originals)]
+          (.writeFileSync fs (.join path dir (:path component)) (js/Buffer.from text "utf8")))
+        (bfs/write-text! manifest-path (js/JSON.stringify (clj->js candidate)))
+        (is (thrown? js/Error (.call bfs/read-review-input nil dir trusted))
+            (str label " must refuse after coherent actual file and manifest replacement")))
+      (finally (.rmSync fs dir #js {:recursive true :force true})))))
+
 (deftest ordinary-v2-filesystem-reads-the-three-originals-without-a-composite-file
   (let [{:keys [source texts view trusted]} (fixture/ordinary-v2-fixture)
         dir (.mkdtempSync fs (.join path (.tmpdir os) "muse-ordinary-v2-"))

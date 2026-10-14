@@ -44,8 +44,40 @@
                            (assoc :text_units (count view) :page_count (count (review/diff-chunks view))))
                  :producer producer}]
      {:source source :texts texts :view view
-      :trusted {:producer producer :reviewer_run_attempt "2"
+       :trusted {:producer producer :reviewer_run_attempt "2" :input_source source
                 :content {:authorization "public" :classification "authorized" :credential_canary false}}})))
+
+(defn ordinary-v2-coherent-stale-candidates
+  "Recompute candidate descriptors and view from replaced originals, retaining
+   the current producer coordinates. No candidate supplies the caller's held
+   input_source or native authentication."
+  [{:keys [texts]}]
+  (let [stale ["diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+older\n"
+               "{\"gate\":\"older\",\"limitation\":\"synthetic replacement\"}\n"
+               "previous deterministic run: synthetic older log\n"]]
+    (mapv (fn [[label replaced]]
+            (assoc (select-keys (ordinary-v2-fixture replaced) [:source :texts :view]) :label label))
+          [["raw-diff" (assoc texts 0 (nth stale 0))]
+           ["summary" (assoc texts 1 (nth stale 1))]
+           ["log" (assoc texts 2 (nth stale 2))]
+           ["all originals" stale]])))
+
+(deftest ordinary-v2-origin-refuses-coherent-stale-originals-with-current-producer
+  (let [{:keys [source trusted] :as held} (ordinary-v2-fixture)]
+    (is (invocation/ordinary-v2-contract-valid? (:input_source trusted)))
+    (is (invocation/ordinary-v2-trusted-context-valid? trusted))
+    (is (invocation/ordinary-v2-origin-bound? source trusted)
+        "the unchanged producer's original identity remains legal for a later reviewer")
+    (doseq [{candidate :source label :label} (ordinary-v2-coherent-stale-candidates held)]
+      (is (invocation/ordinary-v2-contract-valid? candidate) label)
+      (is (= (:producer source) (:producer candidate)) label)
+      (is (false? (invocation/ordinary-v2-origin-bound? candidate trusted))
+          (str label " must refuse against the independently held original identity")))
+    (let [unbound (dissoc trusted :input_source)]
+      (is (false? (invocation/ordinary-v2-trusted-context-valid? unbound))
+          "current producer coordinates without held original identity are insufficient")
+      (is (false? (invocation/ordinary-v2-origin-bound? source unbound))
+          "a candidate cannot supply its own missing trusted original identity"))))
 
 (deftest ordinary-v2-contract-keeps-original-identities-and-separate-span-units
   (doseq [texts [["" "{}" ""]
@@ -109,7 +141,8 @@
                    :run_attempt :job_id :artifact_id]
             blank [" " "\t\n"]]
       (let [candidate (assoc-in source [:producer field] blank)
-            caller (assoc-in trusted [:producer field] blank)
+            caller (-> trusted (assoc-in [:producer field] blank)
+                       (assoc :input_source candidate))
             label (str "matching nonempty blank producer " field " " (pr-str blank))]
         (is (false? (invocation/ordinary-v2-contract-valid? candidate)) label)
         (is (false? (invocation/ordinary-v2-trusted-context-valid? caller)) label)
@@ -121,7 +154,8 @@
         (is (false? (invocation/ordinary-v2-origin-bound? source caller)) label)))
     (testing "existing empty-string refusal is a control, not causal RED credit"
       (let [candidate (assoc-in source [:producer :repository] "")
-            caller (assoc-in trusted [:producer :repository] "")]
+            caller (-> trusted (assoc-in [:producer :repository] "")
+                       (assoc :input_source candidate))]
         (is (false? (invocation/ordinary-v2-contract-valid? candidate)))
         (is (false? (invocation/ordinary-v2-trusted-context-valid? caller)))
         (is (false? (invocation/ordinary-v2-origin-bound? candidate caller)))))))
