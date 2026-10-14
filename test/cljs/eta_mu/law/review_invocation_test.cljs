@@ -95,6 +95,37 @@
                      (assoc-in trusted [:content :credential_canary] true)]]
       (is (false? (invocation/ordinary-v2-origin-bound? source changed))))))
 
+(deftest ordinary-v2-refuses-self-consistent-blank-producer-coordinates
+  ;; Regression for native root 4271575526: matching candidate/caller strings
+  ;; cannot stand in for nonblank coordinates. This supplies no native evidence.
+  (let [{:keys [source trusted]} (ordinary-v2-fixture)]
+    (testing "honest earlier producer and distinct reviewer remain admissible"
+      (is (= ["1" "2"] [(get-in source [:producer :run_attempt])
+                         (:reviewer_run_attempt trusted)]))
+      (is (invocation/ordinary-v2-contract-valid? source))
+      (is (invocation/ordinary-v2-trusted-context-valid? trusted))
+      (is (invocation/ordinary-v2-origin-bound? source trusted)))
+    (doseq [field [:repository :workflow_path :workflow_ref :run_id
+                   :run_attempt :job_id :artifact_id]
+            blank [" " "\t\n"]]
+      (let [candidate (assoc-in source [:producer field] blank)
+            caller (assoc-in trusted [:producer field] blank)
+            label (str "matching nonempty blank producer " field " " (pr-str blank))]
+        (is (false? (invocation/ordinary-v2-contract-valid? candidate)) label)
+        (is (false? (invocation/ordinary-v2-trusted-context-valid? caller)) label)
+        (is (false? (invocation/ordinary-v2-origin-bound? candidate caller)) label)))
+    (doseq [blank [" " "\t\n"]]
+      (let [caller (assoc trusted :reviewer_run_attempt blank)
+            label (str "nonempty blank reviewer attempt " (pr-str blank))]
+        (is (false? (invocation/ordinary-v2-trusted-context-valid? caller)) label)
+        (is (false? (invocation/ordinary-v2-origin-bound? source caller)) label)))
+    (testing "existing empty-string refusal is a control, not causal RED credit"
+      (let [candidate (assoc-in source [:producer :repository] "")
+            caller (assoc-in trusted [:producer :repository] "")]
+        (is (false? (invocation/ordinary-v2-contract-valid? candidate)))
+        (is (false? (invocation/ordinary-v2-trusted-context-valid? caller)))
+        (is (false? (invocation/ordinary-v2-origin-bound? candidate caller)))))))
+
 (deftest ordinary-v2-finite-contract-boundaries-and-lossless-page-count
   (let [validate-component (fn [role] (invocation/ordinary-v2-validator role))
         {:keys [source]} (ordinary-v2-fixture)]

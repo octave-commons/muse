@@ -78,6 +78,32 @@
     (is (some? (prepare-native-context "diff" (json source)
                                        (clj->js (:review-tools fixture/context)) "/fixture/submission.json")))))
 
+(deftest ordinary-v2-public-preparation-refuses-self-consistent-blank-coordinates
+  (let [{:keys [source view trusted]} (fixture/ordinary-v2-fixture)
+        tools (clj->js (:review-tools fixture/context))
+        file "/fixture/submission.json"
+        prepared (prepare-v2-context view (json source) tools file trusted)]
+    ;; The existing five-argument native API admits this valid neighbor. Changed
+    ;; metadata still uses intact originals and a separately supplied caller map.
+    (is (some? prepared))
+    (is (= source (:inputSource (js->clj prepared :keywordize-keys true))))
+    (doseq [field [:repository :workflow_path :workflow_ref :run_id
+                   :run_attempt :job_id :artifact_id]
+            blank [" " "\t\n"]]
+      (let [candidate (assoc-in source [:producer field] blank)
+            caller (assoc-in trusted [:producer field] blank)]
+        (is (thrown? js/Error (prepare-v2-context view (json candidate) tools file caller))
+            (str "matching nonempty blank producer " field " " (pr-str blank)))))
+    (doseq [blank [" " "\t\n"]]
+      (is (thrown? js/Error
+                   (prepare-v2-context view (json source) tools file
+                                       (assoc trusted :reviewer_run_attempt blank)))
+          (str "nonempty blank reviewer attempt " (pr-str blank))))
+    ;; Empty-string refusal already passes :min 1 and supplies no causal credit.
+    (is (thrown? js/Error
+                 (prepare-v2-context view (json (assoc-in source [:producer :repository] "")) tools file
+                                     (assoc-in trusted [:producer :repository] ""))))))
+
 (deftest ordinary-v2-counts-real-pages-before-complete-materialization
   (let [tools (clj->js (:review-tools fixture/context))
         materialize input-shape/diff-chunks]
