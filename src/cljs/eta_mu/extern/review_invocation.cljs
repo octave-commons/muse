@@ -5,6 +5,7 @@
    GPL-3.0-or-later."
   (:require [clojure.string :as str]
             [eta-mu.extern.json :as json]
+            [eta-mu.extern.review-input :as input-edge]
             [eta-mu.law.review-invocation :as law]
             [eta-mu.shape.review-input :as input-shape]
             [eta-mu.domain.review :as review]
@@ -22,49 +23,10 @@
         (js-invoke "update" bytes)
         (js-invoke "digest" "hex"))))
 
-(defn- bounded-bytes [raw ceiling]
-  (cond
-    (string? raw)
-    (do (input-shape/bounded-utf8-size raw ceiling)
-        (.encode (js/TextEncoder.) raw))
-    (instance? js/Uint8Array raw)
-    (do (when (> (.-length raw) ceiling) (invalid!)) raw)
-    :else (invalid!)))
-
 (defn prepare-ordinary-v2-originals
-  "Shared edge verification for FS and public preparation. The caller supplies
-   separately established native producer/content context; this function does
-   not authenticate that caller. It verifies each original before pure shaping.
-   No model, state, tool delivery or invocation admission is performed."
+  "Retained entry point delegates to the shared lower original-byte adapter."
   [source raw-originals trusted-context]
-  (when-not (and (law/ordinary-v2-origin-bound? source trusted-context)
-                (vector? raw-originals) (= 3 (count raw-originals)))
-    (invalid!))
-  (let [ceilings [(:raw-diff-bytes law/ordinary-v2-limits)
-                  (:summary-bytes law/ordinary-v2-limits)
-                  (:log-bytes law/ordinary-v2-limits)]
-        originals (mapv (fn [raw descriptor ceiling]
-                          (let [bytes (bounded-bytes raw ceiling)
-                                digest (-> (js-invoke crypto "createHash" "sha256")
-                                           (js-invoke "update" bytes) (js-invoke "digest" "hex"))]
-                            (when-not (and (= (.-length bytes) (:bytes descriptor))
-                                            (= digest (:sha256 descriptor))) (invalid!))
-                            {:text (raw-text bytes) :bytes (.-length bytes) :sha256 digest}))
-                        raw-originals (:components source) ceilings)
-        shaped (input-shape/assemble-v2 source originals)
-        bytes (bounded-bytes (:text shaped) (:view-bytes law/ordinary-v2-limits))
-        digest (-> (js-invoke crypto "createHash" "sha256")
-                   (js-invoke "update" bytes) (js-invoke "digest" "hex"))]
-    (when-not (= digest (get-in source [:view :sha256])) (invalid!))
-    (assoc shaped :raw-diff (:text (first originals)))))
-
-(defn- prepare-v2-carrier [raw source trusted-context]
-  (when-not (law/ordinary-v2-origin-bound? source trusted-context) (invalid!))
-  (let [bytes (bounded-bytes raw (:view-bytes law/ordinary-v2-limits))]
-    (when-not (= (.-length bytes) (get-in source [:view :bytes])) (invalid!))
-    (prepare-ordinary-v2-originals
-     source (mapv (fn [{[start end] :byte_span}] (.subarray bytes start end)) (:components source))
-     trusted-context)))
+  (input-edge/prepare-ordinary-v2-originals source raw-originals trusted-context))
 
 (def strict-json
   "Shared duplicate-member/nonfinite-rejecting JSON boundary."
@@ -105,13 +67,13 @@
   (try
     (when-not (js/Array.isArray raw-review-tools) (invalid!))
     (when (and v2? (not (law/ordinary-v2-trusted-context-valid? trusted-context))) (invalid!))
-    (let [manifest-bytes (if v2? (bounded-bytes raw-manifest (:view-bytes law/ordinary-v2-limits)) raw-manifest)
+    (let [manifest-bytes (if v2? (input-edge/bounded-bytes raw-manifest (:view-bytes law/ordinary-v2-limits)) raw-manifest)
           source (strict-json (raw-text manifest-bytes))
           tools (js->clj raw-review-tools)
           ctx (if v2?
                 (do
                   (when-not (= "open-hax.review-input/v2" (:schema source)) (invalid!))
-                  (let [shaped (prepare-v2-carrier raw-full-diff source trusted-context)]
+                  (let [shaped (input-edge/prepare-v2-carrier raw-full-diff source trusted-context)]
                     (when-not (and (vector? tools) (every? string? tools)
                                     (= (count tools) (count (set tools)))
                                     (every? (set tools) law/review-tools)

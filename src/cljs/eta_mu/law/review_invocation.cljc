@@ -76,6 +76,7 @@
                  [:view [:ref ::V2View]] [:producer [:ref ::V2Producer]]]
    ::V2TrustedContext [:map
                        [:producer [:ref ::V2Producer]]
+                        [:input_source [:ref ::OrdinaryV2]]
                        [:reviewer_run_attempt [:ref ::V2Coordinate]]
                        [:content [:map
                                   [:authorization [:enum "public" "explicit"]]
@@ -88,15 +89,6 @@
 
 (def ^:private v2-shape-valid? (ordinary-v2-validator ::OrdinaryV2))
 (def ^:private v2-trust-shape-valid? (ordinary-v2-validator ::V2TrustedContext))
-
-(defn ordinary-v2-trusted-context-valid?
-  "Typed caller context can select the bounded v2 entry before reading candidate
-   metadata. Its native observations/authentication remain the caller's duty."
-  [context]
-  (boolean (and (v2-trust-shape-valid? context)
-                (every? #(oid? (get (:producer context) %))
-                        [:base_sha :head_sha :diff_base_sha :workflow_sha])
-                (sha? 64 (get-in context [:producer :artifact_zip_sha256])))))
 
 (defn ordinary-v2-contract-valid?
   "Describe descriptor integrity, not byte verification or native origin. Runtime
@@ -122,6 +114,18 @@
             (and (= byte-start (get-in source [:view :bytes]))
                  (= text-start (get-in source [:view :text_units]))))))))
 
+(defn ordinary-v2-trusted-context-valid?
+  "Typed caller context holds independently observed complete input metadata,
+   including original component/view identities, before candidate reads. Native
+   artifact custody and authentication remain the caller's duty."
+  [context]
+  (boolean (and (v2-trust-shape-valid? context)
+                (ordinary-v2-contract-valid? (:input_source context))
+                (= (:producer (:input_source context)) (:producer context))
+                (every? #(oid? (get (:producer context) %))
+                        [:base_sha :head_sha :diff_base_sha :workflow_sha])
+                (sha? 64 (get-in context [:producer :artifact_zip_sha256])))))
+
 (defn ordinary-v2-origin-bound?
   "Match a manifest to separately supplied trusted caller data. This pure law
    cannot establish where the caller obtained that data. Producing and reviewing
@@ -130,6 +134,7 @@
   (boolean
    (and (ordinary-v2-contract-valid? source)
         (ordinary-v2-trusted-context-valid? trusted-context)
+        (= source (:input_source trusted-context))
         (= (:producer source) (:producer trusted-context)))))
 (defn- success? [call] (true? (get-in call [:part :state :output :ok?])))
 (defn- tool [call] (get-in call [:part :tool]))

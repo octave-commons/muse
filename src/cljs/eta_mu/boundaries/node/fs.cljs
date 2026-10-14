@@ -9,7 +9,7 @@
             [clojure.string :as str]
             [eta-mu.law.review-invocation :as invocation]
             [eta-mu.shape.review-input :as input-shape]
-            [eta-mu.extern.review-invocation :as review-input]
+            [eta-mu.extern.review-input :as review-input]
             [eta-mu.extern.json :as json]))
 
 (defn home-dir []

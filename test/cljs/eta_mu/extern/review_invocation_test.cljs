@@ -186,6 +186,7 @@
 (deftest prepared-v2-cannot-admit-generic-whole-view-assessment-as-an-invocation
   (let [{:keys [source view trusted]} (fixture/ordinary-v2-fixture)
         source (assoc source :provenance (:provenance fixture/manifest))
+        trusted (assoc trusted :input_source source)
         file (:submission-file fixture/context)
         tools (clj->js (:review-tools fixture/context))
         prepared (prepare-v2-context view (json source) tools file trusted)
