@@ -104,3 +104,29 @@
   (is (false? (invocation/context-valid?
                (assoc fixture/context :input-source fixture/cohort-manifest
                       :full-input-sha256 (apply str (repeat 64 "f")))))))
+
+
+(deftest ordinary-v2-combined-component-page-ceiling-precedes-materialization
+  ;; The fixed ceiling bounds delivered component pages, independently of the
+  ;; transport view geometry. Each witness remains under every byte ceiling.
+  (doseq [[log-lines expected] [[130816 1024] [130817 1025] [131070 1026]]]
+    (let [texts ["\n" "\n" (.repeat "\n" log-lines)]
+          {:keys [source view]} (fixture/ordinary-v2-fixture texts)
+          materialize shape/diff-chunks calls* (atom [])]
+      (is (invocation/ordinary-v2-contract-valid? source))
+      (is (<= (get-in source [:view :page_count]) 1024)
+          "the aggregate view is admitted, even when role boundaries add pages")
+      (is (= expected (reduce + (map shape/bounded-page-count texts))))
+      (with-redefs [shape/diff-chunks (fn [text]
+                                      (swap! calls* conj (count text))
+                                      (materialize text))]
+        (if (= expected 1024)
+          (let [pages (shape/component-chunks source view)]
+            (is (= 1024 (count pages)))
+            (is (= view (apply str (map :text pages))))
+            (is (= 3 (count @calls*))))
+          (do
+            (is (thrown? js/Error (shape/component-chunks source view))
+                "combined component cap must refuse the +1 and native +2 cases")
+            (is (= [] @calls*)
+                "all component counts must be admitted before collecting any pages")))))))

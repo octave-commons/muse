@@ -944,3 +944,132 @@
                       (str "{\"ignored\":{\"x\":1,\"x\":2}," (subs (json source) 1))
                       (str "\uFEFF" (json source))]]
       (is (thrown? js/Error (extern/prepare-review-invocation-context bytes manifest tools "/fixture/submission.json"))))))
+
+
+(deftest ordinary-v2-public-preparation-enforces-the-combined-page-ceiling
+  (doseq [[log-lines expected] [[130816 1024] [130817 1025] [131070 1026]]]
+    (let [{:keys [source view trusted]} (fixture/ordinary-v2-fixture
+                                        ["\n" "\n" (.repeat "\n" log-lines)])
+          tools (clj->js (:review-tools fixture/context))]
+      (is (invocation/ordinary-v2-origin-bound? source trusted))
+      (if (= expected 1024)
+        (let [prepared (js->clj (prepare-v2-context view (json source) tools
+                                                   "/fixture/page-cap.json" trusted)
+                               :keywordize-keys true)]
+          (is (= expected (count (:componentPages prepared)))))
+        (is (thrown? js/Error (prepare-v2-context view (json source) tools
+                                                "/fixture/page-cap.json" trusted))
+            "actual five-argument preparation must refuse the combined overflow")))))
+
+(defn actual-v2-length-prefix [input stage-count]
+  ;; Actual owner constructor/results only. This deliberately never submits;
+  ;; length is the synthetic host terminal observation, not a completed review.
+  (let [initial (assessment-fixture/assessment-v2-begin input)
+        state* (atom initial) events* (atom [])
+        emit! (fn [tool args result]
+                (swap! events* conj (fixture/tool-event (inc (count @events*)) tool args
+                                                      (dissoc result :session)))
+                (when (:session result) (reset! state* (:session result))))]
+    (emit! "review_begin" {}
+           {:ok? true :stage (name (:stage initial)) :stages (mapv name review/stages)
+            :input-source (:input-source initial) :diff-stats (:diff-stats initial)
+            :input-coverage (review/input-coverage initial)})
+    (doseq [page (:diff-chunks initial)]
+      (let [id (:id page) read (review/read-diff-chunk @state* id)
+            note "Actual delivered component assessed before length termination."
+            record (assessment-fixture/assessment-v2-record (:chunk read))]
+        (emit! "review_read_diff_chunk" {:id id} read)
+        (emit! "review_assess_diff_chunk" {:id id :note note :assessment record}
+               (review/assess-diff-chunk @state* id note record))))
+    (doseq [component (filter #(zero? (:bytes %)) (:components initial))]
+      (let [record {:kind "empty-component" :component-ref component}
+            note "Explicit actual zero-byte role observation."]
+        (emit! "review_assess_diff_chunk" {:note note :assessment record}
+               (review/assess-diff-chunk @state* nil note record))))
+    (doseq [stage (take stage-count review/stages)]
+      (let [note "Actual successful stage prefix; invocation has not submitted."]
+        (emit! "review_record_evidence" {:stage (name stage) :note note}
+               (review/record-evidence @state* stage note))))
+    {:events (conj @events* (assoc-in (fixture/terminal (inc (count @events*)))
+                                    [:part :reason] "length"))
+     :session @state*}))
+
+(defn prepared-v2-owner-context [prepared view]
+  (let [ctx (js->clj prepared :keywordize-keys true)]
+    {:input-source (:inputSource ctx) :pages (:pages ctx) :page-count (:pageCount ctx)
+     :components (:components ctx) :component-pages (:componentPages ctx) :view (:view ctx)
+     :full-input-sha256 (:fullInputSha256 ctx) :review-tools (:reviewTools ctx)
+     :submission-file (:submissionFile ctx) :full-input-text view}))
+
+(deftest ordinary-v2-length-recovery-uses-actual-complete-role-and-empty-coverage
+  (doseq [texts [["diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n"
+                  "{\"gate\":\"pass\"}" (str "result: pass\n" (.repeat "tail\n" 130))]
+                 ["" "{\"gate\":\"pass\"}" ""]
+                 ["" "" ""]]
+          stage-count (range 1 6)]
+    (let [{:keys [source view trusted]} (fixture/ordinary-v2-fixture texts)
+          source (assoc source :provenance (:provenance fixture/manifest))
+          trusted (assoc trusted :input_source source)
+          input (assoc (extern/prepare-ordinary-v2-originals
+                        source (mapv #(js/Buffer.from % "utf8") texts) trusted)
+                       :manifest source)
+          file "/fixture/component-length-submission.json"
+          tools (clj->js (:review-tools fixture/context))
+          fresh #(prepare-v2-context view (json source) tools file trusted)
+          prepared (fresh) context (prepared-v2-owner-context prepared view)
+          {:keys [events session]} (actual-v2-length-prefix input stage-count)
+          raw (response events)
+          calls (filter #(= "tool_use" (:type %)) events)
+          pure (fixture/length-classification events nil context (fixture/length-custody context))
+          strict (invocation/verify events nil context)]
+      (is (every? #(true? (get-in % [:part :state :output :ok?])) calls)
+          "every retained tool result is genuinely successful; no flags are replaced")
+      (is (= [] (:missing (review/input-coverage session))))
+      (is (every? #(or (not (:empty? %)) (:empty-observed? %))
+                  (vals (:roles (review/input-coverage session)))))
+      (is (false? (:ok? strict)) "length eligibility never accepts this unfinished invocation")
+      (is (nil? (:accepted-invocation strict)))
+      (is (:eligible? pure) "complete role-bound actual prefix must permit a fresh invocation")
+      (is (= :new-complete-invocation-required (:code pure)))
+      (is (= (count (:component-pages context)) (:page-count pure)))
+      (is (= (vec (take stage-count invocation/stages)) (:recorded-stages pure)))
+      (is (every? #(not (contains? pure %)) [:ok? :accepted-invocation :approval]))
+      (doseq [carrier [view (js/Buffer.from view "utf8") (js/Uint8Array. (js/Buffer.from view "utf8"))]]
+        (let [actual (fresh) _ (aset actual "fullDiff" carrier)
+              custody (length-custody-js raw actual)
+              public (classify-length raw nil actual custody)]
+          (is (:eligible public) "actual prepared V2 object and native held snapshots remain admissible")
+          (is (= "new-complete-invocation-required" (:code public)))
+          (is (= (count (:component-pages context)) (:pageCount public)))
+          (is (every? #(not (contains? public %)) [:ok :acceptedInvocation :approval]))
+          ;; Specialized refusal credit requires this exact healthy neighbor.
+          (when (:eligible public)
+            (doseq [candidate [(js/JSON.stringify actual)
+                               (js/Buffer.from (js/JSON.stringify actual) "utf8")
+                               (clj->js (js->clj actual :keywordize-keys true))]]
+              (is (false? (:eligible (classify-length raw nil candidate custody)))))
+            (doseq [changed [(js/Object.assign #js {} custody #js {:contextBefore (js/JSON.parse (js/JSON.stringify actual))})
+                             (js/Object.assign #js {} custody #js {:contextAfter (js/JSON.parse (js/JSON.stringify actual))})
+                             (js/Object.assign #js {} custody #js {:responseSha256After (.repeat "f" 64)})]]
+              (is (false? (:eligible (classify-length raw nil actual changed)))))
+            (is (false? (:eligible (classify-length raw nil actual (js/JSON.stringify custody))))))))
+      (when (:eligible? pure)
+        (let [remove-calls (fn [pred] (fixture/ordered-fixture-events (remove pred events)))
+              assessment? #(= "review_assess_diff_chunk" (get-in % [:part :tool]))
+              last-assessment (last (filter assessment? events))
+              omit-last (remove-calls #(= % last-assessment))
+              corrupted (mapv #(if (= % last-assessment)
+                                 (assoc-in % [:part :state :output :coverage :assessed] 0) %) events)]
+          (doseq [changed [omit-last corrupted (pop events)]]
+            (is (false? (:eligible? (fixture/length-classification
+                                    changed nil context (fixture/length-custody context))))))
+          (doseq [role ["raw-diff" "summary" "log"]]
+            (let [changed (remove-calls #(or (= role (get-in % [:part :state :output :chunk :role]))
+                                             (= role (get-in % [:part :state :input :assessment :page-ref :role]))
+                                             (= role (get-in % [:part :state :input :assessment :component-ref :role]))))]
+              (is (false? (:eligible? (fixture/length-classification
+                                      changed nil context (fixture/length-custody context)))))))
+          (is (false? (:eligible? (fixture/length-classification
+                                  events {} context (fixture/length-custody context)))))
+          (is (false? (:eligible? (fixture/length-classification
+                                  events nil context (assoc (fixture/length-custody context) :exit-code 1))))))))))
