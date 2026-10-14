@@ -130,3 +130,21 @@
                 "combined component cap must refuse the +1 and native +2 cases")
             (is (= [] @calls*)
                 "all component counts must be admitted before collecting any pages")))))))
+
+
+(deftest raw-hunk-spans-stop-at-counts-and-preserve-exact-page-text
+  (let [raw "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\r\n+😀new\r\n\\ No newline at end of file\noutside\n"
+        {:keys [source view]} (fixture/ordinary-v2-fixture [raw "{}" "fixture log"])
+        pages (shape/component-chunks source view)
+        page (first pages)
+        spans (:hunk-spans page)
+        changed (:changed-spans page)]
+    (is (= raw (:text page)))
+    (is (= [(.indexOf raw "@@") (.indexOf raw "outside")] (first spans)))
+    (is (= (.indexOf raw "-old") (first (first changed))))
+    (is (= (.indexOf raw "\\ No newline") (second (first changed))))
+    (is (invocation/component-pages-valid? source (:components source) (:view source) pages))
+    (doseq [changed-pages [(assoc-in pages [0 :hunk-spans] [[0 (inc (count raw))]])
+                           (assoc-in pages [0 :changed-spans] [[0 1]])
+                           (assoc-in pages [0 :hunk-spans] [[1 0]])]]
+      (is (false? (invocation/component-pages-valid? source (:components source) (:view source) changed-pages))))))

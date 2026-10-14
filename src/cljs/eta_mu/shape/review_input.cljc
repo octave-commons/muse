@@ -99,6 +99,41 @@
         (throw (ex-info "Ordinary-v2 view geometry differs" {})))
       {:text text :components components :view (:view source) :page-count pages})))
 
+(defn- append-span [spans start end]
+  (if (= start (second (peek spans)))
+    (assoc spans (dec (count spans)) [(first (peek spans)) end])
+    (conj spans [start end])))
+
+(defn- raw-hunk-spans
+  "Retain unified-hunk membership before canonical pages split it. Counts end
+   a hunk; file headers never become changed rows. Spans use original text units."
+  [text]
+  (loop [at 0 old-left 0 new-left 0 in-hunk? false hunks [] changed []]
+    (if (= at (count text)) {:hunks hunks :changed changed}
+      (let [newline (str/index-of text "\n" at)
+            end (if newline (inc newline) (count text))
+            row (subs text at (or newline end))
+            header (re-find #"^@@ -[0-9]+(?:,([0-9]+))? \+[0-9]+(?:,([0-9]+))? @@" row)
+            marker? (str/starts-with? row "\\ No newline at end of file")
+            active? (and in-hunk? (or (pos? old-left) (pos? new-left) marker?))
+            prefix (first row)
+            body? (and active? (or marker? (contains? #{\space \+ \-} prefix)))]
+        (cond
+          header (recur end (if (second header) (parse-long (second header)) 1)
+                        (if (nth header 2) (parse-long (nth header 2)) 1) true
+                        (append-span hunks at end) changed)
+          body? (recur end
+                       (max 0 (- old-left (if (#{\space \-} prefix) 1 0)))
+                       (max 0 (- new-left (if (#{\space \+} prefix) 1 0))) true
+                       (append-span hunks at end)
+                       (if (#{\+ \-} prefix) (append-span changed at end) changed))
+          :else (recur end 0 0 false hunks changed))))))
+
+(defn- local-spans [spans start end]
+  (into [] (keep (fn [[low high]]
+                   (when (< (max low start) (min high end))
+                     [(- (max low start) start) (- (min high end) start)]))) spans))
+
 (defn component-chunks
   "Reuse the canonical pager independently on each exact original. Global IDs
    identify delivered pages; local spans identify originals, view spans preserve
@@ -117,19 +152,22 @@
     (throw (ex-info "Ordinary-v2 exceeds the combined component page ceiling" {})))
   (reduce
    (fn [pages {:keys [role bytes sha256 byte_span text_span]}]
-     (let [[ts te] text_span original (subs text ts te)]
+     (let [[ts te] text_span original (subs text ts te)
+           hunk-data (when (= role "raw-diff") (raw-hunk-spans original))]
        (:pages
         (reduce (fn [{:keys [pages byte-start]} {:keys [start end text]}]
                   (let [byte-end (+ byte-start (bounded-utf8-size text (:view-bytes invocation/ordinary-v2-limits)))]
                     {:byte-start byte-end
                      :pages (conj pages
-                                  {:id (inc (count pages)) :role role :component-sha256 sha256
+                                  (cond-> {:id (inc (count pages)) :role role :component-sha256 sha256
                                    :component-byte-span [byte-start byte-end]
                                    :component-text-span [start end]
                                    :view-byte-span [(+ (first byte_span) byte-start)
                                                     (+ (first byte_span) byte-end)]
                                    :view-text-span [(+ ts start) (+ ts end)]
-                                   :start (+ ts start) :end (+ ts end) :text text})}))
+                                   :start (+ ts start) :end (+ ts end) :text text}
+                                    hunk-data (assoc :hunk-spans (local-spans (:hunks hunk-data) start end)
+                                                     :changed-spans (local-spans (:changed hunk-data) start end))))}))
                 {:pages pages :byte-start 0}
                 (cond
                   (zero? bytes) []

@@ -3,8 +3,7 @@
    authentication, or authority to invoke a model. GPL-3.0-or-later."
   (:require [clojure.string :as str]
             [malli.core :as m]
-            [malli.registry :as mr]
-            [eta-mu.shape.review-coverage :as coverage]))
+            [malli.registry :as mr]))
 
 (def stages ["deterministic" "map-change" "generate-candidates"
              "adversarial-validate" "publish"])
@@ -171,7 +170,9 @@
                     [:component-byte-span [:ref ::V2Span]]
                     [:component-text-span [:ref ::V2Span]]
                     [:view-byte-span [:ref ::V2Span]] [:view-text-span [:ref ::V2Span]]
-                    [:start [:int {:min 0}]] [:end [:int {:min 1}]]]
+                    [:start [:int {:min 0}]] [:end [:int {:min 1}]]
+                    [:hunk-spans {:optional true} [:vector [:ref ::V2Span]]]
+                    [:changed-spans {:optional true} [:vector [:ref ::V2Span]]]]
    ::Observation [:map [:kind [:enum "changed-hunk" "no-changed-hunk"
                                     "summary-field" "log-observation" "no-relevant-evidence"]]
                   [:text-span [:ref ::V2Span]] [:text :string]
@@ -194,13 +195,62 @@
 (def ^:private page-assessment-shape? (assessment-validator ::PageAssessment))
 (def ^:private empty-assessment-shape? (assessment-validator ::EmptyAssessment))
 
+(defn- spans-valid? [spans size]
+  (and (vector? spans)
+       (every? (fn [[start end :as span]]
+                 (and (= 2 (count span)) (natural? start) (natural? end)
+                      (< start end) (<= end size))) spans)
+       (every? (fn [[left right]] (<= (second left) (first right)))
+               (partition 2 1 spans))))
+
+(defn- span-contained? [[start end] spans]
+  (some (fn [[low high]] (<= low start end high)) spans))
+
+(defn- page-hunk-spans-valid? [page]
+  (or (not= "raw-diff" (:role page))
+      (and (spans-valid? (:hunk-spans page) (count (:text page)))
+           (spans-valid? (:changed-spans page) (count (:text page)))
+           (every? #(span-contained? % (:hunk-spans page)) (:changed-spans page)))))
+
+(defn coverage-valid?
+  "Describe reported higher-layer coverage against actual observed identities.
+   The shape/domain owner produces this data; this predicate produces no map."
+  [reported pages components delivered assessed empty-observed]
+  (let [ids (set (map :id pages))]
+    (boolean
+     (and (map? reported) (set? delivered) (set? assessed) (set? empty-observed)
+          (every? ids delivered) (every? ids assessed)
+          (= (count ids) (:chunks reported)) (= (count delivered) (:delivered reported))
+          (= (count assessed) (:assessed reported))
+          (= (vec (sort (remove assessed ids))) (:missing reported))
+          (if (nil? components)
+            (= #{:chunks :delivered :assessed :missing} (set (keys reported)))
+            (and (= #{:chunks :delivered :assessed :missing :roles} (set (keys reported)))
+                 (= (set (map (comp keyword :role) components)) (set (keys (:roles reported))))
+                 (every? (set (map :role (filter #(zero? (:bytes %)) components))) empty-observed)
+                 (every?
+                  (fn [{:keys [role bytes sha256]}]
+                    (let [role-ids (set (map :id (filter #(= role (:role %)) pages)))
+                          actual (get (:roles reported) (keyword role))]
+                      (and (= #{:bytes :sha256 :chunks :delivered :assessed :missing :empty? :empty-observed?}
+                              (set (keys actual)))
+                           (= bytes (:bytes actual)) (= sha256 (:sha256 actual))
+                           (= (count role-ids) (:chunks actual))
+                           (= (count (filter delivered role-ids)) (:delivered actual))
+                           (= (count (filter assessed role-ids)) (:assessed actual))
+                           (= (vec (sort (remove assessed role-ids))) (:missing actual))
+                           (= (zero? bytes) (:empty? actual))
+                           (= (contains? empty-observed role) (:empty-observed? actual)))))
+                  components)))))))
+
 (defn component-pages-valid?
   "Validate caller-held complete component geometry. The byte edge already
    bound original digests; this law never authenticates or rehashes the caller."
   [source components view pages]
   (boolean
    (and (= components (:components source)) (= view (:view source)) (vector? pages)
-        (every? #(and (component-page-shape? %) (string? (:text %))) pages)
+        (every? #(and (component-page-shape? %) (string? (:text %))
+                      (page-hunk-spans-valid? %)) pages)
         (= (mapv :id pages) (vec (range 1 (inc (count pages)))))
         (= (mapv :role pages)
            (vec (mapcat (fn [component] (map :role (filter #(= (:role component) (:role %)) pages)))
@@ -233,26 +283,30 @@
          (= text (subs payload start end))
          (case kind
            "changed-hunk" (and (= "raw-diff" (:role page))
-                                (boolean (re-find #"^@@[^\r\n]*@@" text)))
+                               (span-contained? text-span (:hunk-spans page))
+                               (or (boolean (re-find #"^@@[^\r\n]*@@" text))
+                                   (span-contained? text-span (:changed-spans page))
+                                   (empty? (:changed-spans page))))
            "no-changed-hunk" (and (= "raw-diff" (:role page)) (nonblank? reason)
-                                   (not (re-find #"(?m)^@@[^\r\n]*@@" payload)))
+                                   (empty? (:hunk-spans page)))
            "summary-field"
            ;; Field/value are lexical references to this exact delivered JSON
            ;; member, not a second JSON parser or arbitrary prose judgment.
            (let [[_ actual-field quoted scalar]
                  (re-matches #"\s*\"([^\"\r\n]+)\"\s*:\s*(?:\"([^\"\r\n]*)\"|(true|false|null|-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?))\s*" text)]
-             (and (= "summary" (:role page)) (nonblank? field)
+             (and (= "summary" (:role page)) (#{"gate" "status" "limitation"} field)
                   (= field actual-field) (= value (or quoted scalar))))
            "log-observation"
-           (and (= "log" (:role page)) (nonblank? context) (nonblank? value)
+           (and (= "log" (:role page)) (#{"result" "failure" "environment"} context) (nonblank? value)
                 (str/starts-with? text context)
+                (re-find #"^\s*[:=]\s*" (subs text (count context)))
                 (= value (-> (subs text (count context)) str/trim
                              (str/replace #"^[:=]\s*" ""))))
            "no-relevant-evidence" (and (#{"summary" "log"} (:role page)) (nonblank? reason))
            false))))
 
 (defn page-assessment-valid? [page assessment]
-  (boolean (and (page-assessment-shape? assessment)
+  (boolean (and (page-assessment-shape? assessment) (page-hunk-spans-valid? page)
                 (= (select-keys page component-page-keys) (:page-ref assessment))
                 (every? #(observation-valid? page (:kind assessment) %) (:observations assessment)))))
 
@@ -392,12 +446,12 @@
 (defn- empty-call? [call]
   (= "empty-component" (get-in (input call) [:assessment :kind])))
 
-(defn- observed-coverage [calls context]
+(defn- observed-coverage-valid? [reported calls context]
   (let [successful (filter success? calls)
         reads (filter #(= "review_read_diff_chunk" (tool %)) successful)
         assessed (filter #(and (= "review_assess_diff_chunk" (tool %)) (not (empty-call? %))) successful)
         empties (filter #(and (= "review_assess_diff_chunk" (tool %)) (empty-call? %)) successful)]
-    (coverage/component-coverage (delivery-pages context)
+    (coverage-valid? reported (delivery-pages context)
                         (when (= "open-hax.review-input/v2" (get-in context [:input-source :schema]))
                           (:components context))
                         (set (map #(:id (input %)) reads))
@@ -439,8 +493,8 @@
                 (not (and (= id (:chunk-id result)) (= (:assessment args) (:assessment result))
                           (if empty? (empty-assessment-valid? components (:assessment args))
                               (page-assessment-valid? page (:assessment args)))
-                          (= (observed-coverage (filter #(<= (:position %) (:position call)) calls) context)
-                             (:coverage result))))) :returned-component-assessment-binding
+                          (observed-coverage-valid? (:coverage result)
+                                                    (filter #(<= (:position %) (:position call)) calls) context)))) :returned-component-assessment-binding
            (and (= "review_assess_diff_chunk" name) (success? call) (not v2?)
                 (not (and (= id (:chunk-id result))
                           (map? (:coverage result)) (= (count pages) (get-in result [:coverage :chunks]))
@@ -503,8 +557,8 @@
           assessments (:input-assessments submission)
           empty-records (mapv #(select-keys (get by-role (:role %)) [:note :assessment])
                              (filter #(zero? (:bytes %)) (:components context)))
-          complete (coverage/component-coverage pages (when v2? (:components context)) (set (map :id pages))
-                                       (set (map :id pages)) (set (keys by-role)))]
+          complete? (coverage-valid? (:input-coverage submission) pages (when v2? (:components context))
+                                     (set (map :id pages)) (set (map :id pages)) (set (keys by-role)))]
       (cond
         (not (and (map? submission) (= "open-hax.github-review/v1" (:schema submission))
                   (#{"APPROVE" "COMMENT" "REQUEST_CHANGES"} (:event submission))
@@ -516,7 +570,7 @@
                   (every? #(and (nonblank? (:note %))
                                 (= (:note (get by-id (:id %))) (:note %))
                                 (or (not v2?) (= (:assessment (get by-id (:id %))) (:assessment %)))) assessments)
-                  (= complete (:input-coverage submission))
+                  complete?
                   (or (not v2?) (= empty-records (:empty-component-assessments submission))))) :serialized-assessment-binding
         :else nil))))
 
@@ -545,10 +599,12 @@
                                                  (first (:text_span (first (:components context)))))
                                               (or (:end (last (:pages context))) 0))
                                             (get-in began [:diff-stats :bytes]))
-                                         (= (coverage/component-coverage (delivery-pages context)
-                                                                (when (= "open-hax.review-input/v2" (get-in context [:input-source :schema]))
-                                                                  (:components context)) #{} #{} #{})
-                                            (:input-coverage began))))) :begin-source-binding)
+                                         (coverage-valid? (:input-coverage began) (delivery-pages context)
+                                                          (when (= "open-hax.review-input/v2" (get-in context [:input-source :schema]))
+                                                            (:components context)) #{} #{} #{})
+                                         (or (not= "open-hax.review-input/v2" (get-in context [:input-source :schema]))
+                                             (and (= (:components context) (:components began))
+                                                  (= (:view context) (:view began))))))) :begin-source-binding)
                          (when-not (and (<= (count stage-calls) 5)
                                          (= stage-names (vec (take (count stage-calls) stages)))
                                          (every? success? stage-calls)) :stage-order)
@@ -699,9 +755,8 @@
                    (when-not (and (< (:position begin) (:position (first stage-calls)))
                                   (input-before-first-stage? review-calls stage-calls context))
                      :input-after-first-stage)
-                   (when-not (= (coverage/component-coverage pages (when v2? (:components context))
-                                                   ids ids empty-roles)
-                                (:coverage (output (last assessed))))
+                   (when-not (coverage-valid? (:coverage (output (last assessed))) pages
+                                               (when v2? (:components context)) ids ids empty-roles)
                      :complete-assessment-coverage-not-established))]
       (if code
         {:eligible? false :classification :unestablished-length-ended-review

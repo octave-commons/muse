@@ -28,7 +28,10 @@
   (let [text (:text chunk)
         role (:role chunk)
         marker (case role
-                 "raw-diff" (re-find #"(?m)^@@[^\r\n]*@@" text)
+                 "raw-diff" (or (re-find #"(?m)^@@[^\r\n]*@@" text)
+                                (when-let [[start end] (first (or (seq (:changed-spans chunk))
+                                                                (seq (:hunk-spans chunk))))]
+                                  (subs text start end)))
                  "summary" (re-find #"\"gate\"\s*:\s*\"pass\"" text)
                  "log" (when (str/includes? text "result: pass") "result: pass")
                  nil)
@@ -37,7 +40,10 @@
                "summary" (if marker "summary-field" "no-relevant-evidence")
                "log" (if marker "log-observation" "no-relevant-evidence")
                nil)
-        at (when marker (str/index-of text marker))
+        at (when marker
+             (if (and (= role "raw-diff") (not (re-find #"(?m)^@@[^\r\n]*@@" text)))
+               (first (first (or (seq (:changed-spans chunk)) (seq (:hunk-spans chunk)))))
+               (str/index-of text marker)))
         observation (when kind
                       (cond-> {:kind kind :text-span (if marker [at (+ at (count marker))]
                                                          [0 (count text)])

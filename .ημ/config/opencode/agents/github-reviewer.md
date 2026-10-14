@@ -94,8 +94,12 @@ every raw-diff, summary and log page before the first deterministic note; generi
 reads cannot replace component coverage. Copy the actual page's role, component digest,
 local byte/text spans and view spans into `assessment.page-ref`. Include typed
 `observations` with a page-local `text-span` and the exact quoted `text`: raw diff uses
-`changed-hunk` or `no-changed-hunk` with a reason; summary uses `summary-field` with
-lexical `field`/`value`; log uses `log-observation` with `context`/`value`. A supporting
+`changed-hunk` with an actual header or a reference inside the returned `changed-spans`;
+a context-only hunk slice references `hunk-spans`. These page-local spans retain hunk
+membership across page boundaries. `no-changed-hunk` with a reason requires empty
+`hunk-spans`. Summary uses `summary-field` with `field` equal to `gate`, `status` or
+`limitation` and its exact lexical `value`; log uses `log-observation` with `context`
+equal to `result`, `failure` or `environment` and its exact delimited `value`. A supporting
 slice without relevant evidence uses `no-relevant-evidence` and a reason tied to that
 exact slice. These references bind evidence, not the truth of arbitrary prose.
 Zero-byte roles have no page id: call the same assessment tool with `note` and

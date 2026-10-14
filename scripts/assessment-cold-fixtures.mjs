@@ -140,9 +140,13 @@ function assessmentFor(page) {
   // Deterministic synthetic observation construction over ACTUAL delivered text.
   // These references prove matching coverage, not native review/prose truth.
   const text = page.text;
-  let quote, kind, extra = {};
+  let quote, kind, rawSpan, extra = {};
   if (page.role === 'raw-diff') {
     quote = text.match(/^@@[^\r\n]*@@/m)?.[0];
+    if (!quote) {
+      rawSpan = page['changed-spans']?.[0] || page['hunk-spans']?.[0];
+      if (rawSpan) quote = text.slice(rawSpan[0], rawSpan[1]);
+    }
     kind = quote ? 'changed-hunk' : 'no-changed-hunk';
   } else if (page.role === 'summary') {
     const field = text.match(/"(gate|status|limitation)"\s*:\s*"([^"\r\n]*)"/);
@@ -153,7 +157,7 @@ function assessmentFor(page) {
     quote = context?.[0]; kind = quote ? 'log-observation' : 'no-relevant-evidence';
     if (context) extra = {context: context[1], value: context[2]};
   }
-  const at = quote ? text.indexOf(quote) : 0;
+  const at = rawSpan ? rawSpan[0] : quote ? text.indexOf(quote) : 0;
   const observation = {kind, 'text-span': quote ? [at, at + quote.length] : [0, text.length],
     text: quote || text, ...extra};
   if (!quote) observation.reason = 'No controlled evidence marker in this no-model payload slice; coverage reference only.';
@@ -684,6 +688,74 @@ export async function runAssessmentFixtures({fixture, checkout, bundle, tool, to
     assert.equal(children.length, 2); assert.equal(hash(fs.readFileSync(settings)), settingsHash);
     console.log(JSON.stringify({kind: 'local-fresh-process-stop-control', attempts: children,
       maximumFixtureAttempts: 2, thirdProcessLaunched: false, externalHostPolicyQualified: false}));
+  });
+
+
+  await check('begin-descriptors-and-hunk-context-bind-actual-compiled-results', async () => {
+    const header = 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -0,0 +1,140 @@\n';
+    const unitHeader = 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1,2 @@\n';
+    const raws = [header + Array.from({length: 140}, (_, index) => `+added-${index}\n`).join(''),
+      unitHeader + ' ' + 'x'.repeat(8192 - unitHeader.length - 2) + '\n+changed-at-next-page\n'];
+    for (const [index, raw] of raws.entries()) {
+      const input = stageOriginals(options, `hunk-boundary-${index}`,
+        [Buffer.from(raw), Buffer.from('{"gate":"pass"}'), Buffer.from('result: pass\n')]);
+      const actual = await complete(tool, verifier, tools, input);
+      const pages = actual.delivered.filter(page => page.role === 'raw-diff');
+      assert.equal(pages.length, 2); assert.ok(pages[1].text.startsWith('+'));
+      assert.ok(!pages[1].text.includes('@@')); assert.ok(pages[1]['hunk-spans'].length);
+      assert.ok(pages[1]['changed-spans'].length);
+      const refusedInput = stageOriginals(options, `hunk-no-header-refusal-${index}`, input.arrays);
+      const trace = traceFor(tool, refusedInput); assert.equal((await trace.call('review_begin'))['ok?'], true);
+      const page = (await trace.call('review_read_diff_chunk', {id: pages[1].id})).chunk;
+      const assessment = {'page-ref': select(page, identityKeys), kind: 'no-changed-hunk',
+        observations: [{kind: 'no-changed-hunk', 'text-span': [0, page.text.length], text: page.text,
+          reason: 'A page boundary does not close the original hunk.'}]};
+      assert.equal((await trace.call('review_assess_diff_chunk', {id: page.id,
+        note: 'Actual continuation cannot claim no hunk.', assessment}))['ok?'], false);
+      assert.equal(trace.stopped, true);
+      const fresh = preparedFor(verifier, tools, input).prepared;
+      assert.equal(verifier.verifyReviewInvocation(actual.trace.response(), actual.submission, fresh).ok, true);
+      fresh.componentPages.find(page => page.id === pages[1].id)['hunk-spans'] = [];
+      assert.equal(verifier.verifyReviewInvocation(actual.trace.response(), actual.submission, fresh).ok, false);
+    }
+    for (const input of [base, stageOriginals(options, 'all-empty-begin-descriptors', roles.map(() => Buffer.alloc(0)))]) {
+      const actual = input === base ? healthy : await complete(tool, verifier, tools, input);
+      const began = JSON.parse(actual.trace.events[0].part.state.output);
+      assert.deepEqual(began.components, actual.prepared.components); assert.deepEqual(began.view, actual.prepared.view);
+      for (const mutate of [value => {delete value.components;}, value => {delete value.view;},
+        value => {value.components[0].sha256 = 'f'.repeat(64);}, value => {value.view.sha256 = 'f'.repeat(64);},
+        value => {value.components.reverse();}, value => {value.view.bytes++;}]) {
+        const events = clone(actual.trace.events), value = JSON.parse(events[0].part.state.output);
+        mutate(value); events[0].part.state.output = JSON.stringify(value);
+        const refused = verifier.verifyReviewInvocation(encodeTrace(events), actual.submission, actual.prepared);
+        assert.equal(refused.ok, false); assert.equal(refused.acceptedInvocation, null);
+      }
+    }
+  });
+
+  await check('required-support-categories-reject-matching-unrelated-substrings', async () => {
+    const arrays = [Buffer.from(coreTexts[0]),
+      Buffer.from('{"gate":"pass","duration":12,"author":"fixture"}'),
+      Buffer.from('result: pass\nhello\nresultExtra: pass\n')];
+    const neighbor = stageOriginals(options, 'support-required-category-neighbor', arrays);
+    await complete(tool, verifier, tools, neighbor);
+    for (const [index, role, kind, quote, fields] of [
+      [0, 'summary', 'summary-field', '"duration":12', {field: 'duration', value: '12'}],
+      [1, 'summary', 'summary-field', '"author":"fixture"', {field: 'author', value: 'fixture'}],
+      [2, 'log', 'log-observation', 'hello', {context: 'h', value: 'ello'}],
+      [3, 'log', 'log-observation', 'resultExtra: pass', {context: 'resultExtra', value: 'pass'}]]) {
+      const input = stageOriginals(options, `support-unrelated-category-${index}`, arrays);
+      const {prepared} = preparedFor(verifier, tools, input), trace = traceFor(tool, input);
+      assert.equal((await trace.call('review_begin'))['ok?'], true);
+      const expected = prepared.componentPages.find(page => page.role === role);
+      const page = (await trace.call('review_read_diff_chunk', {id: expected.id})).chunk;
+      const at = page.text.indexOf(quote); assert.ok(at >= 0);
+      const assessment = {'page-ref': select(page, identityKeys), kind,
+        observations: [{kind, 'text-span': [at, at + quote.length], text: quote, ...fields}]};
+      assert.equal((await trace.call('review_assess_diff_chunk', {id: page.id,
+        note: 'Matching lexical source does not change its declared evidence category.', assessment}))['ok?'], false);
+      assert.equal(trace.stopped, true);
+    }
   });
 
   const retained = process.env.MUSE_RETAINED_REVIEW_INPUT_DIR;

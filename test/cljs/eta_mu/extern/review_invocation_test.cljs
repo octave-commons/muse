@@ -357,7 +357,8 @@
     (emit! "review_begin" {}
            {:ok? true :stage (name (:stage initial)) :stages (mapv name review/stages)
             :input-source (:input-source initial) :diff-stats (:diff-stats initial)
-            :input-coverage (review/input-coverage initial)})
+            :input-coverage (review/input-coverage initial)
+            :components (:components initial) :view (:view initial)})
     (emit! "review_status" {}
            (assoc (review/status initial) :ok? true :stage (name (:stage initial))
                   :stages (mapv name review/stages)))
@@ -973,7 +974,8 @@
     (emit! "review_begin" {}
            {:ok? true :stage (name (:stage initial)) :stages (mapv name review/stages)
             :input-source (:input-source initial) :diff-stats (:diff-stats initial)
-            :input-coverage (review/input-coverage initial)})
+            :input-coverage (review/input-coverage initial)
+            :components (:components initial) :view (:view initial)})
     (doseq [page (:diff-chunks initial)]
       (let [id (:id page) read (review/read-diff-chunk @state* id)
             note "Actual delivered component assessed before length termination."
