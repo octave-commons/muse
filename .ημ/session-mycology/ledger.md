@@ -330,3 +330,12 @@
   spore: none
   receipt-refs: 2958f3ac2cf601e72baa465284d4f6d32261c8c1ecf61d385e96e9fb3ea20403
   note: Review concise PR scope wording before the effect, finish exact source publication with same-effect readback, then walk existing lawful card hops and start actual causal tests. Board admission does not invent predecessor completion. No new spore/promotion.
+- ts: 2026-10-14T16:54:58.641042818Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: Close actual attempt-reuse and mutable-byte transport defects
+  p-efficiency: 0.80
+  p-friction: 0.58
+  p-skill-candidate: 0.0
+  spore: none
+  receipt-refs: 8864777b9147f53f526349eb33c45e1da85d62830852018f6a0ebefeee1b442f
+  note: A bounded full-card review found the intrinsic length issue before publication; actual52causal failures and cold51control qualification close it. Preserve authored assessment work privately rather than contaminating predecessor gates. Commit alreadyqualified paths promptly. No spore/promotion.
