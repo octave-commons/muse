@@ -74,10 +74,14 @@
                  [:full_diff [:ref ::V2Descriptor]]
                  [:components [:tuple [:ref ::V2RawDiff] [:ref ::V2Summary] [:ref ::V2Log]]]
                  [:view [:ref ::V2View]] [:producer [:ref ::V2Producer]]]
+   ::V2ProducerReuse [:map
+                      [:producer [:ref ::V2Producer]]
+                      [:conclusion [:= "success"]]]
    ::V2TrustedContext [:map
                        [:producer [:ref ::V2Producer]]
-                        [:input_source [:ref ::OrdinaryV2]]
+                       [:input_source [:ref ::OrdinaryV2]]
                        [:reviewer_run_attempt [:ref ::V2Coordinate]]
+                       [:producer_reuse {:optional true} [:ref ::V2ProducerReuse]]
                        [:content [:map
                                   [:authorization [:enum "public" "explicit"]]
                                   [:classification [:= "authorized"]]
@@ -114,6 +118,22 @@
             (and (= byte-start (get-in source [:view :bytes]))
                  (= text-start (get-in source [:view :text_units]))))))))
 
+(defn- canonical-positive-attempt? [attempt]
+  (and (string? attempt) (boolean (re-matches #"[1-9][0-9]*" attempt))))
+
+(defn- producer-attempt-admitted?
+  [{:keys [producer reviewer_run_attempt producer_reuse]}]
+  (let [producing (:run_attempt producer)]
+    (and (canonical-positive-attempt? producing)
+         (canonical-positive-attempt? reviewer_run_attempt)
+         ;; Compare canonical decimal coordinates without lossy host parsing.
+         (let [order (compare [(count producing) producing]
+                              [(count reviewer_run_attempt) reviewer_run_attempt])]
+           (or (zero? order)
+               (and (neg? order)
+                    (= "success" (:conclusion producer_reuse))
+                    (= producer (:producer producer_reuse))))))))
+
 (defn ordinary-v2-trusted-context-valid?
   "Typed caller context holds independently observed complete input metadata,
    including original component/view identities, before candidate reads. Native
@@ -122,6 +142,7 @@
   (boolean (and (v2-trust-shape-valid? context)
                 (ordinary-v2-contract-valid? (:input_source context))
                 (= (:producer (:input_source context)) (:producer context))
+                (producer-attempt-admitted? context)
                 (every? #(oid? (get (:producer context) %))
                         [:base_sha :head_sha :diff_base_sha :workflow_sha])
                 (sha? 64 (get-in context [:producer :artifact_zip_sha256])))))

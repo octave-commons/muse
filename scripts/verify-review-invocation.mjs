@@ -283,6 +283,7 @@ function v2Fixture(texts) {
 }
 const {source: v2Source, view: v2View} = v2Fixture(v2Texts);
 const v2Trusted = {producer: {...v2Producer}, input_source: structuredClone(v2Source), reviewer_run_attempt: '2',
+  producer_reuse: {producer: {...v2Producer}, conclusion: 'success'},
   content: {authorization: 'public', classification: 'authorized', credential_canary: false}};
 for (const [representation, encode] of [['string', bytes => bytes.toString('utf8')],
   ['Buffer', bytes => bytes], ['Uint8Array', bytes => new Uint8Array(bytes)]]) {
@@ -331,7 +332,8 @@ for (const [representation, encode] of [['string', bytes => bytes.toString('utf8
       for (const blank of [' ', '\t\n']) {
         const producer = {...v2Producer, [field]: blank};
         const candidate = {...v2Source, producer};
-        const caller = {...v2Trusted, producer: {...producer}, input_source: structuredClone(candidate)};
+        const caller = {...v2Trusted, producer: {...producer}, input_source: structuredClone(candidate),
+          producer_reuse: {producer: {...producer}, conclusion: 'success'}};
         blankRefusal.assertions++;
         assert.throws(() => verifier.prepareReviewInvocationContext.call(null, encode(v2View),
           encode(Buffer.from(JSON.stringify(candidate))), tools, submissionFile, caller),
@@ -375,6 +377,68 @@ for (const [representation, encode] of [['string', bytes => bytes.toString('utf8
     originalRefusal.pass = true;
   } catch (error) { originalRefusal.pass = false; originalRefusal.error = {name: error.name, message: error.message}; }
   results.push(originalRefusal);
+  const attempts = {representation, purpose: 'ordinary-v2-attempt-reuse-refusal',
+    assertions: 0, native_origin: false};
+  try {
+    const prepare = (candidate, caller) => verifier.prepareReviewInvocationContext.call(null,
+      encode(v2View), encode(Buffer.from(JSON.stringify(candidate))), tools, submissionFile, caller);
+    const current = {...v2Trusted, reviewer_run_attempt: '1'}; delete current.producer_reuse;
+    attempts.assertions++; assert.ok(prepare(v2Source, current));
+    attempts.assertions++; assert.ok(prepare(v2Source, v2Trusted));
+    for (const attempt of ['9', '0', '01']) {
+      const producer = {...v2Producer, run_attempt: attempt};
+      const candidate = {...v2Source, producer};
+      const caller = {...v2Trusted, producer, input_source: structuredClone(candidate),
+        reviewer_run_attempt: attempt === '9' ? '1' : '2',
+        producer_reuse: {producer: {...producer}, conclusion: 'success'}};
+      attempts.assertions++; assert.throws(() => prepare(candidate, caller));
+    }
+    const missing = {...v2Trusted}; delete missing.producer_reuse;
+    for (const caller of [missing,
+      {...v2Trusted, producer_reuse: {producer: {...v2Producer}, conclusion: 'failure'}},
+      {...v2Trusted, producer_reuse: {conclusion: 'success'}},
+      {...v2Trusted, producer_reuse: {producer: {...v2Producer, artifact_id: 'other'}, conclusion: 'success'}},
+      {...v2Trusted, reviewer_run_attempt: '0'}, {...v2Trusted, reviewer_run_attempt: 'later'}]) {
+      attempts.assertions++; assert.throws(() => prepare(v2Source, caller));
+    }
+    const claimed = {...v2Source, producer_reuse: structuredClone(v2Trusted.producer_reuse)};
+    attempts.assertions++; assert.throws(() => prepare(claimed,
+      {...missing, input_source: structuredClone(claimed)}));
+    attempts.pass = true;
+  } catch (error) { attempts.pass = false; attempts.error = {name: error.name, message: error.message}; }
+  results.push(attempts);
+}
+for (const [representation, encode] of [['Buffer', bytes => Buffer.from(bytes)],
+  ['Uint8Array', bytes => new Uint8Array(bytes)], ['SharedArrayBuffer', bytes => {
+    const view = new Uint8Array(new SharedArrayBuffer(bytes.length)); view.set(bytes); return view;
+  }]]) {
+  const owned = {representation, purpose: 'ordinary-v2-owned-byte-boundary', assertions: 0, native_origin: false};
+  const realDecode = TextDecoder.prototype.decode;
+  try {
+    const raw = encode(v2View); Object.defineProperty(raw, 'length', {value: 0});
+    owned.assertions++; assert.ok(verifier.prepareReviewInvocationContext.call(null,
+      raw, JSON.stringify(v2Source), tools, submissionFile, v2Trusted), 'valid intrinsic bytes ignore shadowed length');
+    const oversized = new Uint8Array(9437185); oversized.set(v2View);
+    const hostile = encode(oversized); Object.defineProperty(hostile, 'length', {value: v2View.length});
+    owned.assertions++; assert.throws(() => verifier.prepareReviewInvocationContext.call(null,
+      hostile, JSON.stringify(v2Source), tools, submissionFile, v2Trusted), 'intrinsic cap precedes allocation');
+    const race = v2Fixture(['old\n', '{}', 'log\n']);
+    const changed = Buffer.from('new\n{}log\n');
+    const candidate = {...race.source, view: {...race.source.view, sha256: sha256(changed)}};
+    const caller = {...v2Trusted, input_source: structuredClone(candidate)};
+    const mutable = encode(race.view); let reached = false;
+    TextDecoder.prototype.decode = function(bytes, options) {
+      if (bytes?.byteLength === 4 && !reached) { reached = true; mutable.set(Buffer.from('new\n'), 0); }
+      return realDecode.call(this, bytes, options);
+    };
+    owned.assertions++; assert.throws(() => verifier.prepareReviewInvocationContext.call(null,
+      mutable, JSON.stringify(candidate), tools, submissionFile, caller), 'hash/decode mutation cannot admit mixed identities');
+    owned.assertions++; assert.equal(reached, true, 'actual decoder interleaving reached');
+    owned.assertions++; assert.equal(Buffer.from(mutable).subarray(0, 4).toString(), 'new\n');
+    owned.pass = true;
+  } catch (error) { owned.pass = false; owned.error = {name: error.name, message: error.message}; }
+  finally { TextDecoder.prototype.decode = realDecode; }
+  results.push(owned);
 }
 const failures = results.filter(result => !result.pass).length;
 console.log(JSON.stringify({result: failures ? 'fail' : 'pass', runtime: process.version, modulePath,

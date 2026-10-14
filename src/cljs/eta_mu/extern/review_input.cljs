@@ -9,13 +9,29 @@
 
 (defn- invalid! [] (throw (ex-info "Unestablished structured input" {})))
 
+(def ^:private viewed-length
+  (.-get (js/Object.getOwnPropertyDescriptor
+          (js/Object.getPrototypeOf (.-prototype js/Uint8Array)) "length")))
+(def ^:private copy-bytes (.-set (.-prototype js/Uint8Array)))
+
+(defn- snapshot-bytes [raw ceiling]
+  (let [size (js-invoke viewed-length "call" raw)]
+    (when (> size ceiling) (invalid!))
+    ;; Allocate only the admitted intrinsic view size. Native set never uses
+    ;; caller length/iterator/species; growth cannot enlarge this owned target.
+    (let [owned (js/Uint8Array. size)]
+      (when-not (= size (js-invoke viewed-length "call" raw)) (invalid!))
+      (js-invoke copy-bytes "call" owned raw 0)
+      (when-not (= size (js-invoke viewed-length "call" raw)) (invalid!))
+      owned)))
+
 (defn bounded-bytes [raw ceiling]
   (cond
     (string? raw)
     (do (input-shape/bounded-utf8-size raw ceiling)
         (.encode (js/TextEncoder.) raw))
     (instance? js/Uint8Array raw)
-    (do (when (> (.-length raw) ceiling) (invalid!)) raw)
+    (snapshot-bytes raw ceiling)
     :else (invalid!)))
 
 (defn prepare-ordinary-v2-originals
