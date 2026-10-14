@@ -13,6 +13,12 @@
 
 (defn- invalid! [] (throw (ex-info "Unestablished structured input" {})))
 
+(defonce ^:private prepared-v2-contexts (js/WeakMap.))
+
+(def ^:private prepared-context-keys
+  [:input-source :pages :page-count :full-input-sha256 :review-tools :submission-file
+   :components :view :component-pages])
+
 (defn- raw-text [raw]
   (json/decode-text raw))
 
@@ -73,26 +79,34 @@
           ctx (if v2?
                 (do
                   (when-not (= "open-hax.review-input/v2" (:schema source)) (invalid!))
-                  (let [shaped (input-edge/prepare-v2-carrier raw-full-diff source trusted-context)]
+                  (let [shaped (input-edge/prepare-v2-carrier raw-full-diff source trusted-context)
+                        aggregate-pages (input-shape/diff-chunks (:text shaped))]
                     (when-not (and (vector? tools) (every? string? tools)
                                     (= (count tools) (count (set tools)))
                                     (every? (set tools) law/review-tools)
                                     (string? submission-file) (not (str/blank? submission-file)))
                       (invalid!))
-                    ;; Transport geometry only: independent invocation admission
-                    ;; still refuses v2 until the assessment owner's coverage law.
                     {:input-source source
-                     :pages (mapv #(select-keys % [:id :start :end]) (input-shape/diff-chunks (:text shaped)))
+                     :pages (mapv #(select-keys % [:id :start :end]) aggregate-pages)
                      :page-count (:page-count shaped) :full-input-sha256 (get-in shaped [:view :sha256])
                      :review-tools tools :submission-file submission-file
-                     :components (:components shaped) :view (:view shaped)}))
+                     :components (:components shaped) :view (:view shaped)
+                     :component-pages (input-shape/component-chunks source (:text shaped) aggregate-pages)
+                     :input-context trusted-context}))
                 (do
                   (when (= "open-hax.review-input/v2" (:schema source)) (invalid!))
-                  (context-from-input raw-full-diff source tools submission-file)))]
-      (clj->js (cond-> {:inputSource (:input-source ctx) :pages (:pages ctx) :pageCount (:page-count ctx)
+                  (context-from-input raw-full-diff source tools submission-file)))
+          result (clj->js (cond-> {:inputSource (:input-source ctx) :pages (:pages ctx) :pageCount (:page-count ctx)
                        :fullInputSha256 (:full-input-sha256 ctx) :reviewTools (:review-tools ctx)
                        :submissionFile (:submission-file ctx)}
-                (:components ctx) (assoc :components (:components ctx) :view (:view ctx)))))
+                (:components ctx) (assoc :components (:components ctx) :view (:view ctx)
+                                         :componentPages (:component-pages ctx)
+                                         :inputContext (:input-context ctx))))]
+        ;; A local preparation witness, not native authentication. Immutable
+        ;; CLJS data binds every protected field on the actual returned object.
+        ;; Serialized/foreign copies cannot supply this in-process observation.
+        (when v2? (.set prepared-v2-contexts result ctx))
+        result)
     (catch :default _
       (throw (js/Error. "unestablished-review-trace: invalid full-input context")))))
 
@@ -101,7 +115,9 @@
    Four arguments preserve v1/native policy. Five select bounded ordinary-v2;
    independently supplied native JS producer/content context is mandatory before
    decoding candidate bytes. The caller authenticates native origin and retains
-   the returned context in supervisor memory. No v2 invocation credit is granted."
+   the actual returned object in supervisor memory. V2 serialized copies do
+   not establish local preparation. Invocation credit requires actual
+   component delivery, matching structured assessment and all existing guards."
   ([raw-full-diff raw-manifest raw-review-tools submission-file]
    (prepare-context raw-full-diff raw-manifest raw-review-tools submission-file nil false))
   ([raw-full-diff raw-manifest raw-review-tools submission-file raw-trusted-context]
@@ -112,27 +128,42 @@
        (throw (js/Error. "unestablished-review-trace: invalid full-input context"))))))
 
 (defn- decode-context [raw]
-  (let [ctx (if (or (string? raw) (instance? js/Uint8Array raw))
+  (let [witness (.get prepared-v2-contexts raw)
+        ctx (if (or (string? raw) (instance? js/Uint8Array raw))
               (strict-json (raw-text raw)) (js->clj raw :keywordize-keys true))
-        prepared {:input-source (:inputSource ctx) :pages (:pages ctx)
+        prepared (cond-> {:input-source (:inputSource ctx) :pages (:pages ctx)
                   :page-count (:pageCount ctx) :full-input-sha256 (:fullInputSha256 ctx)
-                  :review-tools (:reviewTools ctx) :submission-file (:submissionFile ctx)}]
+                  :review-tools (:reviewTools ctx) :submission-file (:submissionFile ctx)}
+                   (= "open-hax.review-input/v2" (get-in ctx [:inputSource :schema]))
+                   (assoc :components (:components ctx) :view (:view ctx)
+                                             :component-pages (:componentPages ctx)))]
     ;; Optional full bytes are verified again. Without them this must be the
     ;; actual prepare export's result retained by the trusted caller; data
     ;; alone cannot authenticate its source or prove its preparation.
-    (when (contains? ctx :fullDiff)
-      (when-not (= prepared (context-from-input (:fullDiff ctx) (:inputSource ctx)
-                                               (:reviewTools ctx) (:submissionFile ctx)))
-        (invalid!)))
-    {:input-source (:inputSource ctx) :pages (:pages ctx)
-     :page-count (:pageCount ctx) :full-input-sha256 (:fullInputSha256 ctx)
-     :review-tools (:reviewTools ctx) :submission-file (:submissionFile ctx)
-     :session-id (:sessionID ctx)}))
+    (if (= "open-hax.review-input/v2" (get-in prepared [:input-source :schema]))
+      (do
+        (when-not (and witness (= prepared (select-keys witness prepared-context-keys))
+                       (= (:inputContext ctx) (:input-context witness)))
+          (invalid!))
+        (when (contains? ctx :fullDiff)
+          (let [raw-full (if (string? (:fullDiff ctx)) (:fullDiff ctx) (aget raw "fullDiff"))
+                shaped (input-edge/prepare-v2-carrier raw-full (:input-source witness) (:input-context witness))]
+            (when-not (and (= (:componentPages ctx)
+                             (input-shape/component-chunks (:inputSource ctx) (:text shaped)))
+                          (= (:pages ctx) (mapv #(select-keys % [:id :start :end])
+                                               (input-shape/diff-chunks (:text shaped)))))
+              (invalid!)))))
+      (when (contains? ctx :fullDiff)
+        (when-not (= prepared (context-from-input (:fullDiff ctx) (:inputSource ctx)
+                                                 (:reviewTools ctx) (:submissionFile ctx)))
+          (invalid!))))
+    (assoc prepared :session-id (:sessionID ctx))))
 
 (defn verify-review-invocation
   "CJS API: rawResponseText/rawSubmission accept strings or UTF8 byte arrays;
    rawSubmission may be null (missing). expectedFullInputContext must be caller
-   trusted: actual prepare-review-invocation-context result in supervisor
+   trusted: V2 requires the actual prepare-review-invocation-context object,
+   with its unchanged preparation snapshot, retained in supervisor
    memory, optional fullDiff bytes for revalidation, and
    optional sessionID. Returns plain JS {ok, reasonKind, code, violations,...}.
    The prepare export derives canonical geometry and hash-binds actual bytes
@@ -153,14 +184,17 @@
                 :sessionID (:session-id result) :pageCount (:page-count result)
                 :reviewCallCount (:review-call-count result)
                 :acceptedInvocation (when-let [accepted (:accepted-invocation result)]
-                                      {:sessionID (:session-id accepted)
+                                      (cond-> {:sessionID (:session-id accepted)
                                        :submissionCallID (:submission-call-id accepted)
                                        :submissionPosition (:submission-position accepted)
                                        :submissionFile (:submission-file accepted)
                                        :responseSha256 (raw-sha256 raw-response)
                                        :submissionSha256 (raw-sha256 raw-submission)
                                        :fullInputSha256 (:full-input-sha256 accepted)
-                                       :pageCount (:page-count accepted)})}))
+                                       :pageCount (:page-count accepted)}
+                                        (:components accepted)
+                                        (assoc :components (:components accepted) :view (:view accepted)
+                                               :componentPages (:component-pages accepted))))}))
     (catch :default _
       #js {:ok false :reason "unestablished-review-trace" :reasonKind "unestablished-review-trace"
            :acceptedInvocation nil

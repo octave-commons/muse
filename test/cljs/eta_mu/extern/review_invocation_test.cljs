@@ -340,7 +340,11 @@
   ;; Instrument existing pure owner calls, using the same event encoder and
   ;; result projections as the real plugin. This is not a fabricated successful
   ;; plugin trace: failed owner results stop collection without relabeling them.
-  (let [initial (assessment-fixture/assessment-v2-begin input)
+  (let [v2? (= "open-hax.review-input/v2" (get-in input [:manifest :schema]))
+        initial (if v2? (assessment-fixture/assessment-v2-begin input)
+                    ;; Match the existing plugin's legacy byte-verified source
+                    ;; projection after the actual public preparation below.
+                    (assoc (review/begin (:text input)) :input-source (:manifest input)))
         state* (atom initial) events* (atom []) stopped* (atom false) envelope* (atom nil)
         emit! (fn [tool args result]
                 (swap! events* conj (fixture/tool-event (inc (count @events*)) tool args
@@ -348,8 +352,8 @@
                 (when-not (:ok? result) (reset! stopped* true))
                 (when (and (:ok? result) (:session result)) (reset! state* (:session result))))]
     ;; begin is a constructor; the real plugin projects its admitted session.
-    ;; Source/coverage/stats below are actual constructor values, never filled
-    ;; in from the desired fixture after an ignored predecessor argument.
+    ;; Source/coverage/stats are the actual admitted session/plugin projection,
+    ;; never fabricated coverage after an ignored predecessor argument.
     (emit! "review_begin" {}
            {:ok? true :stage (name (:stage initial)) :stages (mapv name review/stages)
             :input-source (:input-source initial) :diff-stats (:diff-stats initial)
@@ -362,10 +366,12 @@
         (let [id (:id page) read (review/read-diff-chunk @state* id)]
           (emit! "review_read_diff_chunk" {:id id} read)
           (when-not @stopped*
-            (let [record (assessment-fixture/assessment-v2-record (:chunk read))
+            (let [record (if v2? (assessment-fixture/assessment-v2-record (:chunk read))
+                                (:legacy-assessment input))
                   note "Actual returned component assessment."
                   assessed (.call review/assess-diff-chunk nil @state* id note record)]
-              (emit! "review_assess_diff_chunk" {:id id :note note :assessment record} assessed))))))
+              (emit! "review_assess_diff_chunk" (cond-> {:id id :note note}
+                                                record (assoc :assessment record)) assessed))))))
     (doseq [stage review/stages]
       (when-not @stopped*
         (let [note "Actual owner stage result." result (review/record-evidence @state* stage note)]
@@ -485,6 +491,26 @@
             (is (false? (:ok? bad-pure)) label)
             (is (false? (:ok bad-public)) label)
             (is (nil? (:acceptedInvocation bad-public)) label)))))))
+
+(deftest legacy-extra-assessment-metadata-retains-actual-invocation-acceptance
+  (let [source fixture/manifest file "/fixture/legacy-extra-metadata.json"
+        tools (clj->js (:review-tools fixture/context))]
+    (doseq [metadata [nil {:kind "empty-component"}]]
+      (let [prepared (extern/prepare-review-invocation-context "diff" (json source) tools file)
+            ctx (js->clj prepared :keywordize-keys true)
+            expected {:input-source (:inputSource ctx) :pages (:pages ctx) :page-count (:pageCount ctx)
+                      :full-input-sha256 (:fullInputSha256 ctx) :review-tools (:reviewTools ctx)
+                      :submission-file (:submissionFile ctx)}
+            actual (actual-v2-owner-invocation {:text "diff" :manifest source :legacy-assessment metadata} file)
+            pure (invocation/verify (:events actual) (:submission actual) expected)
+            public (js->clj (extern/verify-review-invocation (response (:events actual))
+                                                            (json (:submission actual)) prepared)
+                            :keywordize-keys true)]
+        (is (:ok? pure) "irrelevant metadata does not turn a positive-id legacy assessment into an empty role")
+        (is (:ok public))
+        (is (= 1 (:pageCount public)))
+        (is (= "Actual returned component assessment."
+               (get-in actual [:submission :input-assessments 0 :note])))))))
 
 (deftest ordinary-v2-preparation-binds-component-delivery-geometry-separately-from-view
   (doseq [texts [["diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+ημ 😀\n"

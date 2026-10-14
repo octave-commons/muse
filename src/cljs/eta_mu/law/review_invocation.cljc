@@ -157,6 +157,126 @@
         (ordinary-v2-trusted-context-valid? trusted-context)
         (= source (:input_source trusted-context))
         (= (:producer source) (:producer trusted-context)))))
+
+(def component-page-keys
+  [:id :role :component-sha256 :component-byte-span :component-text-span
+   :view-byte-span :view-text-span :start :end])
+
+(def assessment-registry
+  "References describe observed payload, not the truth of assessment prose."
+  {::ComponentPage [:map [:id [:int {:min 1}]]
+                    [:role [:enum "raw-diff" "summary" "log"]]
+                    [:component-sha256 [:string {:min 64 :max 64}]]
+                    [:component-byte-span [:ref ::V2Span]]
+                    [:component-text-span [:ref ::V2Span]]
+                    [:view-byte-span [:ref ::V2Span]] [:view-text-span [:ref ::V2Span]]
+                    [:start [:int {:min 0}]] [:end [:int {:min 1}]]]
+   ::Observation [:map [:kind [:enum "changed-hunk" "no-changed-hunk"
+                                    "summary-field" "log-observation" "no-relevant-evidence"]]
+                  [:text-span [:ref ::V2Span]] [:text :string]
+                  [:reason {:optional true} :string]
+                  [:field {:optional true} :string] [:value {:optional true} :string]
+                  [:context {:optional true} :string]]
+   ::PageAssessment [:map [:page-ref [:ref ::ComponentPage]]
+                     [:kind [:enum "changed-hunk" "no-changed-hunk"
+                                   "summary-field" "log-observation" "no-relevant-evidence"]]
+                     [:observations [:vector {:min 1} [:ref ::Observation]]]]
+   ::EmptyAssessment [:map [:kind [:= "empty-component"]]
+                      [:component-ref [:ref ::V2Component]]]})
+
+(defn assessment-validator [schema-name]
+  (m/validator [:ref schema-name]
+               {:registry (mr/composite-registry m/default-registry ordinary-v2-registry
+                                                 assessment-registry)}))
+
+(def ^:private component-page-shape? (assessment-validator ::ComponentPage))
+(def ^:private page-assessment-shape? (assessment-validator ::PageAssessment))
+(def ^:private empty-assessment-shape? (assessment-validator ::EmptyAssessment))
+
+(defn component-pages-valid?
+  "Validate caller-held complete component geometry. The byte edge already
+   bound original digests; this law never authenticates or rehashes the caller."
+  [source components view pages]
+  (boolean
+   (and (= components (:components source)) (= view (:view source)) (vector? pages)
+        (every? #(and (component-page-shape? %) (string? (:text %))) pages)
+        (= (mapv :id pages) (vec (range 1 (inc (count pages)))))
+        (= (mapv :role pages)
+           (vec (mapcat (fn [component] (map :role (filter #(= (:role component) (:role %)) pages)))
+                        components)))
+        (every?
+         (fn [{:keys [role bytes sha256 byte_span text_span]}]
+           (let [local (filterv #(= role (:role %)) pages)]
+             (if (zero? bytes)
+               (empty? local)
+               (and (seq local)
+                    (loop [remaining local bs 0 ts 0]
+                      (if-let [page (first remaining)]
+                        (let [[pb pe] (:component-byte-span page)
+                              [pt te] (:component-text-span page)
+                              vb (first byte_span) vt (first text_span)]
+                          (and (= sha256 (:component-sha256 page))
+                               (= pb bs) (= pt ts) (< pb pe) (< pt te)
+                               (= (- te pt) (count (:text page)))
+                               (= [(+ vb pb) (+ vb pe)] (:view-byte-span page))
+                               (= [(+ vt pt) (+ vt te)] (:view-text-span page))
+                               (= (:view-text-span page) [(:start page) (:end page)])
+                               (recur (next remaining) pe te)))
+                        (and (= bs bytes) (= ts (- (second text_span) (first text_span))))))))))
+         components))))
+
+(defn- observation-valid? [page kind observation]
+  (let [{:keys [text text-span field value context reason]} observation
+        [start end] text-span payload (:text page)]
+    (and (= kind (:kind observation)) (<= 0 start) (< start end) (<= end (count payload))
+         (= text (subs payload start end))
+         (case kind
+           "changed-hunk" (and (= "raw-diff" (:role page))
+                                (boolean (re-find #"^@@[^\r\n]*@@" text)))
+           "no-changed-hunk" (and (= "raw-diff" (:role page)) (nonblank? reason)
+                                   (not (re-find #"(?m)^@@[^\r\n]*@@" payload)))
+           "summary-field"
+           ;; Field/value are lexical references to this exact delivered JSON
+           ;; member, not a second JSON parser or arbitrary prose judgment.
+           (let [[_ actual-field quoted scalar]
+                 (re-matches #"\s*\"([^\"\r\n]+)\"\s*:\s*(?:\"([^\"\r\n]*)\"|(true|false|null|-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?))\s*" text)]
+             (and (= "summary" (:role page)) (nonblank? field)
+                  (= field actual-field) (= value (or quoted scalar))))
+           "log-observation"
+           (and (= "log" (:role page)) (nonblank? context) (nonblank? value)
+                (str/starts-with? text context)
+                (= value (-> (subs text (count context)) str/trim
+                             (str/replace #"^[:=]\s*" ""))))
+           "no-relevant-evidence" (and (#{"summary" "log"} (:role page)) (nonblank? reason))
+           false))))
+
+(defn page-assessment-valid? [page assessment]
+  (boolean (and (page-assessment-shape? assessment)
+                (= (select-keys page component-page-keys) (:page-ref assessment))
+                (every? #(observation-valid? page (:kind assessment) %) (:observations assessment)))))
+
+(defn empty-assessment-valid? [components assessment]
+  (boolean (and (empty-assessment-shape? assessment)
+                (some #(and (zero? (:bytes %)) (= % (:component-ref assessment))) components))))
+
+(defn component-coverage
+  "Describe delivery/assessment observations using the same closure in domain
+   state and independent trace checks; empty roles never invent page IDs."
+  [pages components delivered assessed empty-observed]
+  (let [ids (set (map :id pages))
+        base {:chunks (count ids) :delivered (count delivered) :assessed (count assessed)
+              :missing (vec (sort (remove assessed ids)))}]
+    (if (nil? components) base
+      (assoc base :roles
+             (into {} (map (fn [{:keys [role bytes sha256]}]
+                             (let [role-ids (set (map :id (filter #(= role (:role %)) pages)))]
+                               [(keyword role) {:bytes bytes :sha256 sha256 :chunks (count role-ids)
+                                      :delivered (count (filter delivered role-ids))
+                                      :assessed (count (filter assessed role-ids))
+                                      :missing (vec (sort (remove assessed role-ids)))
+                                      :empty? (zero? bytes)
+                                      :empty-observed? (contains? empty-observed role)}])) components))))))
+
 (defn- success? [call] (true? (get-in call [:part :state :output :ok?])))
 (defn- tool [call] (get-in call [:part :tool]))
 (defn- input [call] (get-in call [:part :state :input]))
@@ -225,9 +345,15 @@
 (defn context-valid?
   "Validate caller-bound, canonically prepared geometry; this is not native
    source authority. Preserve the existing manifest's SHA40-or-SHA64 grammar."
-  [{:keys [input-source pages page-count full-input-sha256 review-tools submission-file]}]
+  [{:keys [input-source pages page-count full-input-sha256 review-tools submission-file
+           components component-pages view]}]
   (boolean (and (input-source-valid? input-source) (provenance? (:provenance input-source))
-       (or (and (= "open-hax.review-input/v1" (:schema input-source))
+       (or (and (= "open-hax.review-input/v2" (:schema input-source))
+                (= (get-in input-source [:view :sha256]) full-input-sha256)
+                (= (get-in input-source [:view :page_count]) page-count)
+                (= (get-in input-source [:view :text_units]) (or (:end (last pages)) 0))
+                (component-pages-valid? input-source components view component-pages))
+           (and (= "open-hax.review-input/v1" (:schema input-source))
                 (natural? (get-in input-source [:full_diff :bytes]))
                 (= (get-in input-source [:full_diff :sha256]) full-input-sha256))
            (and (#{"open-hax.actionability-input/v1"
@@ -235,7 +361,8 @@
                    "open-hax.positive-cohort-assessment-input/v1"} (:schema input-source))
                 (= (get-in input-source [:full_input :sha256]) full-input-sha256)))
        (vector? pages)
-       (or (= "open-hax.review-input/v1" (:schema input-source)) (boolean (seq pages)))
+       (or (#{"open-hax.review-input/v1" "open-hax.review-input/v2"} (:schema input-source))
+           (boolean (seq pages)))
        (= (count pages) page-count)
        (loop [remaining pages id 1 start 0]
          (if-let [page (first remaining)]
@@ -275,12 +402,32 @@
                 (= terminal-reason (get-in (last events) [:part :reason])))) :unterminated-host-trace
       :else nil))))
 
-(defn- call-error [calls {:keys [pages review-tools]}]
-  (let [page-by-id (into {} (map (juxt :id identity) pages))]
+(defn delivery-pages [context]
+  (if (= "open-hax.review-input/v2" (get-in context [:input-source :schema]))
+    (:component-pages context) (:pages context)))
+
+(defn- empty-call? [call]
+  (= "empty-component" (get-in (input call) [:assessment :kind])))
+
+(defn- observed-coverage [calls context]
+  (let [successful (filter success? calls)
+        reads (filter #(= "review_read_diff_chunk" (tool %)) successful)
+        assessed (filter #(and (= "review_assess_diff_chunk" (tool %)) (not (empty-call? %))) successful)
+        empties (filter #(and (= "review_assess_diff_chunk" (tool %)) (empty-call? %)) successful)]
+    (component-coverage (delivery-pages context)
+                        (when (= "open-hax.review-input/v2" (get-in context [:input-source :schema]))
+                          (:components context))
+                        (set (map #(:id (input %)) reads))
+                        (set (map #(:id (input %)) assessed))
+                        (set (map #(get-in (input %) [:assessment :component-ref :role]) empties)))))
+
+(defn- call-error [calls {:keys [review-tools components] :as context}]
+  (let [pages (delivery-pages context) v2? (= "open-hax.review-input/v2" (get-in context [:input-source :schema]))
+        page-by-id (into {} (map (juxt :id identity) pages))]
     (some
      (fn [call]
        (let [name (tool call) args (input call) result (output call) id (:id args)
-             page (get page-by-id id)]
+             page (get page-by-id id) empty? (and v2? (empty-call? call))]
          (cond
            (= "invalid" name) :unavailable-host-tool
            (and (str/starts-with? name "review_") (not (contains? (set review-tools) name))) :unexposed-review-tool
@@ -291,17 +438,27 @@
            (not (and (map? result) (or (true? (:ok? result)) (false? (:ok? result))))) :review-tool-output
            (and (false? (:ok? result)) (not (nonblank? (:error result)))) :review-tool-output
            (and (#{"review_read_diff_chunk" "review_assess_diff_chunk"} name)
-                (not (and (positive? id) page))) :page-id-binding
+                (not (if (and (= "review_assess_diff_chunk" name) empty?)
+                       (and (nil? id) (empty-assessment-valid? components (:assessment args)))
+                       (and (positive? id) page)))) :page-id-binding
            (and (= "review_assess_diff_chunk" name) (not (nonblank? (:note args)))) :assessment-note-shape
            (and (= "review_record_evidence" name)
                 (not (and ((set stages) (:stage args)) (nonblank? (:note args))))) :stage-input-shape
            (and (= "review_submit" name) (not (nonblank? (:summary args)))) :submission-call-shape
            (and (= "review_read_diff_chunk" name) (success? call)
-                (not (and (map? (:chunk result))
-                          (= (select-keys page [:id :start :end]) (select-keys (:chunk result) [:id :start :end]))
-                          (string? (get-in result [:chunk :text]))
-                          (= (- (:end page) (:start page)) (count (get-in result [:chunk :text])))))) :returned-page-binding
-           (and (= "review_assess_diff_chunk" name) (success? call)
+                (not (if v2?
+                       (= page (:chunk result))
+                       (and (map? (:chunk result))
+                            (= (select-keys page [:id :start :end]) (select-keys (:chunk result) [:id :start :end]))
+                            (string? (get-in result [:chunk :text]))
+                            (= (- (:end page) (:start page)) (count (get-in result [:chunk :text]))))))) :returned-page-binding
+           (and (= "review_assess_diff_chunk" name) (success? call) v2?
+                (not (and (= id (:chunk-id result)) (= (:assessment args) (:assessment result))
+                          (if empty? (empty-assessment-valid? components (:assessment args))
+                              (page-assessment-valid? page (:assessment args)))
+                          (= (observed-coverage (filter #(<= (:position %) (:position call)) calls) context)
+                             (:coverage result))))) :returned-component-assessment-binding
+           (and (= "review_assess_diff_chunk" name) (success? call) (not v2?)
                 (not (and (= id (:chunk-id result))
                           (map? (:coverage result)) (= (count pages) (get-in result [:coverage :chunks]))
                           (every? #(and (natural? %) (<= % (count pages)))
@@ -311,18 +468,26 @@
            :else nil)))
      calls)))
 
+(defn- empty-observation-call? [context call]
+  (and (empty-call? call) (nil? (:id (input call)))
+       (= "open-hax.review-input/v2" (get-in context [:input-source :schema]))
+       (context-valid? context)
+       (empty-assessment-valid? (:components context) (:assessment (input call)))))
+
 (defn last-read-violations
-  "Original LAST predicate over ALL calls, including failed read/assessment
-   calls and calls around resets. Never partition by host session or keep only
-   the final assessment. Positions are complete host event positions."
-  [calls]
-  (let [last-read (into {} (for [c calls :when (= "review_read_diff_chunk" (tool c))]
-                            [(:id (input c)) (:position c)]))]
-    (vec (for [c calls :when (= "review_assess_diff_chunk" (tool c))
-               :let [r (get last-read (:id (input c)))]
-               :when (not (and r (< r (:position c))))]
-           {:id (:id (input c)) :assessment-position (:position c)
-            :last-read-position r}))))
+  "Original LAST over ALL calls, including failed calls and calls around resets.
+   Only an explicitly valid V2 zero-byte observation has no page read; a tag
+   alone cannot remove any assessment from the original contextless predicate."
+  ([calls] (last-read-violations calls nil))
+  ([calls context]
+   (let [last-read (into {} (for [c calls :when (= "review_read_diff_chunk" (tool c))]
+                             [(:id (input c)) (:position c)]))]
+     (vec (for [c calls :when (and (= "review_assess_diff_chunk" (tool c))
+                                   (not (empty-observation-call? context c)))
+                :let [r (get last-read (:id (input c)))]
+                :when (not (and r (< r (:position c))))]
+            {:id (:id (input c)) :assessment-position (:position c)
+             :last-read-position r})))))
 
 (defn- witnessed-stale? [calls violations]
   (some (fn [{:keys [id assessment-position last-read-position]}]
@@ -347,9 +512,16 @@
 
 (defn- serialized-error [submission context calls]
   (when submission
-    (let [pages (:pages context) notes (into {} (for [c calls :when (and (= "review_assess_diff_chunk" (tool c)) (success? c))]
-                                                [(:id (input c)) (:note (input c))]))
-          assessments (:input-assessments submission)]
+    (let [pages (delivery-pages context) v2? (= "open-hax.review-input/v2" (get-in context [:input-source :schema]))
+          successful (filter #(and (= "review_assess_diff_chunk" (tool %)) (success? %)) calls)
+          by-id (into {} (for [c successful :when (not (and v2? (empty-call? c)))] [(:id (input c)) (input c)]))
+          by-role (into {} (for [c successful :when (and v2? (empty-call? c))]
+                             [(get-in (input c) [:assessment :component-ref :role]) (input c)]))
+          assessments (:input-assessments submission)
+          empty-records (mapv #(select-keys (get by-role (:role %)) [:note :assessment])
+                             (filter #(zero? (:bytes %)) (:components context)))
+          complete (component-coverage pages (when v2? (:components context)) (set (map :id pages))
+                                       (set (map :id pages)) (set (keys by-role)))]
       (cond
         (not (and (map? submission) (= "open-hax.github-review/v1" (:schema submission))
                   (#{"APPROVE" "COMMENT" "REQUEST_CHANGES"} (:event submission))
@@ -358,9 +530,11 @@
         (not (and (vector? assessments)
                   (= (mapv #(select-keys % [:id :start :end]) pages)
                      (mapv #(select-keys % [:id :start :end]) assessments))
-                  (every? #(and (nonblank? (:note %)) (= (get notes (:id %)) (:note %))) assessments)
-                  (= {:chunks (count pages) :delivered (count pages) :assessed (count pages) :missing []}
-                     (:input-coverage submission)))) :serialized-assessment-binding
+                  (every? #(and (nonblank? (:note %))
+                                (= (:note (get by-id (:id %))) (:note %))
+                                (or (not v2?) (= (:assessment (get by-id (:id %))) (:assessment %)))) assessments)
+                  (= complete (:input-coverage submission))
+                  (or (not v2?) (= empty-records (:empty-component-assessments submission))))) :serialized-assessment-binding
         :else nil))))
 
 (defn- submit-bound? [submission context submits]
@@ -383,9 +557,14 @@
                          (when (and (seq review-calls) (not (begin-admitted? calls review-calls begins))) :begin-cardinality)
                          (when (and begin (not (and (= "deterministic" (:stage began)) (= stages (:stages began))
                                          (= (:input-source context) (:input-source began))
-                                         (= (or (:end (last (:pages context))) 0) (get-in began [:diff-stats :bytes]))
-                                         (= {:chunks (count (:pages context)) :delivered 0 :assessed 0
-                                             :missing (mapv :id (:pages context))}
+                                         (= (if (= "open-hax.review-input/v2" (get-in context [:input-source :schema]))
+                                              (- (second (:text_span (first (:components context))))
+                                                 (first (:text_span (first (:components context)))))
+                                              (or (:end (last (:pages context))) 0))
+                                            (get-in began [:diff-stats :bytes]))
+                                         (= (component-coverage (delivery-pages context)
+                                                                (when (= "open-hax.review-input/v2" (get-in context [:input-source :schema]))
+                                                                  (:components context)) #{} #{} #{})
                                             (:input-coverage began))))) :begin-source-binding)
                          (when-not (and (<= (count stage-calls) 5)
                                          (= stage-names (vec (take (count stage-calls) stages)))
@@ -403,9 +582,13 @@
   (if-let [first-stage (first stage-calls)]
     (let [reads (filterv #(= "review_read_diff_chunk" (tool %)) review-calls)
           assessed (filterv #(= "review_assess_diff_chunk" (tool %)) review-calls)
-          ids (set (map :id (:pages context)))]
+          ids (set (map :id (delivery-pages context)))
+          empty-roles (if (= "open-hax.review-input/v2" (get-in context [:input-source :schema]))
+                        (set (map :role (filter #(zero? (:bytes %)) (:components context)))) #{})]
       (and (= ids (set (map #(get (input %) :id) reads)))
-           (= ids (set (map #(get (input %) :id) assessed)))
+           (= ids (set (map #(get (input %) :id) (remove #(empty-observation-call? context %) assessed))))
+           (= empty-roles (set (map #(get-in (input %) [:assessment :component-ref :role])
+                                      (filter #(empty-observation-call? context %) assessed))))
            (every? #(< (:position %) (:position first-stage)) (concat reads assessed))))
     true))
 
@@ -420,7 +603,7 @@
         submits (filterv #(= "review_submit" (tool %)) review-calls)
         stage-calls (filterv #(= "review_record_evidence" (tool %)) review-calls)
         stage-names (mapv #(get (input %) :stage) stage-calls)
-        violations (last-read-violations calls)
+        violations (last-read-violations calls context)
         begin (first (filter success? begins)) began (output begin)
         code (invocation-error events submission context calls review-calls begins
                                submits stage-calls stage-names violations begin began "stop")
@@ -442,22 +625,26 @@
       (let [submit (first submits)
             reads (filterv #(= "review_read_diff_chunk" (tool %)) review-calls)
             assessed (filterv #(= "review_assess_diff_chunk" (tool %)) review-calls)
-            ids (set (map :id (:pages context)))]
+            ids (set (map :id (delivery-pages context)))]
         (cond
           (not (and (= ids (set (map #(get (input %) :id) reads)))
-                    (= ids (set (map #(get (input %) :id) assessed))))) (refuse :unestablished-review-trace :incomplete-page-calls)
+                    (= ids (set (map #(get (input %) :id) (remove #(empty-observation-call? context %) assessed)))))) (refuse :unestablished-review-trace :incomplete-page-calls)
           (not (and (< (:position begin) (:position (first stage-calls)))
                     (< (:position (last stage-calls)) (:position submit)))) (refuse :unestablished-review-trace :stage-chronology)
           (not (submit-bound? submission context submits)) (refuse :unestablished-review-trace :actual-submit-binding)
           :else {:ok? true :reason-kind nil :code :verified-review-invocation
                  :session-id (:session-id (first events)) :review-call-count (count review-calls)
                  :page-count (count ids) :violations []
-                 :accepted-invocation {:session-id (:session-id (first events))
+                 :accepted-invocation (cond-> {:session-id (:session-id (first events))
                                        :submission-call-id (get-in submit [:part :call-id])
                                        :submission-position (:position submit)
                                        :submission-file (:submission-file context)
                                        :full-input-sha256 (:full-input-sha256 context)
-                                       :page-count (count ids)}})))))
+                                       :page-count (count ids)}
+                                        (= "open-hax.review-input/v2" (get-in context [:input-source :schema]))
+                                        (assoc :components (:components context) :view (:view context)
+                                               :component-pages (mapv #(select-keys % component-page-keys)
+                                                                      (delivery-pages context))))})))))
 
 (defn classify-length-ended-review
   "Classify ONLY eligibility for a new complete invocation, never acceptance.
@@ -477,7 +664,7 @@
           submits (filterv #(= "review_submit" (tool %)) review-calls)
           stage-calls (filterv #(= "review_record_evidence" (tool %)) review-calls)
           stage-names (mapv #(get (input %) :stage) stage-calls)
-          violations (last-read-violations calls)
+          violations (last-read-violations calls context)
           begin (first (filter success? begins))
           reads (filterv #(= "review_read_diff_chunk" (tool %)) review-calls)
           assessed (filterv #(= "review_assess_diff_chunk" (tool %)) review-calls)

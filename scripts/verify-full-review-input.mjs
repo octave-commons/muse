@@ -8,6 +8,7 @@ import {createRequire, syncBuiltinESMExports} from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
+import {runAssessmentFixtures} from './assessment-cold-fixtures.mjs';
 
 Error.stackTraceLimit = 50;
 
@@ -765,6 +766,7 @@ try {
     stale_submission_removed: true, fresh_invocation_accepted: true, cleanup_fault_artifact_observed: true,
     native_context_pages: nativeCount, native_context_complete: true, native_context_unassessed_refused: true,
     native_context_carrier_only: true, native_review: false}));
+  await runAssessmentFixtures({fixture, checkout, bundle, tool, tools, verifier, env});
   // Run public transport controls against THIS fresh optimized module, rather
   // than an unrelated warm repository bundle. Preserve inherited eight-tool and
   // native controls above; valid independently bound v2 preparation must pass,

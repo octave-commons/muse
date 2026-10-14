@@ -98,3 +98,36 @@
                     (= pages (get-in source [:view :page_count])))
         (throw (ex-info "Ordinary-v2 view geometry differs" {})))
       {:text text :components components :view (:view source) :page-count pages})))
+
+(defn component-chunks
+  "Reuse the canonical pager independently on each exact original. Global IDs
+   identify delivered pages; local spans identify originals, view spans preserve
+   transport identity. Zero-byte components remain descriptors with no pages."
+  ([source text] (component-chunks source text nil))
+  ([source text aggregate-pages]
+  (when-not (and (invocation/ordinary-v2-contract-valid? source)
+                (string? text) (= (count text) (get-in source [:view :text_units])))
+    (throw (ex-info "Invalid complete component input" {})))
+  (reduce
+   (fn [pages {:keys [role bytes sha256 byte_span text_span]}]
+     (let [[ts te] text_span original (subs text ts te)
+           _ (bounded-page-count original)]
+       (:pages
+        (reduce (fn [{:keys [pages byte-start]} {:keys [start end text]}]
+                  (let [byte-end (+ byte-start (bounded-utf8-size text (:view-bytes invocation/ordinary-v2-limits)))]
+                    {:byte-start byte-end
+                     :pages (conj pages
+                                  {:id (inc (count pages)) :role role :component-sha256 sha256
+                                   :component-byte-span [byte-start byte-end]
+                                   :component-text-span [start end]
+                                   :view-byte-span [(+ (first byte_span) byte-start)
+                                                    (+ (first byte_span) byte-end)]
+                                   :view-text-span [(+ ts start) (+ ts end)]
+                                   :start (+ ts start) :end (+ ts end) :text text})}))
+                {:pages pages :byte-start 0}
+                (cond
+                  (zero? bytes) []
+                  (and aggregate-pages (= 1 (count (filter #(pos? (:bytes %)) (:components source)))))
+                  aggregate-pages
+                  :else (diff-chunks original))))))
+   [] (:components source))))

@@ -87,6 +87,23 @@ assess the complete input again.
    submission when `restart-required?` is true. The host may run its one fresh
    bounded recovery invocation, which must assess the complete input again.
 
+For ordinary `open-hax.review-input/v2`, the host supplies trusted producer/content
+context outside your tool arguments. `review_begin` verifies all three originals and
+returns component identities plus `input-coverage.roles`. Use the existing reader for
+every raw-diff, summary and log page before the first deterministic note; generic file
+reads cannot replace component coverage. Copy the actual page's role, component digest,
+local byte/text spans and view spans into `assessment.page-ref`. Include typed
+`observations` with a page-local `text-span` and the exact quoted `text`: raw diff uses
+`changed-hunk` or `no-changed-hunk` with a reason; summary uses `summary-field` with
+lexical `field`/`value`; log uses `log-observation` with `context`/`value`. A supporting
+slice without relevant evidence uses `no-relevant-evidence` and a reason tied to that
+exact slice. These references bind evidence, not the truth of arbitrary prose.
+Zero-byte roles have no page id: call the same assessment tool with `note` and
+`assessment:{kind:"empty-component",component-ref:<exact descriptor from input-source>}`.
+Observe each empty role explicitly. All role/page assessments precede stage one.
+Only raw diff contributes finding locations, statistics and truncation decisions;
+summary/log remain supporting evidence even when they resemble Git headers.
+
 2. Stage `:deterministic` — read `.opencode/review-evidence/summary.json` and
    `deterministic.log` when present. Treat command failures as tool evidence, not
    automatically as defects in the diff. Distinguish repository/environment failures
