@@ -284,6 +284,23 @@
           (is (false? (:ok? (review/submission advanced "Partial support cannot complete.")))
               (name omission)))))))
 
+(deftest ordinary-v2-nonempty-payload-references-reject-empty-quotes
+  (let [input (assessment-v2-input ["raw context" " " " \t\n"])
+        initial (assessment-v2-begin input)]
+    (doseq [page (:diff-chunks initial)]
+      (let [read (review/read-diff-chunk initial (:id page))
+            actual (:chunk read)
+            valid (assessment-v2-record actual)
+            empty-quote (-> valid
+                            (assoc-in [:observations 0 :text-span] [0 0])
+                            (assoc-in [:observations 0 :text] ""))
+            assess #(.call review/assess-diff-chunk nil (:session read) (:id page)
+                           "Actual nonempty payload reference." %)]
+        (is (:ok? read))
+        (is (:ok? (assess valid)) "nonempty whitespace is an actual permissible supporting slice")
+        (is (false? (:ok? (assess empty-quote)))
+            "correct kind/reason/page cannot replace a payload observation with an empty span")))))
+
 (deftest deterministic-requires-complete-input-without-advancing
   (let [diff (str "diff --git a/tail b/tail\n--- a/tail\n+++ b/tail\n@@ -0,0 +1,130 @@\n"
                   (apply str (repeat 130 "+line\n")))

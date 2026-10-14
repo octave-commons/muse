@@ -99,6 +99,18 @@
           (str label " cannot fail merely from a held-source mismatch"))
       (is (false? (invocation/ordinary-v2-origin-bound? source trusted)) label))))
 
+(deftest legacy-last-read-includes-assessment-despite-unrelated-empty-metadata
+  ;; This is the original standalone LAST predicate over shaped calls, not a
+  ;; fabricated completed invocation or producer/authentication assertion.
+  (let [call (fn [position tool args] {:position position :part {:tool tool :state {:input args}}})
+        calls [(call 1 "review_read_diff_chunk" {:id 7})
+               (call 2 "review_assess_diff_chunk" {:id 7 :note "Original legacy assessment."
+                                                   :assessment {:kind "empty-component"}})
+               (call 3 "review_read_diff_chunk" {:id 7})]]
+    (is (= [{:id 7 :assessment-position 2 :last-read-position 3}]
+           (invocation/last-read-violations calls))
+        "a candidate tag cannot remove a positive-id legacy assessment from ALL-call LAST")))
+
 (defn ordinary-v2-coherent-stale-candidates
   "Recompute candidate descriptors and view from replaced originals, retaining
    the current producer coordinates. No candidate supplies the caller's held

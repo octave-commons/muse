@@ -426,6 +426,28 @@
                              :keywordize-keys true)]
           (is (false? (:ok copied)) "serialized/cloned V2 context alone is unauthenticated")
           (is (nil? (:acceptedInvocation copied)))))
+      (let [fresh #(prepare-v2-context view (json source) tools file trusted)
+            check #(js->clj (extern/verify-review-invocation (response events) (json submission) %)
+                           :keywordize-keys true)]
+        (doseq [[label mutate!] [["changed registered tools" #(aset % "reviewTools" (clj->js (conj (:reviewTools ctx) "read")))]
+                                 ["changed registered caller content" #(aset % "inputContext"
+                                                                           (clj->js (assoc-in (:inputContext ctx) [:content :authorization]
+                                                                                             (if (= "public" (get-in ctx [:inputContext :content :authorization]))
+                                                                                               "explicit" "public"))))]
+                                 ["changed registered page text" #(aset % "componentPages"
+                                                                        (clj->js (assoc-in (:componentPages ctx) [0 :text] "replacement")))]]]
+          (let [actual (fresh)]
+            (is (:ok (check actual)) "fresh actual preparation is the positive neighbor")
+            (mutate! actual)
+            (is (false? (:ok (check actual))) label)))
+        (doseq [carrier [view (js/Buffer.from view "utf8") (js/Uint8Array. (js/Buffer.from view "utf8"))]]
+          (let [actual (fresh)]
+            (aset actual "sessionID" (:session-id (first events)))
+            (aset actual "fullDiff" carrier)
+            (is (:ok (check actual)) "actual-object session binding and full-byte revalidation remain legal")))
+        (let [actual (fresh)]
+          (aset actual "fullDiff" (str view "corrupt"))
+          (is (false? (:ok (check actual))) "full bytes must match the immutable preparation")))
       (let [read-role #(get-in % [:part :state :output :chunk :role])
             assess-role #(get-in % [:part :state :input :assessment :page-ref :role])
             omit-role (fn [role] (filterv #(and (not= role (read-role %))
