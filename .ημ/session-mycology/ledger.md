@@ -348,3 +348,12 @@
   spore: none
   receipt-refs: 67ed94e9f1306c305eb984911ef5575cb30a079b0e70e28e0021941da9a8c66c
   note: Actual existing APIs reproduce missing role/assessment/geometry behavior; corrected private fixture leaves 145 semantic failures and no errors/warnings. Preserve earlier fixture/npm captures and Mongo unqualified scope. Commit RED before GREEN; cold plugin and retained real per-role reconstruction remain required. No new spore or promotion.
+- ts: 2026-10-14T19:01:46.081850911Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: Qualify component assessment and caller-held memory through actual cold exports
+  p-efficiency: 0.6
+  p-friction: 0.9
+  p-skill-candidate: 0
+  spore: none
+  receipt-refs: f10051e7e4dbe450fbaa29be35721b4620f091d4b3d5d25f79e5f0cf723cea8f
+  note: Actual typed-reference and legacy LAST regressions plus memory-copy refusals are fixed. Cold release caught unexterned fullDiff property renaming missed by350unit tests; quoted edge access passed unchangedBuffer/Uint8Array controls. All350/3322,lint/build/cold/retained-byte exits now pass; historical failures preserved. Mongo/native/adoption/production remain unqualified. No spore or promotion.
