@@ -323,7 +323,8 @@
                        :keywordize-keys true)]
     (is (some? prepared) "transport must admit the valid independently bound originals")
     (is (false? (:ok result)))
-    (is (= "trusted-context-unestablished" (:code result)))
+    (is (= "returned-page-binding" (:code result))
+        "established V2 context still refuses a generic whole-view page without component identity")
     (is (nil? (:acceptedInvocation result)))
     ;; Positive neighbor: the same complete eight-tool/five-stage generic trace
     ;; retains legitimate legacy behavior. Only the explicit input contract varies.
@@ -416,6 +417,15 @@
     ;; No specialized refusal credit is possible while the healthy neighbor is
     ;; universally refused. These mutations execute only after actual admission.
     (when (and (:ok? pure) (:ok public))
+      ;; The exact same trace/submission must use the actual preparation object
+      ;; retained in this caller, not its equally coherent serialized copy.
+      ;; This witnesses local preparation memory, never native producer auth.
+      (doseq [copy [(json ctx) (js/Buffer.from (json ctx) "utf8") (clj->js ctx)]]
+        (let [copied (js->clj (extern/verify-review-invocation
+                               (response events) (json submission) copy)
+                             :keywordize-keys true)]
+          (is (false? (:ok copied)) "serialized/cloned V2 context alone is unauthenticated")
+          (is (nil? (:acceptedInvocation copied)))))
       (let [read-role #(get-in % [:part :state :output :chunk :role])
             assess-role #(get-in % [:part :state :input :assessment :page-ref :role])
             omit-role (fn [role] (filterv #(and (not= role (read-role %))
