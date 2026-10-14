@@ -249,3 +249,12 @@
   spore: none
   receipt-refs: 46f99800d63382c73c89f4b09b46815a1fb479191e79a56831e30ab499762d24
   note: Current owner main has explicit raw-Git ordinary v1 and assessment-only fixed-input extensions. A canonical engine comment now records the smallest ordinary v2 complete summary/log paging plan on the existing incoming card. Exact readback and historical ledger prefix are preserved; no status transition or readiness is claimed. Qualify real full byte assembly and refuse skipped, clipped, changed and unassessed support while preserving raw geometry, eight tools, five stages, strict chronology, anonymous dynamic free OpenCode MiMo and MAX2. Prior native green and APPROVED outcomes remain paired with the actual supporting-input gap. Planning review precedes implementation; no spore.
+- ts: 2026-10-14T08:46:47.041430017Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: Author and publish visible independent owner plans for complete supporting review input
+  p-efficiency: 0.85
+  p-friction: 0.28
+  p-skill-candidate: 0.0
+  spore: none
+  receipt-refs: 3b4cac1053de0ccc3ca5005fe1410c3309fb25dbda07a96ebf70d176f6d96eaa
+  note: Initial first-class Markdown cards are visible to actual canonical read-task, with real owner UUIDs, scoped decomposition and honest downstream qualification. Preserve the old card/frontmatter and historical ledger bytes; exact one-newline correction improves rendering. Source plans are committed and ready for native planning review; no implementation, readiness, complete supporting review scope, native approval or production rollout claimed. Cross-repository links do not invent completion enforcement. No spore.
