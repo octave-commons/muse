@@ -357,3 +357,12 @@
   spore: none
   receipt-refs: f10051e7e4dbe450fbaa29be35721b4620f091d4b3d5d25f79e5f0cf723cea8f
   note: Actual typed-reference and legacy LAST regressions plus memory-copy refusals are fixed. Cold release caught unexterned fullDiff property renaming missed by350unit tests; quoted edge access passed unchangedBuffer/Uint8Array controls. All350/3322,lint/build/cold/retained-byte exits now pass; historical failures preserved. Mongo/native/adoption/production remain unqualified. No spore or promotion.
+- ts: 2026-10-14T20:09:39.856732512Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: Qualify PR29 combined component ceiling and complete length recovery repairs
+  p-efficiency: 0.85
+  p-friction: 0.42
+  p-skill-candidate: 0
+  spore: none
+  receipt-refs: 777bbe0d-d625-4295-9ab1-56131e760616; source8ed6cce720a5bbe06afbc4c1cd1703b910c39825; RED3f572f6b; fixture38441507; native4275288766/4275288781
+  note: Committed causal RED first. New healthy empty recovery exposed dormant no-op negative fixture; change actual value and preserve its refusal assertion. Count combined component pages before materialization and share normal role coverage in recovery. Retain native preparation memory and immutable validated text instead of cloning custody or re-decoding mutable byte carriers. All passing source/build/cold evidence independently rehashed; native reviews/adoption/deployment remain separate. No new spore/promotion.
