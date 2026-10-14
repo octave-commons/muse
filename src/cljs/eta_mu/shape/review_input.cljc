@@ -108,10 +108,16 @@
   (when-not (and (invocation/ordinary-v2-contract-valid? source)
                 (string? text) (= (count text) (get-in source [:view :text_units])))
     (throw (ex-info "Invalid complete component input" {})))
+  ;; Role boundaries can add pages even when the aggregate view is within its
+  ;; ceiling. Admit the complete count before collecting any component pages.
+  (when (> (reduce + (map (fn [{[start end] :text_span}]
+                           (bounded-page-count (subs text start end)))
+                         (:components source)))
+           (:pages invocation/ordinary-v2-limits))
+    (throw (ex-info "Ordinary-v2 exceeds the combined component page ceiling" {})))
   (reduce
    (fn [pages {:keys [role bytes sha256 byte_span text_span]}]
-     (let [[ts te] text_span original (subs text ts te)
-           _ (bounded-page-count original)]
+     (let [[ts te] text_span original (subs text ts te)]
        (:pages
         (reduce (fn [{:keys [pages byte-start]} {:keys [start end text]}]
                   (let [byte-end (+ byte-start (bounded-utf8-size text (:view-bytes invocation/ordinary-v2-limits)))]

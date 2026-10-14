@@ -187,10 +187,10 @@ function traceFor(tool, input) {
       }
       return output;
     },
-    response() {
+    response(reason = 'stop') {
       const n = events.length + 1;
       return encodeTrace([...events, {type: 'step_finish', timestamp: n, sessionID: input.ctx.sessionID,
-        part: {type: 'step-finish', id: `assessment-stop-${n}`, sessionID: input.ctx.sessionID, reason: 'stop'}}]);
+        part: {type: 'step-finish', id: `assessment-stop-${n}`, sessionID: input.ctx.sessionID, reason}}]);
     }
   }; return trace;
 }
@@ -217,7 +217,8 @@ function preparedFor(verifier, tools, input) {
   return {prepared, representations};
 }
 
-async function complete(tool, verifier, tools, input, candidate = false, rereadBeforeAssessment = false) {
+async function complete(tool, verifier, tools, input, candidate = false, rereadBeforeAssessment = false,
+                        lengthStageCount = null) {
   const {prepared, representations} = preparedFor(verifier, tools, input);
   const trace = traceFor(tool, input);
   const begin = await trace.call('review_begin');
@@ -251,7 +252,7 @@ async function complete(tool, verifier, tools, input, candidate = false, rereadB
     assert.equal(result['ok?'], true); assert.deepEqual(result.assessment, assessment);
     emptyRecords.push(assessment);
   }
-  for (const stage of stages) {
+  for (const stage of lengthStageCount === null ? stages : stages.slice(0, lengthStageCount)) {
     if (candidate && stage === 'adversarial-validate') {
       assert.equal((await trace.call('review_propose_finding', {id: 'synthetic-x', severity: 'low',
         category: 'test-gap', claim: 'Controlled source-location fixture.', path: 'x', line: 1,
@@ -261,6 +262,13 @@ async function complete(tool, verifier, tools, input, candidate = false, rereadB
     }
     assert.equal((await trace.call('review_record_evidence',
       {stage, note: 'No-model complete role-bound qualification fixture.'}))['ok?'], true);
+  }
+  if (lengthStageCount !== null) {
+    assert.ok(Number.isInteger(lengthStageCount) && lengthStageCount >= 1 && lengthStageCount <= 5);
+    assert.equal(fs.existsSync(input.file), false);
+    const response = trace.response('length');
+    preserveActual(`length-${input.ctx.sessionID}`, input, response, null, prepared);
+    return {trace, prepared, delivered, records, emptyRecords, representations, response};
   }
   assert.equal((await trace.call('review_submit',
     {summary: 'Inert no-model complete-input fixture; no native review/approval credit.'}))['ok?'], true);
@@ -574,6 +582,80 @@ export async function runAssessmentFixtures({fixture, checkout, bundle, tool, to
   await check('actual-last-read-before-assessment-neighbor-remains-valid', async () => {
     const input = stageOriginals(options, 'read-before-assess', coreArrays);
     await complete(tool, verifier, tools, input, false, true);
+  });
+  await check('combined-component-page-ceiling-with-admitted-aggregate-neighbor', async () => {
+    for (const [lines, count] of [[130816, 1024], [130817, 1025], [131070, 1026]]) {
+      const input = stageOriginals(options, `combined-cap-${count}`,
+        [Buffer.from('\n'), Buffer.from('\n'), Buffer.from('\n'.repeat(lines))]);
+      assert.ok(input.source.view.page_count <= 1024);
+      assert.equal(input.geometry.slice(1).reduce((a, b) => a + b), count);
+      for (const raw of [input.view, new Uint8Array(input.view), input.texts.join('')]) {
+        if (count === 1024) {
+          const prepared = verifier.prepareReviewInvocationContext(raw, JSON.stringify(input.source),
+            tools, input.file, input.trusted);
+          assert.equal(prepared.componentPages.length, count);
+        } else {
+          assert.throws(() => verifier.prepareReviewInvocationContext(raw, JSON.stringify(input.source),
+            tools, input.file, input.trusted), /invalid full-input context/);
+        }
+      }
+    }
+  });
+  await check('actual-length-prefix-complete-roles-empties-and-held-custody', async () => {
+    const results = [];
+    for (const [label, arrays, stageCount] of [['nonempty-one', coreArrays, 1],
+      ['nonempty-five', coreArrays, 5], ['mixed-empty', [Buffer.alloc(0), Buffer.from('{"gate":"pass"}'), Buffer.alloc(0)], 1],
+      ['all-empty', [Buffer.alloc(0), Buffer.alloc(0), Buffer.alloc(0)], 1]]) {
+      const input = stageOriginals(options, `length-${label}`, arrays);
+      const actual = await complete(tool, verifier, tools, input, false, false, stageCount);
+      assert.equal(fs.existsSync(input.file), false);
+      assert.equal(verifier.verifyReviewInvocation(actual.response, null, actual.prepared).ok, false);
+      for (const [representation, carrier] of [['String', input.texts.join('')],
+        ['Buffer', Buffer.from(input.view)], ['Uint8Array', new Uint8Array(input.view)]]) {
+        const context = verifier.prepareReviewInvocationContext(input.view, JSON.stringify(input.source),
+          tools, input.file, input.trusted);
+        context.fullDiff = carrier;
+        const custody = {invocationState: 'completed', exitCode: 0, submissionState: 'missing',
+          responseSha256Before: hash(actual.response), responseSha256After: hash(actual.response),
+          contextBefore: context, contextAfter: context};
+        const verdict = verifier.classifyLengthEndedReview(actual.response, null, context, custody);
+        assert.equal(verdict.eligible, true);
+        assert.equal(verdict.code, 'new-complete-invocation-required');
+        assert.equal(verdict.pageCount, actual.delivered.length);
+        assert.deepEqual(verdict.recordedStages, stages.slice(0, stageCount));
+        assert.equal(Object.hasOwn(verdict, 'acceptedInvocation'), false);
+        for (const candidate of [JSON.stringify(context), new Uint8Array(Buffer.from(JSON.stringify(context))), clone(context)]) {
+          assert.equal(verifier.classifyLengthEndedReview(actual.response, null, candidate, custody).eligible, false);
+        }
+        for (const changed of [{...custody, contextBefore: clone(context)},
+          {...custody, contextAfter: clone(context)}, {...custody, responseSha256After: 'f'.repeat(64)},
+          {...custody, exitCode: 1}, JSON.stringify(custody)]) {
+          assert.equal(verifier.classifyLengthEndedReview(actual.response, null, context, changed).eligible, false);
+        }
+        for (const role of roles) {
+          const partial = actual.trace.events.filter(event => {
+            const args = event.part.state.input, output = JSON.parse(event.part.state.output);
+            return output.chunk?.role !== role && args.assessment?.['page-ref']?.role !== role &&
+              args.assessment?.['component-ref']?.role !== role;
+          });
+          const n = partial.length + 1;
+          const response = encodeTrace([...partial, {type: 'step_finish', timestamp: actual.trace.events.length + 1,
+            sessionID: input.ctx.sessionID, part: {type: 'step-finish', id: `partial-length-${n}`,
+              sessionID: input.ctx.sessionID, reason: 'length'}}]);
+          const partialCustody = {...custody, responseSha256Before: hash(response), responseSha256After: hash(response)};
+          assert.equal(verifier.classifyLengthEndedReview(response, null, context, partialCustody).eligible, false);
+        }
+        if (representation !== 'String' && carrier.length) {
+          carrier[0] ^= 1;
+          assert.equal(verifier.classifyLengthEndedReview(actual.response, null, context, custody).eligible, false);
+        }
+        results.push({label, representation, eligible: true, componentPages: verdict.pageCount,
+          recordedStages: verdict.recordedStages, responseSha256: hash(actual.response),
+          submissionPresent: false, nativeAuthentication: false, externalMAX2PolicyQualified: false});
+      }
+    }
+    fs.writeFileSync(path.join(evidenceRoot, 'actual-component-length-recovery.json'), JSON.stringify(results, null, 2));
+    console.log(JSON.stringify({kind: 'local-actual-component-length-prefixes', results, nativeReview: false}));
   });
   await check('failed-call-stop-and-bounded-two-fresh-processes', async () => {
     const input = stageOriginals(options, 'two-processes', coreArrays);

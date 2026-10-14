@@ -80,7 +80,9 @@
                 (do
                   (when-not (= "open-hax.review-input/v2" (:schema source)) (invalid!))
                   (let [shaped (input-edge/prepare-v2-carrier raw-full-diff source trusted-context)
-                        aggregate-pages (input-shape/diff-chunks (:text shaped))]
+                        component-pages (input-shape/component-chunks source (:text shaped))
+                        aggregate-pages (if (<= (count (filter #(pos? (:bytes %)) (:components source))) 1)
+                                          component-pages (input-shape/diff-chunks (:text shaped)))]
                     (when-not (and (vector? tools) (every? string? tools)
                                     (= (count tools) (count (set tools)))
                                     (every? (set tools) law/review-tools)
@@ -91,7 +93,7 @@
                      :page-count (:page-count shaped) :full-input-sha256 (get-in shaped [:view :sha256])
                      :review-tools tools :submission-file submission-file
                      :components (:components shaped) :view (:view shaped)
-                     :component-pages (input-shape/component-chunks source (:text shaped) aggregate-pages)
+                     :component-pages component-pages
                      :input-context trusted-context}))
                 (do
                   (when (= "open-hax.review-input/v2" (:schema source)) (invalid!))
@@ -136,28 +138,35 @@
                   :review-tools (:reviewTools ctx) :submission-file (:submissionFile ctx)}
                    (= "open-hax.review-input/v2" (get-in ctx [:inputSource :schema]))
                    (assoc :components (:components ctx) :view (:view ctx)
-                                             :component-pages (:componentPages ctx)))]
+                                             :component-pages (:componentPages ctx)))
     ;; Optional full bytes are verified again. Without them this must be the
     ;; actual prepare export's result retained by the trusted caller; data
     ;; alone cannot authenticate its source or prove its preparation.
+        validated
     (if (= "open-hax.review-input/v2" (get-in prepared [:input-source :schema]))
       (do
         (when-not (and witness (= prepared (select-keys witness prepared-context-keys))
                        (= (:inputContext ctx) (:input-context witness)))
           (invalid!))
-        (when (contains? ctx :fullDiff)
+        (if (contains? ctx :fullDiff)
           (let [raw-full (if (string? (:fullDiff ctx)) (:fullDiff ctx) (aget raw "fullDiff"))
                 shaped (input-edge/prepare-v2-carrier raw-full (:input-source witness) (:input-context witness))]
             (when-not (and (= (:componentPages ctx)
                              (input-shape/component-chunks (:inputSource ctx) (:text shaped)))
                           (= (:pages ctx) (mapv #(select-keys % [:id :start :end])
                                                (input-shape/diff-chunks (:text shaped)))))
-              (invalid!)))))
-      (when (contains? ctx :fullDiff)
-        (when-not (= prepared (context-from-input (:fullDiff ctx) (:inputSource ctx)
-                                                 (:reviewTools ctx) (:submissionFile ctx)))
-          (invalid!))))
-    (assoc prepared :session-id (:sessionID ctx))))
+              (invalid!))
+            ;; The length classifier consumes this same validated owned text;
+            ;; it must not decode a mutable native carrier again afterward.
+            (assoc prepared :full-input-text (:text shaped)))
+          prepared))
+      (do
+        (when (contains? ctx :fullDiff)
+          (when-not (= prepared (context-from-input (:fullDiff ctx) (:inputSource ctx)
+                                                   (:reviewTools ctx) (:submissionFile ctx)))
+            (invalid!)))
+        prepared))]
+    (assoc validated :session-id (:sessionID ctx))))
 
 (defn verify-review-invocation
   "CJS API: rawResponseText/rawSubmission accept strings or UTF8 byte arrays;
@@ -207,14 +216,19 @@
     ;; bytes/text as well as a prepared context. decode-context revalidates its
     ;; digest, byte count and canonical pages via context-from-input.
     (when-not (contains? ctx :fullDiff) (invalid!))
-    (assoc (decode-context raw) :full-input-text (raw-text (:fullDiff ctx)))))
+    (let [decoded (decode-context raw)]
+      (if (= "open-hax.review-input/v2" (get-in decoded [:input-source :schema]))
+        decoded
+        (assoc decoded :full-input-text (raw-text (:fullDiff ctx)))))))
 
 (defn classify-length-ended-review
-  "UNPUBLISHED candidate boundary. Raw response/submission/context have the
+  "Raw response/submission/context have the
    verify API's syntax, but context MUST include fullDiff for exact revalidation.
    rawCustody is caller-trusted JSON or JS data with invocationState, exitCode,
    submissionState, responseSha256Before/After and contextBefore/After (each with
-   fullDiff). Actual response digest is derived here; all admission policy is law.
+   fullDiff). V2 requires actual registered preparation objects in the caller's
+   native context snapshots; serialized custody cannot establish that memory.
+   Actual response digest is derived here; all admission policy is law.
    Returns {eligible, classification, code, violations,...}, with no full-review
    ok, acceptedInvocation or approval fields. Caller independently authenticates
    source and custody, retains the first failure, composes the shared MAX2 bound,
@@ -227,13 +241,18 @@
           ctx (decode-length-context expected-context)
           c (if (or (string? raw-custody) (instance? js/Uint8Array raw-custody))
               (strict-json (raw-text raw-custody)) (js->clj raw-custody :keywordize-keys true))
+          v2? (= "open-hax.review-input/v2" (get-in ctx [:input-source :schema]))
+          snapshot (fn [key property]
+                     (if (and v2? (not (or (string? raw-custody) (instance? js/Uint8Array raw-custody))))
+                       (aget raw-custody property)
+                       (clj->js (get c key))))
           custody {:invocation-state (:invocationState c) :exit-code (:exitCode c)
                    :submission-present? (some? raw-submission)
                    :submission-state (:submissionState c) :response-sha256 (raw-sha256 raw-response)
                    :response-sha256-before (:responseSha256Before c)
                    :response-sha256-after (:responseSha256After c)
-                   :context-before (decode-length-context (clj->js (:contextBefore c)))
-                   :context-after (decode-length-context (clj->js (:contextAfter c)))}
+                   :context-before (decode-length-context (snapshot :contextBefore "contextBefore"))
+                   :context-after (decode-length-context (snapshot :contextAfter "contextAfter"))}
           result (law/classify-length-ended-review events submission ctx custody)]
       (clj->js {:eligible (:eligible? result) :classification (name (:classification result))
                 :code (name (:code result)) :violations (:violations result)

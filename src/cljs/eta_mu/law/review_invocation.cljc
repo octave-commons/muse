@@ -668,7 +668,12 @@
           begin (first (filter success? begins))
           reads (filterv #(= "review_read_diff_chunk" (tool %)) review-calls)
           assessed (filterv #(= "review_assess_diff_chunk" (tool %)) review-calls)
-          ids (set (map :id (:pages context)))
+          pages (delivery-pages context)
+          v2? (= "open-hax.review-input/v2" (get-in context [:input-source :schema]))
+          page-assessed (remove #(empty-observation-call? context %) assessed)
+          empty-roles (set (map #(get-in (input %) [:assessment :component-ref :role])
+                                (filter #(empty-observation-call? context %) assessed)))
+          ids (set (map :id pages))
           text (:full-input-text context)
           code (or (invocation-error events submission context calls review-calls
                                      begins submits stage-calls stage-names violations
@@ -698,22 +703,21 @@
                    (when-not begin :begin-not-established)
                    (when-not (false? (get-in (output begin) [:diff-stats :truncated?]))
                      :full-input-not-established)
-                   (when-not (and (seq ids) (string? text)
-                                  (= (count text) (:end (last (:pages context)))))
+                   (when-not (and (or (seq ids) v2?) (string? text)
+                                  (= (count text) (or (:end (last pages)) 0)))
                      :full-input-not-established)
                    (when-not (and (= ids (set (map #(get (input %) :id) reads)))
-                                  (= ids (set (map #(get (input %) :id) assessed))))
+                                  (= ids (set (map #(get (input %) :id) page-assessed))))
                      :incomplete-page-calls)
                    (when-not (every? #(let [{:keys [start end text]} (:chunk (output %))]
                                        (= text (subs (:full-input-text context) start end))) reads)
                      :returned-page-content)
                    (when-not (seq stage-calls) :first-stage-not-established)
                    (when-not (and (< (:position begin) (:position (first stage-calls)))
-                                  (every? #(< (:position %) (:position (first stage-calls)))
-                                          (concat reads assessed)))
+                                  (input-before-first-stage? review-calls stage-calls context))
                      :input-after-first-stage)
-                   (when-not (= {:chunks (count ids) :delivered (count ids)
-                                 :assessed (count ids) :missing []}
+                   (when-not (= (component-coverage pages (when v2? (:components context))
+                                                   ids ids empty-roles)
                                 (:coverage (output (last assessed))))
                      :complete-assessment-coverage-not-established))]
       (if code
