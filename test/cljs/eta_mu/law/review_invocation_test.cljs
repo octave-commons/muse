@@ -45,7 +45,59 @@
                  :producer producer}]
      {:source source :texts texts :view view
        :trusted {:producer producer :reviewer_run_attempt "2" :input_source source
+                :producer_reuse {:producer producer :conclusion "success"}
                 :content {:authorization "public" :classification "authorized" :credential_canary false}}})))
+
+(defn ordinary-v2-attempt-refusal-cases
+  "Synthetic caller-held attempts and successful prerequisite custody. Candidate
+   manifests never establish reuse; no native authentication is simulated."
+  []
+  (let [{:keys [source trusted]} (ordinary-v2-fixture)
+        producer-case (fn [label attempt reviewer]
+                        (let [candidate (assoc-in source [:producer :run_attempt] attempt)
+                              caller (-> trusted
+                                         (assoc :producer (:producer candidate)
+                                                :input_source candidate
+                                                :reviewer_run_attempt reviewer)
+                                         (assoc-in [:producer_reuse :producer] (:producer candidate)))]
+                          {:label label :source candidate :trusted caller}))
+        context-case (fn [label caller] {:label label :source source :trusted caller})
+        claimed (assoc source :producer_reuse (:producer_reuse trusted))]
+    [(producer-case "future producer attempt9 before reviewer1" "9" "1")
+     (producer-case "zero producer attempt" "0" "2")
+     (producer-case "noncanonical producer attempt" "01" "2")
+     (context-case "older producer without successful prerequisite custody"
+                   (dissoc trusted :producer_reuse))
+     (context-case "failed prerequisite cannot establish reuse"
+                   (assoc-in trusted [:producer_reuse :conclusion] "failure"))
+     (context-case "reuse without the independently held native producer tuple"
+                   (assoc trusted :producer_reuse {:conclusion "success"}))
+     (context-case "successful different job cannot establish this artifact's reuse"
+                   (assoc-in trusted [:producer_reuse :producer :job_id] "other-job"))
+     (context-case "successful different artifact cannot establish this artifact's reuse"
+                   (assoc-in trusted [:producer_reuse :producer :artifact_id] "other-artifact"))
+     (context-case "successful different workflow source cannot establish reuse"
+                   (assoc-in trusted [:producer_reuse :producer :workflow_sha]
+                             (apply str (repeat 40 "f"))))
+     (context-case "zero reviewer attempt" (assoc trusted :reviewer_run_attempt "0"))
+     (context-case "noncanonical reviewer attempt" (assoc trusted :reviewer_run_attempt "later"))
+     {:label "candidate-provided successful reuse is not caller-held evidence"
+      :source claimed :trusted (-> trusted (assoc :input_source claimed)
+                                 (dissoc :producer_reuse))}]))
+
+(deftest ordinary-v2-attempt-admission-requires-current-or-bound-successful-reuse
+  (let [{:keys [source trusted]} (ordinary-v2-fixture)
+        current (-> trusted (assoc :reviewer_run_attempt "1") (dissoc :producer_reuse))]
+    (is (invocation/ordinary-v2-origin-bound? source current)
+        "actual current producer attempt remains legal without invented reuse")
+    (is (invocation/ordinary-v2-origin-bound? source trusted)
+        "earlier producer remains legal with independently held successful native tuple")
+    (doseq [{:keys [label source trusted]} (ordinary-v2-attempt-refusal-cases)]
+      (is (invocation/ordinary-v2-contract-valid? source)
+          (str label " retains structurally intact original descriptors"))
+      (is (= source (:input_source trusted))
+          (str label " cannot fail merely from a held-source mismatch"))
+      (is (false? (invocation/ordinary-v2-origin-bound? source trusted)) label))))
 
 (defn ordinary-v2-coherent-stale-candidates
   "Recompute candidate descriptors and view from replaced originals, retaining
@@ -142,7 +194,8 @@
             blank [" " "\t\n"]]
       (let [candidate (assoc-in source [:producer field] blank)
             caller (-> trusted (assoc-in [:producer field] blank)
-                       (assoc :input_source candidate))
+                       (assoc :input_source candidate)
+                       (assoc-in [:producer_reuse :producer] (:producer candidate)))
             label (str "matching nonempty blank producer " field " " (pr-str blank))]
         (is (false? (invocation/ordinary-v2-contract-valid? candidate)) label)
         (is (false? (invocation/ordinary-v2-trusted-context-valid? caller)) label)

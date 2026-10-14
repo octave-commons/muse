@@ -11,6 +11,23 @@
 (defn- read-native-input [dir]
   (try (bfs/read-review-input dir) (catch :default _ nil)))
 
+(deftest ordinary-v2-filesystem-requires-current-or-successfully-reused-attempt
+  (let [{:keys [source texts view trusted]} (fixture/ordinary-v2-fixture)
+        dir (.mkdtempSync fs (.join path (.tmpdir os) "muse-v2-producer-attempt-"))
+        manifest-path (.join path dir "input-manifest.json")]
+    (try
+      (doseq [[component text] (map vector (:components source) texts)]
+        (.writeFileSync fs (.join path dir (:path component)) (js/Buffer.from text "utf8")))
+      (bfs/write-text! manifest-path (js/JSON.stringify (clj->js source)))
+      (is (= view (:text (.call bfs/read-review-input nil dir trusted))))
+      (is (= view (:text (.call bfs/read-review-input nil dir
+                               (-> trusted (assoc :reviewer_run_attempt "1")
+                                   (dissoc :producer_reuse))))))
+      (doseq [{:keys [label source trusted]} (fixture/ordinary-v2-attempt-refusal-cases)]
+        (bfs/write-text! manifest-path (js/JSON.stringify (clj->js source)))
+        (is (thrown? js/Error (.call bfs/read-review-input nil dir trusted)) label))
+      (finally (.rmSync fs dir #js {:recursive true :force true})))))
+
 (deftest ordinary-v2-filesystem-refuses-coherent-stale-originals
   (let [{:keys [source texts view trusted] :as held} (fixture/ordinary-v2-fixture)
         dir (.mkdtempSync fs (.join path (.tmpdir os) "muse-v2-held-originals-"))

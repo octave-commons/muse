@@ -4,6 +4,7 @@
   (:require [cljs.test :refer [deftest is]]
             [clojure.string :as str]
             [eta-mu.extern.review-invocation :as extern]
+            [eta-mu.extern.json :as input-json]
             [eta-mu.law.review-invocation-test :as fixture]
             [eta-mu.law.review-invocation :as invocation]
             [eta-mu.shape.review-input :as input-shape]
@@ -42,6 +43,84 @@
   ;; existing compiled function. The predecessor ignores it, then rejects v2 at
   ;; its actual admission boundary; no CLJS arity dispatch or new export is used.
   (.call extern/prepare-review-invocation-context nil raw manifest tools file (clj->js trusted)))
+
+(deftest ordinary-v2-public-preparation-requires-current-or-successfully-reused-attempt
+  (let [{:keys [source view trusted]} (fixture/ordinary-v2-fixture)
+        tools (clj->js (:review-tools fixture/context))
+        file "/fixture/submission.json"]
+    (is (some? (prepare-v2-context view (json source) tools file trusted)))
+    (is (some? (prepare-v2-context view (json source) tools file
+                                 (-> trusted (assoc :reviewer_run_attempt "1")
+                                     (dissoc :producer_reuse)))))
+    (doseq [{:keys [label source trusted]} (fixture/ordinary-v2-attempt-refusal-cases)]
+      (is (thrown? js/Error (prepare-v2-context view (json source) tools file trusted)) label))))
+
+(defn- mutable-byte-carrier [kind text]
+  (let [bytes (js/Buffer.from text "utf8")]
+    (case kind
+      :buffer bytes
+      :uint8 (js/Uint8Array. bytes)
+      :shared (let [view (js/Uint8Array. (js/SharedArrayBuffer. (.-length bytes)))]
+                (.set view bytes)
+                view))))
+
+(deftest ordinary-v2-byte-preparation-cannot-admit-a-hash-decode-interleaving
+  ;; Interpose only the scheduler point at the existing real decoder boundary.
+  ;; Hashes, source admission, UTF8 decoding and assembled-view verification are
+  ;; actual owner implementations. No worker race or synthetic digest is used.
+  (let [texts ["old\n" "{}" "log\n"]
+        {:keys [source view trusted]} (fixture/ordinary-v2-fixture texts)
+        replacement "new\n"
+        replaced-view (str replacement (second texts) (nth texts 2))
+        candidate (assoc-in source [:view :sha256]
+                            (:sha256 (fixture/byte-descriptor "unused" replaced-view)))
+        caller (assoc trusted :input_source candidate)
+        tools (clj->js (:review-tools fixture/context))
+        file "/fixture/submission.json"
+        real-decode input-json/decode-text]
+    (doseq [kind [:buffer :uint8 :shared]
+            entry [:originals :public-carrier]]
+      (let [make-raw #(mutable-byte-carrier kind (if (= entry :originals) (first texts) view))
+            prepare (fn [raw metadata context]
+                      (if (= entry :originals)
+                        (extern/prepare-ordinary-v2-originals metadata
+                                                             [raw (second texts) (nth texts 2)] context)
+                        (prepare-v2-context raw (json metadata) tools file context)))
+            raw (make-raw)
+            interleaved* (atom false)
+            hashed-original* (atom nil)
+            decoded* (atom nil)
+            result* (atom nil)
+            refused* (atom false)]
+        (is (some? (prepare (make-raw) source trusted))
+            (str kind " " entry " unchanged bytes remain legal"))
+        (is (thrown? js/Error (prepare (make-raw) candidate caller))
+            (str kind " " entry " mixed identities refuse without the interleaving"))
+        (with-redefs [input-json/decode-text
+                      (fn [bytes]
+                        (if (and (instance? js/Uint8Array bytes)
+                                 (= (.-length bytes) (get-in source [:components 0 :bytes]))
+                                 (compare-and-set! interleaved* false true))
+                          (do
+                            (reset! hashed-original*
+                                    (-> (.createHash crypto "sha256") (.update bytes) (.digest "hex")))
+                            ;; The caller changes its backing store AFTER the
+                            ;; component hash and BEFORE real fatal UTF8 decoding.
+                            (.set raw (js/Buffer.from replacement "utf8") 0)
+                            (let [text (real-decode bytes)]
+                              (reset! decoded* text)
+                              text))
+                          (real-decode bytes)))]
+          (try (reset! result* (prepare raw candidate caller))
+               (catch :default _ (reset! refused* true))))
+        (is @interleaved* (str kind " " entry " actual hash/decode timing seam reached"))
+        (is (= (get-in source [:components 0 :sha256]) @hashed-original*)
+            "real decoder was reached with the original component identity")
+        (is (= replacement (real-decode (.subarray raw 0 (get-in source [:components 0 :bytes]))))
+            "only caller-owned storage was changed")
+        (is @refused*
+            (str kind " " entry " must refuse the pre-hash/post-decode identity mix; decoded="
+                 (pr-str @decoded*) " admitted=" (some? @result*)))))))
 
 (deftest ordinary-v2-public-preparation-refuses-coherent-stale-originals
   (let [{:keys [source view trusted] :as held} (fixture/ordinary-v2-fixture)
@@ -106,7 +185,8 @@
             blank [" " "\t\n"]]
       (let [candidate (assoc-in source [:producer field] blank)
             caller (-> trusted (assoc-in [:producer field] blank)
-                       (assoc :input_source candidate))]
+                       (assoc :input_source candidate)
+                       (assoc-in [:producer_reuse :producer] (:producer candidate)))]
         (is (thrown? js/Error (prepare-v2-context view (json candidate) tools file caller))
             (str "matching nonempty blank producer " field " " (pr-str blank)))))
     (doseq [blank [" " "\t\n"]]
