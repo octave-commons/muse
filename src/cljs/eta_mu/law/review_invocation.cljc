@@ -1,7 +1,9 @@
 (ns eta-mu.law.review-invocation
   "Pure closure of one complete HOST tool trace. This is not all INPUT49,
    authentication, or authority to invoke a model. GPL-3.0-or-later."
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [malli.core :as m]
+            [malli.registry :as mr]))
 
 (def stages ["deterministic" "map-change" "generate-candidates"
              "adversarial-validate" "publish"])
@@ -22,6 +24,103 @@
 (defn- positive? [x] (and (natural? x) (pos? x)))
 (defn- sha? [n x] (and (string? x) (boolean (re-matches (re-pattern (str "[0-9a-f]{" n "}")) x))))
 (defn- oid? [x] (or (sha? 40 x) (sha? 64 x)))
+
+(def ordinary-v2-limits
+  "Fixed ordinary-v2 limits; manifests cannot increase them. V1/native unchanged."
+  {:raw-diff-bytes 4194304 :summary-bytes 262144 :log-bytes 4194304
+   :view-bytes 9437184 :pages 1024})
+
+(def ordinary-v2-registry
+  "Named transport contracts, independent of runtime admission. Coordinates and
+   typed authorization alone do not authenticate a producer. Spans are half-open;
+   byte spans count UTF-8 bytes, text spans count UTF-16 units. Empty roles remain."
+  {::V2Span [:tuple [:int {:min 0 :max 9437184}] [:int {:min 0 :max 9437184}]]
+   ::V2Descriptor [:map [:path :string] [:bytes [:int {:min 0 :max 9437184}]]
+                   [:sha256 [:string {:min 64 :max 64}]]]
+   ::V2Component [:map [:role :string] [:path :string]
+                  [:bytes [:int {:min 0 :max 9437184}]]
+                  [:sha256 [:string {:min 64 :max 64}]]
+                  [:byte_span [:ref ::V2Span]] [:text_span [:ref ::V2Span]]]
+   ::V2RawDiff [:and [:ref ::V2Component]
+               [:map [:role [:= "raw-diff"]] [:path [:= "basehead.diff"]]
+                [:bytes [:int {:min 0 :max 4194304}]]]]
+   ::V2Summary [:and [:ref ::V2Component]
+               [:map [:role [:= "summary"]] [:path [:= "summary.json"]]
+                [:bytes [:int {:min 0 :max 262144}]]]]
+   ::V2Log [:and [:ref ::V2Component]
+           [:map [:role [:= "log"]] [:path [:= "deterministic.log"]]
+            [:bytes [:int {:min 0 :max 4194304}]]]]
+   ::V2View [:map [:bytes [:int {:min 0 :max 9437184}]]
+             [:sha256 [:string {:min 64 :max 64}]]
+             [:text_units [:int {:min 0 :max 9437184}]]
+             [:page_count [:int {:min 0 :max 1024}]]]
+   ::V2Producer [:map
+                 [:repository [:string {:min 1}]]
+                 [:head_sha [:string {:min 40 :max 64}]]
+                 [:base_sha [:string {:min 40 :max 64}]]
+                 [:diff_base_sha [:string {:min 40 :max 64}]]
+                 [:workflow_path [:string {:min 1}]]
+                 [:workflow_ref [:string {:min 1}]]
+                 [:workflow_sha [:string {:min 40 :max 64}]]
+                 [:run_id [:string {:min 1}]] [:run_attempt [:string {:min 1}]]
+                 [:job_id [:string {:min 1}]] [:artifact_id [:string {:min 1}]]
+                 [:artifact_zip_sha256 [:string {:min 64 :max 64}]]]
+   ::OrdinaryV2 [:map
+                 [:schema [:= "open-hax.review-input/v2"]]
+                 [:base_sha [:string {:min 40 :max 64}]]
+                 [:head_sha [:string {:min 40 :max 64}]]
+                 [:diff_base_sha [:string {:min 40 :max 64}]]
+                 [:full_diff [:ref ::V2Descriptor]]
+                 [:components [:tuple [:ref ::V2RawDiff] [:ref ::V2Summary] [:ref ::V2Log]]]
+                 [:view [:ref ::V2View]] [:producer [:ref ::V2Producer]]]
+   ::V2TrustedContext [:map
+                       [:producer [:ref ::V2Producer]]
+                       [:reviewer_run_attempt [:string {:min 1}]]
+                       [:content [:map
+                                  [:authorization [:enum "public" "explicit"]]
+                                  [:classification [:= "authorized"]]
+                                  [:credential_canary [:= false]]]]]})
+
+(defn ordinary-v2-validator [schema-name]
+  (m/validator [:ref schema-name]
+               {:registry (mr/composite-registry m/default-registry ordinary-v2-registry)}))
+
+(def ^:private v2-shape-valid? (ordinary-v2-validator ::OrdinaryV2))
+(def ^:private v2-trust-shape-valid? (ordinary-v2-validator ::V2TrustedContext))
+
+(defn ordinary-v2-contract-valid?
+  "Describe descriptor integrity, not byte verification or native origin. Runtime
+   adapters still must verify originals before admitting this contract."
+  [source]
+  (boolean
+   (and (v2-shape-valid? source)
+        (every? #(oid? (get source %)) [:base_sha :head_sha :diff_base_sha])
+        (every? #(oid? (get (:producer source) %))
+                [:base_sha :head_sha :diff_base_sha :workflow_sha])
+        (= (select-keys source [:base_sha :head_sha :diff_base_sha])
+           (select-keys (:producer source) [:base_sha :head_sha :diff_base_sha]))
+        (= (:full_diff source) (select-keys (first (:components source)) [:path :bytes :sha256]))
+        (sha? 64 (get-in source [:producer :artifact_zip_sha256]))
+        (sha? 64 (get-in source [:view :sha256]))
+        (loop [components (:components source) byte-start 0 text-start 0]
+          (if-let [component (first components)]
+            (let [[bs be] (:byte_span component) [ts te] (:text_span component)]
+              (and (sha? 64 (:sha256 component)) (= bs byte-start) (= ts text-start)
+                   (= (- be bs) (:bytes component)) (<= ts te)
+                   (<= (- te ts) (:bytes component))
+                   (recur (next components) be te)))
+            (and (= byte-start (get-in source [:view :bytes]))
+                 (= text-start (get-in source [:view :text_units]))))))))
+
+(defn ordinary-v2-origin-bound?
+  "Match a manifest to separately supplied trusted caller data. This pure law
+   cannot establish where the caller obtained that data. Producing and reviewing
+   attempts remain distinct; unchanged, independently bound earlier output is legal."
+  [source trusted-context]
+  (boolean
+   (and (ordinary-v2-contract-valid? source)
+        (v2-trust-shape-valid? trusted-context)
+        (= (:producer source) (:producer trusted-context)))))
 (defn- success? [call] (true? (get-in call [:part :state :output :ok?])))
 (defn- tool [call] (get-in call [:part :tool]))
 (defn- input [call] (get-in call [:part :state :input]))

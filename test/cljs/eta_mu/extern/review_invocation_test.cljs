@@ -35,6 +35,47 @@
   (try (extern/prepare-review-invocation-context raw manifest tools file)
        (catch :default _ nil)))
 
+(defn- prepare-v2-context [raw manifest tools file trusted]
+  ;; Native call intentionally supplies an additional caller-held context to the
+  ;; existing compiled function. The predecessor ignores it, then rejects v2 at
+  ;; its actual admission boundary; no CLJS arity dispatch or new export is used.
+  (.call extern/prepare-review-invocation-context nil raw manifest tools file (clj->js trusted)))
+
+(deftest ordinary-v2-preparation-uses-existing-api-and-original-byte-identities
+  (let [{:keys [source view trusted]} (fixture/ordinary-v2-fixture)
+        tools (clj->js (:review-tools fixture/context))
+        bytes (js/Buffer.from view "utf8")]
+    ;; No new symbol or wrong-arity call is used. The predecessor's actual safe
+    ;; unsupported-v2 refusal is caught so RED reports admission/identity failures.
+    (doseq [raw [view bytes (js/Uint8Array. bytes)]]
+      (let [prepared (try (prepare-v2-context raw (json source) tools "/fixture/submission.json" trusted)
+                          (catch :default _ nil))
+            ctx (js->clj prepared
+                        :keywordize-keys true)]
+        (is (some? ctx) "complete structurally valid v2 must be admitted by existing preparation")
+        (is (= source (:inputSource ctx)))
+        (is (= (get-in source [:view :sha256]) (:fullInputSha256 ctx)))
+        (is (= (get-in source [:view :page_count]) (:pageCount ctx)))))
+    (doseq [[raw manifest] [[(.subarray bytes 0 (dec (.-length bytes))) (json source)]
+                            [(js/Uint8Array. #js [255]) (json source)]
+                            [view (str "{\"schema\":\"other\"," (subs (json source) 1))]
+                            [view (str "{\"ignored\":1e309," (subs (json source) 1))]]]
+      (is (thrown? js/Error (prepare-v2-context raw manifest tools "/fixture/submission.json" trusted))))
+    (doseq [raw [view bytes (js/Uint8Array. bytes)]]
+      (is (thrown? js/Error (extern/prepare-review-invocation-context raw (json source) tools "/fixture/submission.json"))
+          "ordinary-v2 without an independent caller context must refuse")
+      (doseq [changed [(assoc-in trusted [:producer :head_sha] (apply str (repeat 40 "f")))
+                       (assoc-in trusted [:content :authorization] "unauthorized")
+                       (assoc-in trusted [:content :authorization] "unknown")
+                       (assoc-in trusted [:content :classification] "sensitive")
+                       (assoc-in trusted [:content :credential_canary] true)]]
+        (is (thrown? js/Error (prepare-v2-context raw (json source) tools "/fixture/submission.json" changed))))))
+  ;; Independent producer/content enforcement cannot be inferred from these
+  ;; predecessor refusals: all v2 is presently rejected, even the positive neighbor.
+  (doseq [source [fixture/manifest fixture/native-manifest fixture/rejection-manifest fixture/cohort-manifest]]
+    (is (some? (prepare-native-context "diff" (json source)
+                                       (clj->js (:review-tools fixture/context)) "/fixture/submission.json")))))
+
 (deftest native-byte-preparation-preserves-bom-only-and-prefixed-page-geometry
   (doseq [text ["\uFEFF" "\uFEFForiginal context ημ 😀\n" "\uFEFF\uFEFFcontext"]]
     (let [bytes (js/Buffer.from text "utf8")

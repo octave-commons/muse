@@ -2,7 +2,120 @@
   "Source-only synthetic controls in actual OpenCode host-event shape."
   (:require [cljs.test :refer [deftest is testing]]
             [eta-mu.domain.review :as review]
-            [eta-mu.law.review-invocation :as invocation]))
+            [eta-mu.law.review-invocation :as invocation]
+            ["node:crypto" :as crypto]))
+
+(defn byte-descriptor [path text]
+  (let [bytes (js/Buffer.from text "utf8")]
+    {:path path :bytes (.-length bytes)
+     :sha256 (-> (.createHash crypto "sha256") (.update bytes) (.digest "hex"))}))
+
+(defn ordinary-v2-fixture
+  "Synthetic original bytes and independently held caller coordinates. No native
+   authority, model, dispatcher, or completion/approval credit is supplied."
+  ([] (ordinary-v2-fixture ["\uFEFFdiff --git a/x b/x\r\n--- a/x\r\n+++ b/x\r\n@@ -1 +1 @@\r\n-old\r\n+ημ 😀\r\n"
+                           "{\"gate\":\"pass\",\"limitation\":\"synthetic only\"}\r\n"
+                           "deterministic result: pass\r\noriginal log tail 😀\n"]))
+  ([texts]
+   (let [roles ["raw-diff" "summary" "log"]
+         paths ["basehead.diff" "summary.json" "deterministic.log"]
+         components (loop [remaining (map vector roles paths texts) out [] bs 0 ts 0]
+                      (if-let [[role path text] (first remaining)]
+                        (let [descriptor (byte-descriptor path text)
+                              be (+ bs (:bytes descriptor)) te (+ ts (count text))]
+                          (recur (next remaining)
+                                 (conj out (assoc descriptor :role role :byte_span [bs be] :text_span [ts te]))
+                                 be te))
+                        out))
+         view (apply str texts)
+         producer {:repository "fixture/repo" :base_sha (apply str (repeat 40 "a"))
+                   :head_sha (apply str (repeat 40 "b")) :diff_base_sha (apply str (repeat 40 "a"))
+                   :workflow_path ".github/workflows/review.yml"
+                   :workflow_ref "fixture/repo/.github/workflows/review.yml@refs/pull/1/merge"
+                   :workflow_sha (apply str (repeat 40 "d"))
+                   :run_id "2" :run_attempt "1" :job_id "3" :artifact_id "4"
+                   :artifact_zip_sha256 (apply str (repeat 64 "e"))}
+         source {:schema "open-hax.review-input/v2"
+                 :base_sha (:base_sha producer) :head_sha (:head_sha producer)
+                 :diff_base_sha (:diff_base_sha producer)
+                 :full_diff (select-keys (first components) [:path :bytes :sha256])
+                 :components components
+                 :view (-> (byte-descriptor "unused" view) (dissoc :path)
+                           (assoc :text_units (count view) :page_count (count (review/diff-chunks view))))
+                 :producer producer}]
+     {:source source :texts texts :view view
+      :trusted {:producer producer :reviewer_run_attempt "2"
+                :content {:authorization "public" :classification "authorized" :credential_canary false}}})))
+
+(deftest ordinary-v2-contract-keeps-original-identities-and-separate-span-units
+  (doseq [texts [["" "{}" ""]
+                 ["\uFEFF\r\nημ 😀" "{}\r\n" "\uFEFFtail 😀\n"]
+                 ["diff" "{}" (str (apply str (repeat 8191 "x")) "😀tail")]]]
+    (let [{:keys [source view trusted]} (ordinary-v2-fixture texts)]
+      (is (invocation/ordinary-v2-contract-valid? source))
+      (is (invocation/ordinary-v2-origin-bound? source trusted))
+      (is (= (:full_diff source) (byte-descriptor "basehead.diff" (first texts))))
+      (is (= (get-in source [:view :sha256]) (:sha256 (byte-descriptor "unused" view))))
+      (is (= (count view) (get-in source [:view :text_units])))
+      (testing "the existing predecessor admission must gain the explicit v2 contract"
+        (is (true? (invocation/input-source-valid? source)))))))
+
+(deftest ordinary-v2-contract-refuses-path-order-span-and-digest-corruption
+  (let [{:keys [source]} (ordinary-v2-fixture)]
+    (doseq [changed [(assoc-in source [:components 1 :path] "../summary.json")
+                     (assoc source :components (vec (reverse (:components source))))
+                     (assoc-in source [:components 1 :byte_span 0] 0)
+                     (assoc-in source [:components 1 :text_span 0] 0)
+                     (assoc-in source [:components 2 :sha256] (apply str (repeat 64 "z")))
+                     (assoc-in source [:full_diff :sha256] (apply str (repeat 64 "f")))
+                     (update-in source [:view :bytes] inc)
+                     (update-in source [:view :text_units] inc)]]
+      (is (false? (invocation/ordinary-v2-contract-valid? changed))))))
+
+(deftest ordinary-v2-origin-is-separate-from-internal-self-consistency
+  (let [{:keys [source trusted]} (ordinary-v2-fixture)]
+    (doseq [field [:repository :workflow_path :workflow_ref :workflow_sha :run_id
+                   :run_attempt :job_id :artifact_id :artifact_zip_sha256]]
+      (let [replacement (if (#{:workflow_sha :artifact_zip_sha256} field)
+                          (apply str (repeat (if (= field :workflow_sha) 40 64) "f"))
+                          "other-producer")
+            substituted (assoc-in source [:producer field] replacement)]
+        (is (invocation/ordinary-v2-contract-valid? substituted))
+        (is (false? (invocation/ordinary-v2-origin-bound? substituted trusted)))))
+    (doseq [field [:head_sha :base_sha :diff_base_sha]]
+      (let [sha (apply str (repeat 40 "f"))
+            substituted (-> source (assoc field sha) (assoc-in [:producer field] sha))]
+        (is (invocation/ordinary-v2-contract-valid? substituted))
+        (is (false? (invocation/ordinary-v2-origin-bound? substituted trusted)))))
+    (testing "actual producer attempt one may be reused by reviewer attempt two"
+      (is (invocation/ordinary-v2-origin-bound? source trusted)))
+    (doseq [changed [nil (dissoc trusted :producer)
+                     (assoc-in trusted [:content :authorization] "unknown")
+                     (assoc-in trusted [:content :classification] "sensitive")
+                     (assoc-in trusted [:content :credential_canary] true)]]
+      (is (false? (invocation/ordinary-v2-origin-bound? source changed))))))
+
+(deftest ordinary-v2-finite-contract-boundaries-and-lossless-page-count
+  (let [validate-component (fn [role] (invocation/ordinary-v2-validator role))
+        {:keys [source]} (ordinary-v2-fixture)]
+    (doseq [[index role limit] [[0 ::invocation/V2RawDiff 4194304]
+                                [1 ::invocation/V2Summary 262144]
+                                [2 ::invocation/V2Log 4194304]]]
+      (let [component (assoc (nth (:components source) index) :bytes limit)]
+        (is ((validate-component role) component))
+        (is (false? ((validate-component role) (assoc component :bytes (inc limit)))))))
+    (let [validate-view (invocation/ordinary-v2-validator ::invocation/V2View)
+          view (assoc (:view source) :bytes 9437184 :page_count 1024)]
+      (is (validate-view view))
+      (is (false? (validate-view (assoc view :bytes 9437185))))
+      (is (false? (validate-view (assoc view :page_count 1025))))))
+  ;; The 9 MiB aggregate descriptor guard is deliberately isolated above: the
+  ;; three admitted component maxima total 8.25 MiB, so a full 9 MiB neighbor
+  ;; cannot honestly establish an aggregate-only runtime boundary.
+  (doseq [[lines expected] [[131072 1024] [131073 1025]]]
+    (let [{:keys [source]} (ordinary-v2-fixture ["" "" (apply str (repeat lines "\n"))])]
+      (is (= expected (get-in source [:view :page_count])))
+      (is (= (= expected 1024) (invocation/ordinary-v2-contract-valid? source))))))
 
 (def manifest
   {:schema "open-hax.review-input/v1"

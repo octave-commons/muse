@@ -255,6 +255,64 @@ for (const [representation, encode] of [['string', bytes => bytes.toString('utf8
   } catch (error) { result.pass = false; result.error = {name: error.name, message: error.message}; }
   results.push(result);
 }
+// RED for the explicit ordinary-v2 transport through the existing native JS
+// export, with an additional independently held caller context. The predecessor
+// ignores argument five, then reaches its real unsupported-v2 refusal. These
+// synthetic caller coordinates are not a native origin proof, and
+// no invocation, model, provider, publisher or tool-state completion is simulated.
+const v2Texts = [full.toString('utf8'), '{"gate":"pass","limitation":"synthetic only"}\r\n',
+  '\uFEFFdeterministic original tail ημ 😀\r\n'];
+let byteStart = 0, textStart = 0;
+const v2Components = v2Texts.map((text, index) => {
+  const bytes = Buffer.from(text), byteEnd = byteStart + bytes.length, textEnd = textStart + text.length;
+  const component = {role: ['raw-diff', 'summary', 'log'][index],
+    path: ['basehead.diff', 'summary.json', 'deterministic.log'][index], bytes: bytes.length,
+    sha256: sha256(bytes), byte_span: [byteStart, byteEnd], text_span: [textStart, textEnd]};
+  byteStart = byteEnd; textStart = textEnd; return component;
+});
+const v2View = Buffer.from(v2Texts.join(''));
+const v2Producer = {repository: source.provenance.repository, head_sha: source.head_sha,
+    base_sha: source.base_sha, diff_base_sha: source.diff_base_sha,
+    workflow_path: '.github/workflows/review.yml', workflow_ref: source.provenance.workflow_ref,
+    workflow_sha: source.provenance.workflow_sha, run_id: '2', run_attempt: '1', job_id: '3',
+    artifact_id: '4', artifact_zip_sha256: 'e'.repeat(64)};
+const v2Trusted = {producer: v2Producer, reviewer_run_attempt: '2',
+  content: {authorization: 'public', classification: 'authorized', credential_canary: false}};
+const v2Source = {...source, schema: 'open-hax.review-input/v2', components: v2Components,
+  view: {bytes: v2View.length, sha256: sha256(v2View), text_units: textStart, page_count: 1},
+  producer: {...v2Producer}};
+for (const [representation, encode] of [['string', bytes => bytes.toString('utf8')],
+  ['Buffer', bytes => bytes], ['Uint8Array', bytes => new Uint8Array(bytes)]]) {
+  const result = {representation, purpose: 'ordinary-v2', assertions: 0, native_origin: false};
+  const contexts = [['missing-context', null],
+    ['wrong-producer', {...v2Trusted, producer: {...v2Producer, head_sha: 'f'.repeat(40)}}],
+    ['unauthorized', {...v2Trusted, content: {...v2Trusted.content, authorization: 'unauthorized'}}],
+    ['unknown-authorization', {...v2Trusted, content: {...v2Trusted.content, authorization: 'unknown'}}],
+    ['sensitive', {...v2Trusted, content: {...v2Trusted.content, classification: 'sensitive'}}],
+    ['credential-canary', {...v2Trusted, content: {...v2Trusted.content, credential_canary: true}}]];
+  for (const [control, trusted] of contexts) {
+    const refusal = {representation, purpose: 'ordinary-v2-context-refusal', control,
+      specialized_predecessor_enforcement: false};
+    try {
+      const args = [encode(v2View), encode(Buffer.from(JSON.stringify(v2Source))), tools, submissionFile];
+      if (trusted !== null) args.push(trusted);
+      assert.throws(() => verifier.prepareReviewInvocationContext.call(null, ...args));
+      refusal.pass = true;
+    } catch (error) { refusal.pass = false; refusal.error = {name: error.name, message: error.message}; }
+    results.push(refusal);
+  }
+  try {
+    const context = verifier.prepareReviewInvocationContext.call(null, encode(v2View),
+      encode(Buffer.from(JSON.stringify(v2Source))), tools, submissionFile, v2Trusted);
+    for (const [actual, expected] of [[context.inputSource, v2Source],
+      [context.fullInputSha256, sha256(v2View)], [context.pageCount, 1],
+      [context.inputSource.full_diff, source.full_diff]]) {
+      result.assertions++; assert.deepEqual(actual, expected);
+    }
+    result.pass = true;
+  } catch (error) { result.pass = false; result.error = {name: error.name, message: error.message}; }
+  results.push(result);
+}
 const failures = results.filter(result => !result.pass).length;
 console.log(JSON.stringify({result: failures ? 'fail' : 'pass', runtime: process.version, modulePath,
   moduleSha256: sha256(fs.readFileSync(modulePath)), results,

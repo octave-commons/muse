@@ -765,4 +765,16 @@ try {
     stale_submission_removed: true, fresh_invocation_accepted: true, cleanup_fault_artifact_observed: true,
     native_context_pages: nativeCount, native_context_complete: true, native_context_unassessed_refused: true,
     native_context_carrier_only: true, native_review: false}));
+  // Run public transport controls against THIS fresh optimized module, rather
+  // than an unrelated warm repository bundle. Preserve inherited eight-tool and
+  // native controls above; unsupported ordinary-v2 is the intended RED below.
+  // The transport verifier supplies its separate trusted caller context through
+  // the same native export's fifth-argument seam and checks contextless refusals.
+  const transport = spawnSync(process.execPath,
+    [path.join(checkout, 'scripts/verify-review-invocation.mjs'),
+      path.join(checkout, '.opencode/dist/review-invocation.cjs')],
+    {cwd: checkout, env, encoding: 'utf8', timeout: 30000, maxBuffer: 8 * 1024 * 1024});
+  process.stdout.write(transport.stdout || '');
+  process.stderr.write(transport.stderr || '');
+  assert.equal(transport.status, 0, transport.error?.message || 'cold public transport controls failed');
 } finally {fs.rmSync(fixture, {recursive: true, force: true});}

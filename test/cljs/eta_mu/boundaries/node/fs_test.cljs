@@ -11,6 +11,43 @@
 (defn- read-native-input [dir]
   (try (bfs/read-review-input dir) (catch :default _ nil)))
 
+(deftest ordinary-v2-filesystem-reads-the-three-originals-without-a-composite-file
+  (let [{:keys [source texts view trusted]} (fixture/ordinary-v2-fixture)
+        dir (.mkdtempSync fs (.join path (.tmpdir os) "muse-ordinary-v2-"))
+        manifest-path (.join path dir "input-manifest.json")]
+    (try
+      (doseq [[component text] (map vector (:components source) texts)]
+        (.writeFileSync fs (.join path dir (:path component)) (js/Buffer.from text "utf8")))
+      (bfs/write-text! manifest-path (js/JSON.stringify (clj->js source)))
+      (is (false? (.existsSync fs (.join path dir "combined-input.txt"))))
+      ;; JS .call reaches the same existing function with an additional pure
+      ;; caller context. The predecessor ignores that extra argument and reaches
+      ;; its real unsupported-v2 refusal, rather than a CLJS arity error.
+      (let [actual (try (.call bfs/read-review-input nil dir trusted) (catch :default _ nil))]
+        (is (some? actual) "existing filesystem boundary must admit complete v2 originals")
+        (is (= source (:manifest actual)))
+        (is (= view (:text actual)))
+        (is (= (.toString (js/Buffer.from view "utf8") "hex")
+               (when actual (.toString (js/Buffer.from (:text actual) "utf8") "hex")))))
+      (is (thrown? js/Error (bfs/read-review-input dir))
+          "complete v2 originals without separately supplied context must refuse")
+      (doseq [changed [(assoc-in trusted [:producer :head_sha] (apply str (repeat 40 "f")))
+                       (assoc-in trusted [:content :authorization] "unauthorized")
+                       (assoc-in trusted [:content :authorization] "unknown")
+                       (assoc-in trusted [:content :classification] "sensitive")
+                       (assoc-in trusted [:content :credential_canary] true)]]
+        (is (thrown? js/Error (.call bfs/read-review-input nil dir changed))))
+      ;; These specialized refusal obligations need the admitted positive above
+      ;; to turn green; predecessor blanket-v2 refusal supplies no enforcement credit.
+      (doseq [[component text] (map vector (:components source) texts)]
+        (let [full (.join path dir (:path component)) bytes (js/Buffer.from text "utf8")]
+          (.writeFileSync fs full (.subarray bytes 0 (max 0 (dec (.-length bytes)))))
+          (is (thrown? js/Error (.call bfs/read-review-input nil dir trusted)))
+          (.writeFileSync fs full bytes)))
+      (.unlinkSync fs (.join path dir "summary.json"))
+      (is (thrown? js/Error (.call bfs/read-review-input nil dir trusted)))
+      (finally (.rmSync fs dir #js {:recursive true :force true})))))
+
 (defn- with-native-input [bytes f]
   (let [dir (.mkdtempSync fs (.join path (.tmpdir os) "muse-native-input-"))
         full (.join path dir "actionability-input.txt")
