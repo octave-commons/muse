@@ -294,3 +294,12 @@
   spore: none
   receipt-refs: dd0596c40a0789b2e2572ec26c0ce17414bda34fad374c3e15af1571e5c62dd8
   note: A secure candidate positive must supply independent caller context. Preserve the historical contextless RED, revise only the fixture seam, and demonstrate same existing native functions ignore the extra context and fail for unsupported contract rather than an arity or import error. Commit corrected causal RED before GREEN. Blank v2 refusals do not prove specialized origin/content enforcement; descriptor bounds are not bounded I/O and native authentication is a caller obligation. Keep original pagination/native/tool behavior and all ledger prefixes. No additional spore or promotion.
+- ts: 2026-10-14T13:35:16.375774486Z
+  session: 01a12257-fc69-7720-888c-dd2595ff7dc7
+  task: ordinary-v2-transport-GREEN-and-cold-filesystem-qualification
+  p-efficiency: 0.76
+  p-friction: 0.52
+  p-skill-candidate: 0.00
+  spore: none
+  receipt-refs: e892ebdfaef7b39b55c97eb8d670f7d9cffcfebb,00d0df62a6f7c576dc1ed481bb3379466527e20d9acffc33a855f88acef256c3
+  note: Independent qualification must execute the exact changed filesystem entry from a cold checkout; a host build and separate preparation export do not supply that execution. Close the gap through the existing compiled owner tests without a new production API or assessment scope. Distinguish normal FS compilation, advanced CJS preparation, inherited integration skips, historical byte audit and genuine native admission. Commit causal RED before GREEN, preserve initial optimized failure and exact source/ledger custody, then obtain hosted source review before activation. No new spore or promotion.
