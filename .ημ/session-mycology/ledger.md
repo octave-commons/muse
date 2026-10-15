@@ -402,3 +402,12 @@
   spore: none
   receipt-refs: /home/err/.local/share/openhax-codex/20261010/review-state/Muse-evidence-root-bound-main9d3-owned-repair-v1/canonical-Muse-result-receipt-event.edn
   note: Genuine committed test-only RED exposed four explicit-root failures, then one existing-boundary helper GREEN passed six root controls, all prior owning review-input controls, five-target build, three cold hosts, 358 tests/4254 assertions and pinned zero-warning lint. Existing Mongo integration skipped after auth refusal; optional real retained-corpus audit unavailable/unqualified. Initial locale-only failure retained and environment repaired without assertion changes. Source and historical prefixes/frozen old profile preserved. No model/token/install/native/publication/adoption/deployment credit; root owns publication and later ETA consumption. Candidate0/no spore.
+- ts: 2026-10-15T06:28:00.029145362Z
+  session: /home/err/.local/share/openhax-codex/20261010/muse-evidence-root-bound-main9d3-v1
+  task: Correct portable Receipt River references for bounded Muse evidence-root qualification
+  p-efficiency: 0.90
+  p-friction: 0.25
+  p-skill-candidate: 0
+  spore: none
+  receipt-refs: receipts.edn#ef31f08c-df02-4237-ad26-3b1f509d4bc5,receipts.edn#88863fd5-7dc9-4587-8afc-e1b4f7a6fdeb
+  note: Append-only provenance correction for the prior plan/result reflections: their private event-file paths are execution custody only. The tracked receipts.edn event UUID references above make both canonical events independently recoverable after checkout. Preserve all prior bytes and their immutable 3d4df91 Git blobs; no source or test changes, no gate rerun, no spore/promotion, publication/adoption/native review still pending root.
