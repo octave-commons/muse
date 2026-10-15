@@ -14,13 +14,24 @@ Error.stackTraceLimit = 50;
 
 // A recovery is a different process, never just a new host session id.
 if (process.argv[2] === '--fresh-invocation') {
-  const [bundle, evidence, scenario] = process.argv.slice(3);
+  const [bundle, evidence, scenario, context = "{}"] = process.argv.slice(3);
   const {EtaMuActorsPlugin} = await import(pathToFileURL(bundle));
   const {tool} = await EtaMuActorsPlugin({});
-  const ctx = {sessionID: 'fresh-child', directory: path.dirname(path.dirname(evidence))};
+  const ctx = {sessionID: 'fresh-child', directory: path.dirname(path.dirname(evidence)), ...JSON.parse(context)};
   const call = async (name, args) => JSON.parse(await tool[name].execute(args, ctx));
   const begin = await call('review_begin', {});
-  assert.equal(begin['ok?'], true);
+  if (scenario === 'bound-input-refusal') {
+    assert.equal(begin['ok?'], false, 'invalid bound input cannot use a valid contextual decoy');
+    assert.match(begin.error, /Full input unavailable:/);
+    assert.equal(fs.existsSync(path.join(evidence, 'submission.json')), false);
+    assert.equal(fs.existsSync(path.join(evidence, 'review-events.jsonl')), false);
+    await new Promise((resolve, reject) => {
+      process.stdout.write(`${JSON.stringify({result: 'pass', pid: process.pid, scenario, refused: true, begin})}\n`,
+        error => error ? reject(error) : resolve());
+    });
+    process.exit(0);
+  }
+  assert.equal(begin['ok?'], true, `fresh child admission: ${JSON.stringify(begin)}`);
   const count = begin['input-coverage'].chunks;
   assert.equal((await call('review_read_diff_chunk', {id: 1}))['ok?'], true);
   assert.equal((await call('review_read_diff_chunk', {id: 1}))['ok?'], true,
@@ -64,6 +75,9 @@ if (process.argv[2] === '--fresh-invocation') {
   process.exit(0);
 }
 
+// Legacy-context controls must not inherit an unrelated host invocation binding.
+const inheritedEvidenceDirectory = process.env.REVIEW_EVIDENCE_DIR;
+delete process.env.REVIEW_EVIDENCE_DIR;
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'muse-full-review-'));
 const tools = ['review_begin', 'review_read_diff_chunk', 'review_assess_diff_chunk',
@@ -197,9 +211,12 @@ try {
     fs.writeFileSync(path.join(destination, 'input-manifest.json'), JSON.stringify(manifest));
     return destination;
   };
-  const freshProcess = (destination, scenario) => {
+  const freshProcess = (destination, scenario, options = {}) => {
+    const childEnv = {...process.env};
+    if (Object.hasOwn(options, 'binding')) childEnv.REVIEW_EVIDENCE_DIR = options.binding;
     const result = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--fresh-invocation',
-      bundle, destination, scenario], {encoding: 'utf8', timeout: 60000, maxBuffer: 8 * 1024 * 1024});
+      bundle, destination, scenario, JSON.stringify(options.context || {})],
+      {env: childEnv, encoding: 'utf8', timeout: 60000, maxBuffer: 8 * 1024 * 1024});
     assert.equal(result.status, 0, result.error?.message || result.stderr);
     const payload = JSON.parse(result.stdout.trim().split('\n').at(-1));
     assert.notEqual(payload.pid, process.pid, 'a fresh invocation is an actual separate process');
@@ -759,6 +776,72 @@ try {
   assert.equal(cohortResults.filter(result => !result.pass).length, 0,
     'every fresh compiled cohort carrier control must pass');
 
+  // Host binding is independent of OpenCode's directory/worktree metadata.
+  // Every path is disposable and owned; never reproduce this with filesystem root.
+  const rootResults = [];
+  const rootCheck = async (control, run) => {
+    const result = {control};
+    try { await run(); result.pass = true; }
+    catch (error) { result.pass = false; result.error = {name: error.name, message: error.message}; }
+    rootResults.push(result);
+  };
+  const wrongWorktree = path.join(fixture, 'owned-disagreeing-worktree');
+  fs.mkdirSync(wrongWorktree);
+  const rootContext = dir => path.dirname(path.dirname(dir));
+  const rootDecoy = rejectionConsumer('evidence-root-decoy', rejectionFull, JSON.stringify(rejectionManifest));
+  const decoySubmission = path.join(rootDecoy.dir, 'submission.json');
+  const decoyEvents = path.join(rootDecoy.dir, 'review-events.jsonl');
+  const seedDecoy = () => {
+    fs.writeFileSync(decoySubmission, 'owned untouched decoy submission');
+    fs.writeFileSync(decoyEvents, 'owned untouched decoy events\n');
+  };
+  const assertDecoy = () => {
+    assert.equal(fs.readFileSync(decoySubmission, 'utf8'), 'owned untouched decoy submission');
+    assert.equal(fs.readFileSync(decoyEvents, 'utf8'), 'owned untouched decoy events\n');
+  };
+  for (const directoryDecoy of [false, true]) {
+    await rootCheck(directoryDecoy ? 'explicit-binding-over-both-context-roots' : 'explicit-binding-over-worktree', async () => {
+      const selected = rejectionConsumer(`bound-root-${directoryDecoy}`, rejectionFull, JSON.stringify(rejectionManifest));
+      seedDecoy();
+      const child = freshProcess(selected.dir, 'approval', {binding: selected.dir,
+        context: {worktree: wrongWorktree, ...(directoryDecoy ? {directory: rootContext(rootDecoy.dir)} : {})}});
+      assert.deepEqual(child.envelope['input-source'], rejectionManifest);
+      assert.equal(child.envelope['input-coverage'].assessed, child.envelope['input-assessments'].length);
+      assert.equal(fs.existsSync(path.join(selected.dir, 'review-events.jsonl')), true);
+      assert.equal(fs.existsSync(path.join(wrongWorktree, '.opencode/review-evidence')), false);
+      assertDecoy();
+    });
+  }
+  for (const mode of ['missing', 'corrupt']) {
+    await rootCheck(`explicit-${mode}-input-refuses-contextual-fallback`, async () => {
+      const selected = mode === 'missing'
+        ? {dir: path.join(fixture, 'missing-explicit-evidence')}
+        : rejectionConsumer('corrupt-explicit-evidence', rejectionFull.subarray(0, 23), JSON.stringify(rejectionManifest));
+      seedDecoy();
+      if (mode === 'corrupt') fs.writeFileSync(path.join(selected.dir, 'submission.json'), 'owned stale bound submission');
+      const child = freshProcess(selected.dir, 'bound-input-refusal', {binding: selected.dir,
+        context: {worktree: rootContext(rootDecoy.dir), directory: rootContext(rootDecoy.dir)}});
+      assert.equal(child.refused, true);
+      assertDecoy();
+      if (mode === 'missing') assert.equal(fs.existsSync(selected.dir), false);
+      else assert.deepEqual(fs.readFileSync(path.join(selected.dir, 'rejection-assessment-input.txt')), rejectionFull.subarray(0, 23));
+    });
+  }
+  for (const mode of ['absent', 'blank']) {
+    await rootCheck(`${mode}-binding-preserves-worktree-fallback`, async () => {
+      const selected = rejectionConsumer(`fallback-root-${mode}`, rejectionFull, JSON.stringify(rejectionManifest));
+      const child = freshProcess(selected.dir, 'approval', {
+        ...(mode === 'blank' ? {binding: '  '} : {}),
+        context: {worktree: rootContext(selected.dir), directory: wrongWorktree}});
+      assert.deepEqual(child.envelope['input-source'], rejectionManifest);
+      assert.equal(fs.existsSync(path.join(selected.dir, 'review-events.jsonl')), true);
+      assert.equal(fs.existsSync(path.join(wrongWorktree, '.opencode/review-evidence')), false);
+    });
+  }
+  console.log(JSON.stringify({evidence_root_controls: rootResults, native_review: false}));
+  assert.equal(rootResults.filter(result => !result.pass).length, 0,
+    'every real fresh-plugin evidence-root selection control must pass');
+
   console.log(JSON.stringify({result: 'pass', tools: tools.length, pages: count,
     missing_tail_refused: true, premature_publish_refused: true, recovered_tail_finding_retained: true,
     recovered_full_input_accepted: true, stale_chronology_refused: true,
@@ -802,4 +885,8 @@ try {
   console.log(JSON.stringify({cold_v2_filesystem: 'pass', tests: Number(fsSummary[1]),
     assertions: Number(fsSummary[2]), moduleSha256: createHash('sha256').update(fs.readFileSync(fsOutput)).digest('hex'),
     namespace: 'eta-mu.boundaries.node.fs-test', native_review: false}));
-} finally {fs.rmSync(fixture, {recursive: true, force: true});}
+} finally {
+  fs.rmSync(fixture, {recursive: true, force: true});
+  if (inheritedEvidenceDirectory === undefined) delete process.env.REVIEW_EVIDENCE_DIR;
+  else process.env.REVIEW_EVIDENCE_DIR = inheritedEvidenceDirectory;
+}
