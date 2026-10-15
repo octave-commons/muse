@@ -393,3 +393,12 @@
   spore: none
   receipt-refs: /home/err/.local/share/openhax-codex/20261010/review-state/Muse-evidence-root-bound-main9d3-owned-repair-v1/canonical-Muse-plan-receipt-event.edn
   note: Exact published Muse main9d3 is47 commits ahead of pinnedb7; isolated owning source and unchanged dependency manifests preserve frozen oldprofile dirt. Actual ETA canonical scoped comment retains in_progress5 and only actualwriteid changes; boardledger unchanged. Test existing cold compiled tools with owned disagreeing context and authoritative nonblank hostbinding, then one-helper GREEN. Nativecontext unknown; no model/provider/install/credential/config/sourceadoption/publication/deployment credit. No spore or promotion.
+- ts: 2026-10-15T06:21:48.267933162Z
+  session: /home/err/.local/share/openhax-codex/20261010/muse-evidence-root-bound-main9d3-v1
+  task: Qualify bounded Muse explicit evidence directory repair under existing active ETA owner
+  p-efficiency: 0.87
+  p-friction: 0.45
+  p-skill-candidate: 0
+  spore: none
+  receipt-refs: /home/err/.local/share/openhax-codex/20261010/review-state/Muse-evidence-root-bound-main9d3-owned-repair-v1/canonical-Muse-result-receipt-event.edn
+  note: Genuine committed test-only RED exposed four explicit-root failures, then one existing-boundary helper GREEN passed six root controls, all prior owning review-input controls, five-target build, three cold hosts, 358 tests/4254 assertions and pinned zero-warning lint. Existing Mongo integration skipped after auth refusal; optional real retained-corpus audit unavailable/unqualified. Initial locale-only failure retained and environment repaired without assertion changes. Source and historical prefixes/frozen old profile preserved. No model/token/install/native/publication/adoption/deployment credit; root owns publication and later ETA consumption. Candidate0/no spore.
