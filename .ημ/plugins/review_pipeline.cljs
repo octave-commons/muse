@@ -25,7 +25,8 @@
 (defonce !sessions (atom {}))
 
 (defn- evidence-dir [ctx]
-  (bfs/join (or (:worktree ctx) (:directory ctx)) evidence-dir-name))
+  (or (bfs/env "REVIEW_EVIDENCE_DIR")
+      (bfs/join (or (:worktree ctx) (:directory ctx)) evidence-dir-name)))
 
 (defn- session-key [ctx]
   (evidence-dir ctx))
