@@ -394,3 +394,13 @@
   spore: none
   receipt-refs: "receipts.edn#sha256:3e2de14874115e9b2ffaed35b98d4786c58a57fac65c227c74f93a5aa0d7dbc2"
   note: "Use the child canonical card and receipt locations; preserve every old ledger byte and keep generated caller syntax distinct from hosted worker/model qualification. Runtime ownership stays in eta-mu; existing checks and approval policy remain authoritative. No new spore or promotion."
+
+- ts: "2026-10-23T07:40:50.248Z"
+  session: "/home/err/.local/share/foresight-worktrees/antigravity-members-20261023/muse"
+  task: "Bounded negative runner-group canary"
+  p-efficiency: 0.9
+  p-friction: 0.2
+  p-skill-candidate: 0
+  spore: none
+  receipt-refs: "receipts.edn#sha256:263717922497a35aa0b88fe6a6136b72dd77ff1c57de5e96b5943bcc091ead15"
+  note: "No allocation without an explicit native access-denial diagnostic remains UNKNOWN. Preserve native API evidence, cancel the owned pending run, and remove only the temporary probe source."
