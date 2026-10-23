@@ -1,8 +1,8 @@
 {
   "source_repository": "open-hax/eta-mu",
-  "source_revision": "6461caabbe4eefbd1615036936863d06ee69d68d",
+  "source_revision": "d79b80505e1fef9d3798175ce14261ebd0281b49",
   "source_path": ".github/workflows/antigravity-code-review.yml",
-  "sha256": "f6c5f07015846b14a27f03bd8a59cd5445cd06ec10f5613413c92d12ca35d82b",
+  "sha256": "9b2e4afdbde0aaa60896d523f1355141eeec9f4888179e59f85c8ae167e6dceb",
   "purpose": "Organization-local compatibility mirror for restricted Octave Commons runner group; eta-mu retains implementation ownership.",
   "native_approval": false,
   "hosted_activation": false
