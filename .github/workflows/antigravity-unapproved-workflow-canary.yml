@@ -1,0 +1,23 @@
+# Temporary operator-authorized negative runner-group qualification probe.
+name: Antigravity unapproved workflow canary
+
+on:
+  pull_request:
+    types: [synchronize]
+
+permissions: {}
+
+jobs:
+  unapproved-workflow:
+    name: Unapproved workflow must receive no runner
+    permissions: {}
+    runs-on:
+      group: antigravity-review
+      labels: [self-hosted, Linux, X64, antigravity-review]
+    timeout-minutes: 1
+    steps:
+      - name: Allocation failure marker
+        shell: bash
+        run: |
+          printf '%s\n' 'UNAPPROVED_WORKFLOW_ALLOCATED'
+          exit 97
