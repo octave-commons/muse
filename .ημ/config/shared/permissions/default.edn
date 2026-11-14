@@ -5,6 +5,9 @@
   {:id      :default/allow-ledgers
    :applies #{:receipt_river :session_mycology}
    :policy  :allow}
+  {:id      :default/ask-axxium
+   :applies #{:axxium_*}
+   :policy  :ask}
   {:id      :default/allow-websearch
    :applies #{:websearch_openhax}
    :policy  :allow}]}

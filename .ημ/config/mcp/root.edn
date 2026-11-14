@@ -12,6 +12,7 @@
   "../shared/plugins/websearch.edn"
   "../shared/plugins/actors.edn"
   "../shared/plugins/actor-watch.edn"
+  "../shared/plugins/axxium.edn"
   "../shared/plugins/apifany.edn"
   ]
 

@@ -1,5 +1,5 @@
 {:dev
- {:allow #{:receipt/* :session/* :web/* :muse/* :phase/* :actor/* :task/* :agent/* :apifany/* :policy/* :edn/* :review/*}
+ {:allow #{:receipt/* :session/* :web/* :muse/* :phase/* :actor/* :task/* :agent/* :apifany/* :axxium/* :policy/* :edn/* :review/*}
   :audit :verbose}
 
  :ci
@@ -14,5 +14,5 @@
   :audit :strict}
 
  :prod
- {:allow #{:receipt/* :session/* :web/* :muse/* :phase/* :actor/* :task/* :agent/* :apifany/* :policy/* :edn/* :review/*}
+ {:allow #{:receipt/* :session/* :web/* :muse/* :phase/* :actor/* :task/* :agent/* :apifany/* :axxium/* :policy/* :edn/* :review/*}
   :audit :full}}

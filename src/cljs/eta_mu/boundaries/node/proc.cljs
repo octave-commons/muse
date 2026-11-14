@@ -8,13 +8,12 @@
 (defn run!
   "Run [cmd & args] in `cwd`. Resolves (never rejects) to
    {:ok bool :code int :out string :err string}."
-  [command {:keys [cwd]}]
+  [command {:keys [cwd signal]}]
   (js/Promise.
    (fn [resolve _reject]
-     (let [child (cp/spawn (first command)
-                           (clj->js (rest command))
-                           #js {:cwd cwd :shell false
-                                :stdio #js ["ignore" "pipe" "pipe"]})
+     (let [options #js {:cwd cwd :shell false :stdio #js ["ignore" "pipe" "pipe"]}
+           _ (when (some? signal) (aset options "signal" signal))
+           child (cp/spawn (first command) (clj->js (rest command)) options)
            out   (atom [])
            err   (atom [])]
        (.on (.-stdout child) "data" #(swap! out conj (str %)))

@@ -10,6 +10,7 @@
             [plugins.actor-watch :as actor-watch]
             [plugins.actors :as actors]
             [plugins.apifany :as apifany]
+            [plugins.axxium :as axxium]
             [plugins.edn-ledger :as edn-ledger]
             [plugins.kanban-gate :as kanban-gate]
             [plugins.receipt-river :as receipt-river]
@@ -22,6 +23,7 @@
   {'plugins.actor-watch/plugin       actor-watch/plugin
    'plugins.actors/plugin           actors/plugin
    'plugins.apifany/plugin          apifany/plugin
+   'plugins.axxium/plugin           axxium/plugin
    'plugins.edn-ledger/plugin       edn-ledger/plugin
    'plugins.kanban-gate/plugin      kanban-gate/plugin
    'plugins.receipt-river/plugin    receipt-river/plugin
@@ -44,6 +46,7 @@
           'plugins.websearch/plugin
           'plugins.actors/plugin
           'plugins.actor-watch/plugin
+          'plugins.axxium/plugin
           'plugins.apifany/plugin
           'plugins.kanban-gate/plugin]
          (config/resources loaded))))
@@ -51,7 +54,7 @@
 (deftest exposure-linking
   (let [registry (config/apply-exposure loaded resource-table)]
     (testing "all exposed tools have real function handlers"
-      (is (= 36 (count (:tools registry))))
+      (is (= 45 (count (:tools registry))))
       (is (every? fn? (map :handler (:tools registry)))))
     (testing "plugin init carried into the registry"
       (is (= [actors/init! actor-watch/init! apifany/init!] (:inits registry))))
@@ -64,6 +67,10 @@
         (is (contains? names "actor_watch_cancel"))
         (is (not (contains? names "actor_monitor")))
         (is (contains? names "apifany_read_mailbox"))
+        (is (contains? names "axxium_read_inbox"))
+        (is (contains? names "axxium_drive_get"))
+        (is (contains? names "axxium_drive_put"))
+        (is (contains? names "axxium_github_comment"))
         (is (contains? names "receipt_river"))
         (is (contains? names "edn_ledger"))
         (is (contains? names "session_mycology"))
@@ -98,7 +105,7 @@
                      (dsl.profile/apply-profile (config/active-profile loaded))
                      dsl.normalize/validate-registry!
                      dsl.compile/compile-adapter)]
-    (is (= 36 (count (:tools adapter))))
+    (is (= 45 (count (:tools adapter))))
     (is (every? string? (map :name (:tools adapter))))
     (is (= 3 (count (:inits adapter))))))
 

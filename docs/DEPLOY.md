@@ -4,7 +4,7 @@ Muse owns the compatibility compiler, artifact convergence daemon, and host adap
 
 ## Toolchain and installation
 
-Use Node.js 20 or newer, Java 21, Clojure CLI, and clj-kondo. CI pins Clojure CLI 1.12.5.1654; the repository pins shadow-cljs 3.4.4 in both manifests. The Foresight sandbox provides these tools in its existing shared toolchain.
+Use Node.js 20.3.0 or newer, Java 21, Clojure CLI, and clj-kondo. CI pins Clojure CLI 1.12.5.1654. The repository pins shadow-cljs 3.4.4 in both manifests. The Foresight sandbox provides these tools in its existing shared toolchain.
 
 `deps.edn` contains all compiler dependencies. Neither installation nor compilation requires sibling source stubs or the deprecated standalone event-ledger package.
 

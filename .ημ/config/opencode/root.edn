@@ -10,6 +10,7 @@
   "../shared/plugins/websearch.edn"
   "../shared/plugins/actors.edn"
   "../shared/plugins/actor-watch.edn"
+  "../shared/plugins/axxium.edn"
   "../shared/plugins/apifany.edn"
   "../shared/plugins/kanban-gate.edn"
   ;; target-specific overrides below
