@@ -59,14 +59,37 @@
     (catch :default _
       (fail! "Axxium message body must be a JSON object."))))
 
-(defn- unknown-write! [request-id]
-  (throw (ex-info "Axxium write outcome is unknown. Reuse the same request ID to reconcile the result."
-                  {:reason :write-outcome-unknown :request-id request-id})))
+(defn- github-diagnostic [payload]
+  (when-let [data (some-> payload .-github)]
+    (let [status (.-http_status data)
+          provider-id (.-request_id data)
+          kind (.-target_kind data)
+          phase (.-phase data)]
+      (not-empty
+       (cond-> {}
+         (and (integer? status) (<= 100 status 599))
+         (assoc :http-status status)
+         (and (string? provider-id)
+              (re-matches #"[A-Fa-f0-9]{1,16}(?::[A-Fa-f0-9]{1,16}){2,7}" provider-id))
+         (assoc :provider-request-id (str/upper-case provider-id))
+         (#{"issue" "pull-request"} kind) (assoc :target-kind kind)
+         (= "comment-post" phase) (assoc :phase phase))))))
 
-(defn- ^:async response-edn! [response request-id]
+(defn- diagnostic-suffix [{:keys [http-status provider-request-id]}]
+  (str (when http-status (str " GitHub HTTP " http-status "."))
+       (when provider-request-id (str " GitHub request ID " provider-request-id "."))))
+
+(defn- unknown-write!
+  ([request-id] (unknown-write! request-id nil))
+  ([request-id diagnostic]
+   (throw (ex-info (str "Axxium write outcome is unknown. Reuse the same request ID to reconcile the result."
+                        (diagnostic-suffix diagnostic))
+                   (cond-> {:reason :write-outcome-unknown :request-id request-id}
+                     diagnostic (assoc :github diagnostic))))))
+
+(defn- ^:async response-payload! [response request-id]
   (try
-    (let [edn (some-> (await (.json response)) .-edn)]
-      (when (string? edn) edn))
+    (await (.json response))
     (catch :default error
       (if request-id (unknown-write! request-id) (throw error)))))
 
@@ -89,13 +112,21 @@
                    (and (= 401 status) (= "drive_put" tool))))
       (unknown-write! request-id))
     (case status
-      200 (or (await (response-edn! response request-id))
-              (if request-id (unknown-write! request-id) (fail! "Invalid Axxium response.")))
-      400 (let [edn (await (response-edn! response request-id))
-                code (when edn (second (re-matches #"\{:error :([a-z-]+)\}" edn)))]
+      200 (let [edn (some-> (await (response-payload! response request-id)) .-edn)]
+            (if (string? edn)
+              edn
+              (if request-id (unknown-write! request-id) (fail! "Invalid Axxium response."))))
+      400 (let [payload (await (response-payload! response request-id))
+                edn (some-> payload .-edn)
+                code (when (string? edn) (second (re-matches #"\{:error :([a-z-]+)\}" edn)))
+                diagnostic (when (= "github_comment" tool) (github-diagnostic payload))]
             (when (and request-id (or (nil? code)
                                       (#{"comment-outcome-unknown" "reconciliation-required"} code)))
-              (unknown-write! request-id))
+              (unknown-write! request-id diagnostic))
+            (when (and (= "github_comment" tool) (= "comment-provider-rejected" code))
+              (throw (ex-info (str "GitHub rejected the comment." (diagnostic-suffix diagnostic))
+                              (cond-> {:reason :comment-provider-rejected}
+                                diagnostic (assoc :github diagnostic)))))
             (fail! (case code
                      "not-connected" "No Google Drive grant is connected for this actor."
                      "not-found" "The resource is unavailable to this actor."
