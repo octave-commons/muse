@@ -11,7 +11,10 @@
    they are ignored on this target."
   (:require ["@modelcontextprotocol/sdk/server/mcp.js" :refer [McpServer]]
             ["@modelcontextprotocol/sdk/server/stdio.js" :refer [StdioServerTransport]]
-            [eta-mu.dsl.zod :as zod]))
+            [eta-mu.dsl.zod :as zod]
+            [eta-mu.extern.axxium-codex :as axxium-codex]
+            [eta-mu.extern.axxium-stream :as axxium-stream]
+            [eta-mu.extern.axxium-tools :as axxium-tools]))
 
 ;; ---------------------------------------------------------------------------
 ;; Ingress / egress
@@ -61,8 +64,34 @@
     (doseq [tool tools] (register-tool! server tool))
     server))
 
+(defn- ^:async start-inbox-wake! [signal]
+  (try
+    (let [{:keys [origin] :as connection} (axxium-tools/connection!)
+          wake! (axxium-codex/notifier (aget (.-env js/process) "AXXIUM_CODEX_THREAD_ID") signal)
+          {:keys [done]} (await
+                         (axxium-stream/start!
+                            (assoc connection
+                                   :endpoint (str origin "/api/mailbox/mcp")
+                                   :on-wake! wake!
+                                   :signal signal)))]
+      (when (not= :aborted (await done))
+        (.error js/console "Axxium inbox stream closed.")))
+    (catch :default _
+      (.error js/console "Axxium inbox stream could not start."))))
+
 (defn serve!
   "Start an MCP server for `adapter` over stdio. Returns the connect promise."
   [adapter info]
   (let [server (render-server adapter info)]
+    (when (= "codex-desktop" (aget (.-env js/process) "AXXIUM_WAKE"))
+      (let [protocol (.-server server)
+            controller (js/AbortController.)
+            started? (atom false)
+            stop! #(.abort controller)]
+        (.once (.-stdin js/process) "end" stop!)
+        (.once (.-stdin js/process) "close" stop!)
+        (set! (.-onclose protocol) stop!)
+        (set! (.-oninitialized protocol)
+              #(when (compare-and-set! started? false true)
+                 (start-inbox-wake! (.-signal controller))))))
     (.connect server (StdioServerTransport.))))

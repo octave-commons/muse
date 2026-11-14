@@ -36,6 +36,16 @@
       :source-map false,
       :infer-externs false,
       :warnings {:infer-warning false}}},
+    :opencode-wake
+    {:target :esm,
+     :runtime :node,
+     :output-dir "target/opencode-wake",
+     :modules {:opencode-wake {:output-name "opencode-wake.mjs"
+                               :init-fn eta-mu.boundaries.opencode-wake/init!}},
+     :js-options {:keep-as-import #{"node:fs" "node:path"}},
+     :compiler-options {:output-feature-set :es-next,
+                        :optimizations :simple,
+                        :infer-externs false}},
     :opencode-plugin
     {:target :esm,
      :runtime :node,
