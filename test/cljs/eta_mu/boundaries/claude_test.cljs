@@ -73,9 +73,6 @@
 
 (test/deftest opted-in-channel-notifies-after-mcp-initialization
   (test/async done
-    (letfn [(^:async run! []
-              (try
-                (await (verify-inbox-channel!))
-                (catch :default error (test/is false (str error)))
-                (finally (done))))]
-      (run!))))
+    (-> (verify-inbox-channel!)
+        (.catch (fn [error] (test/is false (str error " " (pr-str (ex-data error))))))
+        (.finally done))))

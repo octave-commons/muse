@@ -120,9 +120,6 @@
 
 (deftest only-a-verified-notice-wakes-the-pinned-opencode-session
   (async done
-    (letfn [(^:async run! []
-              (try
-                (await (verify-adapter!))
-                (catch :default error (is false (str error " " (pr-str (ex-data error)))))
-                (finally (done))))]
-      (run!))))
+    (-> (verify-adapter!)
+        (.catch (fn [error] (is false (str error " " (pr-str (ex-data error))))))
+        (.finally done))))

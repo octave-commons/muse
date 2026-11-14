@@ -133,9 +133,6 @@
 
 (deftest verified-inbox-emits-only-a-pinned-wake-hint
   (async done
-    (letfn [(^:async run! []
-              (try
-                (await (verify-stream!))
-                (catch :default error (is false (str error " " (pr-str (ex-data error)))))
-                (finally (done))))]
-      (run!))))
+    (-> (verify-stream!)
+        (.catch (fn [error] (is false (str error " " (pr-str (ex-data error))))))
+        (.finally done))))
