@@ -60,6 +60,11 @@
    (js/JSON.stringify #js {:edn edn})
    #js {:status status :headers #js {"content-type" "application/json"}}))
 
+(defn- response-with-diagnostic [edn diagnostic]
+  (js/Response.
+   (js/JSON.stringify #js {:edn edn :github (clj->js diagnostic)})
+   #js {:status 400 :headers #js {"content-type" "application/json"}}))
+
 (defn- ^:async get-error! [call!]
   (try
     (await (call!))
@@ -140,5 +145,59 @@
 (deftest actor-rpc-qualifies-read-errors-and-uncertain-writes
   (async done
     (-> (verify-actor-rpc!)
+        (.catch (fn [error] (is false (str error))))
+        (.finally done))))
+
+(defn- ^:async verify-github-diagnostics! []
+  (let [{:keys [cleanup!]} (configure-fixture!)
+        original-fetch js/fetch
+        request-id "c1111111-1111-4111-8111-111111111111"
+        tool! #(tools/github-comment! {:repository "fixture/repo" :number 1
+                                        :body "fixture comment" :request_id request-id})
+        diagnostic {"http_status" 403 "request_id" "a3a:20:1B"
+                    "target_kind" "pull-request" "phase" "comment-post"}
+        invalid {"http_status" 2000 "request_id" "unexpected value\nprovider response"
+                 "target_kind" "unknown" "phase" "unknown" "message" "untrusted message"}
+        expected {:http-status 403 :provider-request-id "A3A:20:1B"
+                  :target-kind "pull-request" :phase "comment-post"}
+        calls (atom [])
+        reply (atom nil)]
+    (try
+      (set! js/globalThis.fetch
+            (fn [_ options]
+              (swap! calls conj (.-arguments (js/JSON.parse (.-body options))))
+              @reply))
+      (doseq [[code incoming reason visible]
+              [["comment-provider-rejected" diagnostic :comment-provider-rejected expected]
+               ["comment-outcome-unknown" diagnostic :write-outcome-unknown expected]
+               ["comment-provider-rejected" nil :comment-provider-rejected nil]
+               ["comment-outcome-unknown" invalid :write-outcome-unknown nil]
+               ["comment-outcome-unknown" {"http_status" 502} :write-outcome-unknown {:http-status 502}]]]
+        (let [before (count @calls)]
+          (reset! reply (response-with-diagnostic (str "{:error :" code "}") incoming))
+          (let [error (await (get-error! tool!))
+                message (.-message error)
+                unknown? (= :write-outcome-unknown reason)]
+            (is (= (inc before) (count @calls)))
+            (is (.includes (peek @calls) request-id))
+            (is (= (cond-> {:reason reason}
+                     unknown? (assoc :request-id request-id)
+                     visible (assoc :github visible))
+                   (ex-data error)))
+            (is (re-find (if unknown? #"Reuse the same request ID" #"GitHub rejected the comment") message))
+            (is (= (boolean (:http-status visible)) (.includes message "GitHub HTTP")))
+            (is (= (boolean (:provider-request-id visible)) (.includes message "GitHub request ID A3A:20:1B")))
+            (is (not (.includes message "untrusted message")))
+            (is (not (.includes message "unexpected value"))))))
+      (let [edn "{:result {:github/target-kind :issue, :github/http-status 201, :github/provider-request-id \"AB:CD:EF\"}}"]
+        (reset! reply (response 200 edn))
+        (is (= edn (await (tool!)))))
+      (finally
+        (set! js/globalThis.fetch original-fetch)
+        (cleanup!)))))
+
+(deftest github-comment-reports-only-validated-provider-diagnostics
+  (async done
+    (-> (verify-github-diagnostics!)
         (.catch (fn [error] (is false (str error))))
         (.finally done))))

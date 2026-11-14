@@ -104,3 +104,6 @@ the managed-write route is deployed. Supply the exact repository, number,
 comment text and a unique UUID request ID. Confirm the native App bot and
 comment URL in the receipt. If Axxium reports an uncertain effect, reconcile
 it using the same request ID before sending another comment.
+The tool reports confirmed GitHub rejections and can include the provider's
+HTTP status and request ID. Use the UUID you supplied to Axxium for
+reconciliation. The provider request ID identifies the GitHub HTTP request.
