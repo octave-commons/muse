@@ -136,3 +136,63 @@
     (-> (verify-stream!)
         (.catch (fn [error] (is false (str error " " (pr-str (ex-data error))))))
         (.finally done))))
+
+(defn- fixture-fetch [chunks]
+  (let [endpoint "https://axxium.test/api/mailbox/mcp"]
+    (fn [_ options]
+      (js/Promise.resolve
+       (if (= "GET" (.-method options))
+         (js/Response.
+          (js/ReadableStream.
+           #js {:start (fn [controller]
+                         (let [encoder (js/TextEncoder.)]
+                           (doseq [chunk chunks]
+                             (.enqueue controller (.encode encoder chunk))))
+                         (.close controller))})
+          #js {:headers #js {"content-type" "text/event-stream"}})
+         (let [request (js/JSON.parse (.-body options))
+               method (.-method request)]
+           (if (= "notifications/initialized" method)
+             (js/Response. nil #js {:status 202})
+             (let [result (case method
+                            "initialize" #js {:protocolVersion law/protocol-version
+                                              :capabilities #js {:resources #js {:subscribe true}}}
+                            "tools/call" #js {:structuredContent
+                                              #js {:did fixture-mailbox :aud endpoint :method "actor-node"}}
+                            "resources/subscribe" #js {})]
+               (js/Response.
+                (js/JSON.stringify #js {:jsonrpc "2.0" :id (.-id request) :result result})
+                #js {:headers #js {"content-type" "application/json"
+                                   "mcp-session-id" fixture-session}})))))))))
+
+(defn- ^:async verify-frame-limit! []
+  (let [original-fetch js/fetch
+        update (update-frame law/inbox-uri)
+        max-frame (str ":" (.repeat "a" 65535))
+        oversized (str ":" (.repeat "a" 65536))]
+    (try
+      (doseq [[chunks expected-reason hint-count]
+              [[[(str ": " (.repeat "a" 40000) "\n\n" update
+                      ": " (.repeat "b" 40000) "\n\n" update)]
+                :stream-closed 2]
+               [[(str max-frame "\r\n\r") (str "\n" update)] :stream-closed 1]
+               [[(str oversized "\n\n" update)] :stream-frame-too-large 0]
+               [[oversized] :stream-frame-too-large 0]]]
+        (set! js/globalThis.fetch (fixture-fetch chunks))
+        (let [hints (atom [])
+              closed (atom [])
+              {:keys [done]}
+              (await (stream/start! {:endpoint "https://axxium.test/api/mailbox/mcp"
+                                     :actor-did fixture-actor :mailbox-did fixture-mailbox
+                                     :authorization fixture-auth :on-wake! #(swap! hints conj %)
+                                     :on-close! #(swap! closed conj %)}))]
+          (is (= expected-reason (await done)))
+          (is (= [expected-reason] @closed))
+          (is (= (repeat hint-count expected-hint) @hints))))
+      (finally (set! js/globalThis.fetch original-fetch)))))
+
+(deftest frame-limit-applies-to-each-complete-or-buffered-frame
+  (async done
+    (-> (verify-frame-limit!)
+        (.catch (fn [error] (is false (str error " " (pr-str (ex-data error))))))
+        (.finally done))))

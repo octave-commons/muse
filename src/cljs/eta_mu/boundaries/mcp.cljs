@@ -73,9 +73,10 @@
                             (assoc connection
                                    :endpoint (str origin "/api/mailbox/mcp")
                                    :on-wake! wake!
-                                   :signal signal)))]
-      (when (not= :aborted (await done))
-        (.error js/console "Axxium inbox stream closed.")))
+                                   :signal signal)))
+          reason (await done)]
+      (when (not= :aborted reason)
+        (.error js/console (str "Axxium inbox stream closed (" (name reason) ")."))))
     (catch :default _
       (.error js/console "Axxium inbox stream could not start."))))
 

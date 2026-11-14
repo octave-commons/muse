@@ -117,7 +117,8 @@
                                   :on-wake! on-wake!
                                   :on-close! (fn [reason]
                                                (when-not (= :aborted reason)
-                                                 (js/console.error "[muse] Axxium inbox channel stopped.")))))))
+                                                 (js/console.error
+                                                  (str "[muse] Axxium inbox channel stopped (" (name reason) ")."))))))))
 
 (defn serve!
   "Start an MCP server for adapter over stdio. The Axxium channel starts only

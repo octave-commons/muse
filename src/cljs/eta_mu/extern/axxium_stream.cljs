@@ -90,8 +90,13 @@
   (let [frames (str/split text #"\r?\n\r?\n" -1)
         pending (peek frames)]
     (doseq [frame (pop frames)]
+      (require! (<= (count frame) max-sse-chars) :stream-frame-too-large)
       (when (and (not (.-aborted signal)) (law/inbox-update? (notice frame)))
         (await (on-wake! hint))))
+    ;; A delimiter split across chunks contributes up to three pending characters.
+    (require! (<= (- (count pending) (count (re-find #"(?:\r?\n\r?|\r)$" pending)))
+                  max-sse-chars)
+              :stream-frame-too-large)
     pending))
 
 (defn- ^:async receive! [response signal on-wake! hint]
@@ -100,9 +105,7 @@
       (loop [pending ""]
         (let [chunk (await (.read reader))]
           (when-not (or (.-done chunk) (.-aborted signal))
-            (let [next-text (str pending (.-value chunk))]
-              (require! (<= (count next-text) max-sse-chars) :stream-frame-too-large)
-              (recur (await (deliver-frames! next-text signal on-wake! hint)))))))
+            (recur (await (deliver-frames! (str pending (.-value chunk)) signal on-wake! hint))))))
       (finally (.releaseLock reader)))))
 
 (defn- ^:async open-session! [url signal headers mailbox-did stream?]

@@ -9,6 +9,9 @@
 (def ^:private did
   [:and :string [:re #"^did:[a-z0-9]+:[A-Za-z0-9._:%-]{1,400}$"]])
 
+(defn valid-did? [value]
+  (m/validate did value))
+
 (def connection-options
   [:map
    [:endpoint :string]

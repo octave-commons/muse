@@ -4,7 +4,8 @@
    Only the pinned Axxium origin receives the credential."
   (:require ["node:fs" :as fs]
             ["node:path" :as path]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [eta-mu.law.axxium-inbox :as law]))
 
 (defn- fail! [message]
   (throw (ex-info message {})))
@@ -39,13 +40,13 @@
         actor-did (aget env "AXXIUM_ACTOR_DID")
         mailbox-did (or (aget env "AXXIUM_MAILBOX_DID") actor-did)]
     (when-not (and (string? origin) (re-matches #"https://[A-Za-z0-9.-]+(?::[0-9]+)?" origin)
-                   (string? actor-did)
+                   (law/valid-did? actor-did)
                    (str/starts-with? actor-did
                                      (str "did:web:" (str/replace (subs origin 8) ":" "%3A")
-                                          ":actors:"))
-                   (re-matches #"did:[A-Za-z0-9%._:-]+" actor-did)
-                   (string? mailbox-did) (re-matches #"did:[A-Za-z0-9%._:-]+" mailbox-did))
+                                          ":actors:")))
       (fail! "Set AXXIUM_ORIGIN and AXXIUM_ACTOR_DID to the authorized deployment and actor."))
+    (when-not (law/valid-did? mailbox-did)
+      (fail! "Set AXXIUM_MAILBOX_DID to a valid mailbox DID."))
     {:origin origin :actor-did actor-did :mailbox-did mailbox-did
      :authorization (str "Bearer " (read-key! (aget env "AXXIUM_BOOTSTRAP_FILE")))}))
 
@@ -58,34 +59,50 @@
     (catch :default _
       (fail! "Axxium message body must be a JSON object."))))
 
+(defn- unknown-write! [request-id]
+  (throw (ex-info "Axxium write outcome is unknown. Reuse the same request ID to reconcile the result."
+                  {:reason :write-outcome-unknown :request-id request-id})))
+
+(defn- ^:async response-edn! [response request-id]
+  (try
+    (let [edn (some-> (await (.json response)) .-edn)]
+      (when (string? edn) edn))
+    (catch :default error
+      (if request-id (unknown-write! request-id) (throw error)))))
+
 (defn- ^:async actor-rpc!
-  [route tool args timeout]
-  (let [{:keys [origin actor-did authorization]} (connection!)
-        response (await
-                  (js/fetch (str origin route)
-                            #js {:method "POST" :redirect "error"
-                                 :signal (js/AbortSignal.timeout timeout)
-                                 :headers #js {"Content-Type" "application/json"
-                                               "Authorization" authorization
-                                               "X-Axxium-Actor" actor-did}
-                                 :body (js/JSON.stringify #js {:tool tool
-                                                              :arguments (pr-str args)})}))
+  [{:keys [origin actor-did authorization]} route tool args timeout request-id]
+  (let [options #js {:method "POST" :redirect "error"
+                     :signal (js/AbortSignal.timeout timeout)
+                     :headers #js {"Content-Type" "application/json"
+                                   "Authorization" authorization
+                                   "X-Axxium-Actor" actor-did}
+                     :body (js/JSON.stringify #js {:tool tool :arguments (pr-str args)})}
+        response (try
+                   (await (js/fetch (str origin route) options))
+                   (catch :default error
+                     (if request-id (unknown-write! request-id) (throw error))))
         status (.-status response)]
+    ;; Drive can recheck actor authorization after a provider upload.
+    (when (and request-id
+               (or (<= 500 status 599)
+                   (and (= 401 status) (= "drive_put" tool))))
+      (unknown-write! request-id))
     (case status
-      200 (let [payload (await (.json response))]
-            (if (string? (.-edn payload))
-              (.-edn payload)
-              (fail! "Invalid Axxium response.")))
-      400 (let [payload (await (.json response))
-                edn (.-edn payload)
-                code (when (string? edn) (second (re-matches #"\{:error :([a-z-]+)\}" edn)))]
+      200 (or (await (response-edn! response request-id))
+              (if request-id (unknown-write! request-id) (fail! "Invalid Axxium response.")))
+      400 (let [edn (await (response-edn! response request-id))
+                code (when edn (second (re-matches #"\{:error :([a-z-]+)\}" edn)))]
+            (when (and request-id (or (nil? code)
+                                      (#{"comment-outcome-unknown" "reconciliation-required"} code)))
+              (unknown-write! request-id))
             (fail! (case code
                      "not-connected" "No Google Drive grant is connected for this actor."
                      "not-found" "The resource is unavailable to this actor."
                      "forbidden" "This Axxium actor cannot access the resource."
                      "exists" "A Drive resource with this name already exists."
                      "exists-untracked" "Drive has a same-name file without an Axxium record."
-                     "comment-outcome-unknown" "GitHub outcome is unknown. Preserve the request ID for reconciliation."
+                     "idempotency-conflict" "This request ID was used for different content."
                      "comment-request-conflict" "This request ID was used for different content."
                      "unknown-tool" "This Axxium operation has not been deployed."
                      "Axxium rejected the request.")))
@@ -102,7 +119,7 @@
                "drive_list" (cond-> {} argument (assoc :drive/ref argument))
                "drive_get" {:resource/id argument}
                (fail! "Unsupported Axxium Drive read."))]
-    (actor-rpc! "/api/drive/agent" tool args 20000)))
+    (actor-rpc! (connection!) "/api/drive/agent" tool args 20000 nil)))
 
 (defn drive-put!
   "Create an actor-owned file using the candidate create-only contract."
@@ -113,14 +130,14 @@
         args (cond-> {:drive/name file_name :drive/value value
                       :drive/idempotency-key request_id}
                (seq event_refs) (assoc :drive/refs event_refs))]
-    (actor-rpc! "/api/drive/agent" "drive_put" args 60000)))
+    (actor-rpc! (connection!) "/api/drive/agent" "drive_put" args 60000 request_id)))
 
 (defn github-comment!
   "Post an actor-attributed GitHub conversation comment without returning a token."
   [{:keys [repository number body request_id]}]
-  (let [did (:actor-did (connection!))]
-    (actor-rpc! "/api/identity/agent" "github_comment"
-                {:actor/did did :credential/label "github-app"
+  (let [{:keys [actor-did] :as connection} (connection!)]
+    (actor-rpc! connection "/api/identity/agent" "github_comment"
+                {:actor/did actor-did :credential/label "github-app"
                  :github/repo repository :github/number number :github/body body
                  :github/request-id request_id}
-                45000)))
+                45000 request_id)))

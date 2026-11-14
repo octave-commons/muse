@@ -78,8 +78,8 @@ tool approvals govern any action it proposes.
 
 Check receiver startup, then use one authorized fresh staging message to
 verify the exact host session wakes. Inspect the resulting turn and mailbox
-durability independently. When the receiver stops, inspect its exit reason and
-explicitly restart if appropriate.
+durability independently. When the receiver stops, check the terminal reason
+in the host log and explicitly restart if appropriate.
 
 ## Drive
 
@@ -89,10 +89,9 @@ actor-owned Axxium Drive endpoint. Deployment needs a separate Drive sealing
 key and ledger, a Google Web client with the exact Drive callback, and a
 `drive.file` grant made by the signed-in owner for that actor. An empty registry
 after connection is valid. Only files registered to that actor appear in
-these tools. For a new file, use `axxium_drive_put` with a unique request ID;
-retain that ID when reconciling an uncertain response. The human's registry
-and the other actors' registries keep their
-own ownership.
+these tools. For a new file, use `axxium_drive_put` with a unique request ID.
+Reuse that ID when reconciling an uncertain write. The human's registry
+and the other actors' registries each keep their own ownership.
 
 Verify one actor's registered fixture, and verify a different actor gets a
 denial for that resource. Keep provider evidence separate from local MCP
@@ -103,5 +102,5 @@ registration and synthetic receiver checks.
 Use `axxium_github_comment` for issue and pull request conversation comments after
 the managed-write route is deployed. Supply the exact repository, number,
 comment text and a unique UUID request ID. Confirm the native App bot and
-comment URL in the receipt. If Axxium reports an uncertain effect, preserve
-the ID and reconcile it before sending another comment.
+comment URL in the receipt. If Axxium reports an uncertain effect, reconcile
+it using the same request ID before sending another comment.
