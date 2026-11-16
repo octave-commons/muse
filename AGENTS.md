@@ -90,10 +90,12 @@ the repository.
    host hooks and tools. Only these boundaries require the Malli → zod
    conversion in `eta-mu.dsl.zod`.
 4. Each target's `:flush` hook (`emit-host-config`) writes that target's host
-   artifacts listed above. The OpenCode shim re-exports only functions, because
-   OpenCode requires every export of a plugin file to be a function. The
-   compiled Claude server writes its own hook config afterwards
-   (`scripts/build-claude-target.sh` explains why).
+   artifacts listed above: for OpenCode, the bundle
+   `.opencode/dist/eta-mu-actors.js` and the function-only export shim
+   `.opencode/plugins/eta-mu-actors.js` (OpenCode 1.17 requires every export of
+   a plugin file to be a function); for MCP and Claude, the output
+   `package.json` and `.mcp.json`. The compiled Claude server writes its own
+   hook config afterwards (`scripts/build-claude-target.sh` explains why).
 
 ### Namespace architecture
 
@@ -112,10 +114,12 @@ Namespaces that predate this layering:
 - `dsl.*` — the plugin DSL; `deftool`/`defhook`/`defplugin` emit host-agnostic
   data that is compiled into adapters.
 - `actor.*` — actor/envelope/store model; backend-agnostic.
+- `daemon.*` — the filesystem-watcher daemon's effect orchestration.
 - `opencode.*` — config/settings shaping; pure merge logic consumed by the boundary.
 
-Only `extern.*` and the existing `boundaries.*` touch raw host objects;
-`infra.*` orchestrates effects through them. Name new namespaces with the
+Only `extern.*` and `boundaries.*` perform I/O directly. `infra.*`, `daemon.*`
+and the actor runtime perform effects only through them. `domain.*`, `law.*`,
+`shape.*`, `dsl.*` and `opencode.*` do no I/O. Name new namespaces with the
 `law/shape/extern/domain/infra` layers and follow the construction order below.
 
 ### Daemon
@@ -161,8 +165,9 @@ eta-mu/packages/clio.
 - **`receipt_river` tool:** `.ημ/plugins/receipt_river.cljs` (id
   `:receipt/river`; pure logic in `src/cljs/eta_mu/domain/receipts.cljc`)
   offers `status | bootstrap | append | tail | validate` over a single
-  `receipts.edn`. Never point it at a repository with `.ημ/receipts/`
-  segments. Other repositories may consume the published plugin; that does not
+  `receipts.edn`. Per the segmented-mode rules in
+  `~/.agents/skills/receipt-river/SKILL.md`, never point it at a repository
+  with `.ημ/receipts/` segments. Other repositories may consume the published plugin; that does not
   transfer event-ledger or runtime authority into Muse.
 - **Session mycology:** `.ημ/session-mycology/ledger.md`.
 - **Kanban events:** `.ημ/kanban-events/ledger.edn`, written only by Rheos.
@@ -240,8 +245,6 @@ Always use `^:async` metadata (ClojureScript ≥ 1.12.145). Never use
 - **Error handling**: Try/catch only when necessary, proper error logging via bus events
 - **Formatting**: Consistent indentation, no unnecessary destructuring, single-responsibility functions
 
-This repository currently has no UI, TypeScript or event bus; the Reagent,
-Tailwind, TypeScript and bus-event clauses apply when such code is added.
 `STYLE.md` repeats a subset of these rules.
 
 ## Board operations
@@ -255,7 +258,7 @@ Tailwind, TypeScript and bus-event clauses apply when such code is added.
   - Status moves go through this CLI or the Rheos `status-update` command, never hand-edited frontmatter; the file watcher flags direct edits as drift.
 - **Markdown authoring is first-class input.** Cards may be created and edited manually as Markdown with explicit `uuid:` identity, outcome, scope, acceptance and verification. Use comma-separated scalar labels. Manual creation does not require an invented `write-id` or `kanban.task-created` event. Rheos alone owns operational status, comments, transitions and drift reconciliation; never hand-edit an existing card status or fabricate engine events. A harness without Rheos may inspect artifacts and author card content but must not claim board validation.
 - **Walk lawful hops.** There are no shortcut edges. To move a card multiple columns forward, step through each lawful transition in order. The direct `in_progress → review` edge exists only when the build-gate passes.
-- **Done needs evidence.** The `kanban-gate` plugin (`.ημ/plugins/kanban_gate.cljs`, in the OpenCode and Claude targets) rejects a `done` transition through a kanban status-update tool unless the card's comments hold a `<N> tests, <N> assertions, 0 failures` line and an explicit review or audit approval, and blocks when Rheos (`RHEOS_HTTP_URL`, default `http://127.0.0.1:8791`) is unreachable. Its direct-edit guard matches only `docs/kanban/{stories,epics,chores}/`, not this repository's `docs/agile/kanban/`; the no-hand-edit rule applies regardless.
+- **Done needs evidence.** The `kanban-gate` plugin (`.ημ/plugins/kanban_gate.cljs`, in the OpenCode and Claude targets) is meant to reject a `done` transition through a kanban status-update tool unless the card's comments hold a `<N> tests, <N> assertions, 0 failures` line and an explicit review or audit approval, plus, when `.ημ/kanban-done-gate.edn` names a `:dispatch-file`, every `ep <command>` the card names exists there. It rejects when Rheos (`RHEOS_HTTP_URL`, default `http://127.0.0.1:8791`) is unreachable. Its docstring records as unverified whether every host awaits the hook's result; the Claude boundary does. Do not treat it as proof of enforcement on other hosts. Its direct-edit guard matches only `docs/kanban/{stories,epics,chores}/`, not this repository's `docs/agile/kanban/`; the no-hand-edit rule applies regardless.
 - **Keep provenance under `.ημ`.** The source of truth is `docs/agile/kanban` plus its `.events` symlink into `.ημ/kanban-events`. Never create a physical board ledger under `docs/`.
 
 ## Muse / plugin authoring skills
