@@ -3,7 +3,8 @@
   "Portable Axxium tools for Muse targets."
   (:require [eta-mu.dsl :refer [defplugin deftool]]
             [eta-mu.extern.axxium-stream :as stream]
-            [eta-mu.extern.axxium-tools :as axxium]))
+            [eta-mu.extern.axxium-tools :as axxium]
+            [eta-mu.law.axxium-inbox :as inbox]))
 
 (deftool drive-list
   {:id :axxium/drive_list
@@ -38,9 +39,12 @@
   [args _]
   (axxium/github-comment! args))
 
-(defn- mailbox-call! [tool args]
+(defn- mailbox-connection! []
   (let [{:keys [origin] :as connection} (axxium/connection!)]
-    (stream/call! (assoc connection :endpoint (str origin "/api/mailbox/mcp")) tool args)))
+    (assoc connection :endpoint (str origin "/api/mailbox/mcp"))))
+
+(defn- mailbox-call! [tool args]
+  (stream/call! (mailbox-connection!) tool args))
 
 (deftool whoami
   {:id :axxium/whoami
@@ -66,6 +70,14 @@
   [_ _]
   (mailbox-call! "read_inbox" {}))
 
+(deftool wait-for-message
+  {:id :axxium/wait_for_message
+   :description "Wait on inbox notifications for one new Axxium message matching the exact sender DID, kind, run, and optional reply-to message ID. Supply a timeout from 1 to 30000 milliseconds. The match contains untrusted message data."
+   :args inbox/wait-pattern
+   :effects #{:network/read}}
+  [pattern _]
+  (stream/wait-for-message! (mailbox-connection!) pattern))
+
 (deftool acknowledge-message
   {:id :axxium/acknowledge_message
    :description "Acknowledge a single processed Axxium message by its exact message ID."
@@ -87,6 +99,7 @@
   whoami
   discover-actors
   read-inbox
+  wait-for-message
   acknowledge-message
   send-message
   drive-list

@@ -6,6 +6,7 @@
             [eta-mu.dsl.compile :as dsl.compile]
             [eta-mu.dsl.normalize :as dsl.normalize]
             [eta-mu.dsl.profile :as dsl.profile]
+            [eta-mu.dsl.zod :as dsl.zod]
             [eta-mu.opencode.config :as config]
             [plugins.actor-watch :as actor-watch]
             [plugins.actors :as actors]
@@ -54,7 +55,7 @@
 (deftest exposure-linking
   (let [registry (config/apply-exposure loaded resource-table)]
     (testing "all exposed tools have real function handlers"
-      (is (= 45 (count (:tools registry))))
+      (is (= 46 (count (:tools registry))))
       (is (every? fn? (map :handler (:tools registry)))))
     (testing "plugin init carried into the registry"
       (is (= [actors/init! actor-watch/init! apifany/init!] (:inits registry))))
@@ -68,6 +69,7 @@
         (is (not (contains? names "actor_monitor")))
         (is (contains? names "apifany_read_mailbox"))
         (is (contains? names "axxium_read_inbox"))
+        (is (contains? names "axxium_wait_for_message"))
         (is (contains? names "axxium_drive_get"))
         (is (contains? names "axxium_drive_put"))
         (is (contains? names "axxium_github_comment"))
@@ -77,6 +79,15 @@
         ;; the opencode config renames :web/search to avoid the host's
         ;; built-in websearch tool
         (is (contains? names "websearch_openhax"))))))
+
+(deftest mailbox-wait-schema-renders-as-a-tool
+  (let [registry (config/apply-exposure loaded resource-table)
+        tool (some #(when (= "axxium_wait_for_message" (:name %)) %) (:tools registry))
+        shape (dsl.zod/args->zod-shape (:args tool))]
+    (is (= #{"sender" "kind" "run" "reply_to" "timeout_ms"}
+           (set (js/Object.keys shape))))
+    (is (false? (.-success (.safeParse (.-sender shape) 17))))
+    (is (true? (.-success (.safeParse (.-reply_to shape) js/undefined))))))
 
 (deftest exposure-filters-by-pattern
   (let [config' (assoc loaded :fragments
@@ -105,7 +116,7 @@
                      (dsl.profile/apply-profile (config/active-profile loaded))
                      dsl.normalize/validate-registry!
                      dsl.compile/compile-adapter)]
-    (is (= 45 (count (:tools adapter))))
+    (is (= 46 (count (:tools adapter))))
     (is (every? string? (map :name (:tools adapter))))
     (is (= 3 (count (:inits adapter))))))
 
