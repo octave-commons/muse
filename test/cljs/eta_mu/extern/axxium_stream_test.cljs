@@ -54,7 +54,7 @@
         (is false (str "Unexpected method: " method))
         (.end (.writeHead response 400))))))
 
-(defn- fixture-server [endpoint sse seen]
+(defn- fixture-server [endpoint sse seen respond! & [stream-status]]
   (http/createServer
    (fn [request response]
      (let [headers (.-headers request)]
@@ -67,9 +67,12 @@
            (is (= fixture-session (aget headers "mcp-session-id")))
            (is (= law/protocol-version (aget headers "mcp-protocol-version")))
            (is (= "text/event-stream" (aget headers "accept")))
-           (reset! sse response)
-           (.writeHead response 200 #js {"Content-Type" "text/event-stream; charset=utf-8"})
-           (.write response ": connected\n\n"))
+           (if stream-status
+             (.end (.writeHead response stream-status))
+             (do
+               (reset! sse response)
+               (.writeHead response 200 #js {"Content-Type" "text/event-stream; charset=utf-8"})
+               (.write response ": connected\n\n"))))
          (let [text (atom "")]
            (.setEncoding request "utf8")
            (.on request "data" #(swap! text str %))
@@ -83,13 +86,13 @@
                     (when-not (= "initialize" method)
                       (is (= fixture-session (aget headers "mcp-session-id")))
                       (is (= law/protocol-version (aget headers "mcp-protocol-version"))))
-                    (handle-post! response method body @endpoint sse))))))))))
+                    (respond! response method body @endpoint sse))))))))))
 
 (defn- ^:async verify-stream! []
   (let [endpoint (atom nil)
         sse (atom nil)
         seen (atom [])
-        server (fixture-server endpoint sse seen)
+        server (fixture-server endpoint sse seen handle-post!)
         controller (js/AbortController.)
         hints (atom [])
         terminal (atom [])
@@ -136,6 +139,105 @@
     (-> (verify-stream!)
         (.catch (fn [error] (is false (str error " " (pr-str (ex-data error))))))
         (.finally done))))
+
+(def ^:private wait-sender "did:web:axxium.test:actors:sender")
+(def ^:private wait-reply-to "00000000-0000-0000-0000-000000000009")
+(def ^:private wait-body
+  {"kind" "work_report" "run" "fixture-run" "reply_to" wait-reply-to "summary" "Untrusted data"})
+
+(defn- wait-message [suffix]
+  {"message_id" (str "00000000-0000-0000-0000-00000000000" suffix)
+   "message_from" wait-sender "message_to" fixture-mailbox "message_body" wait-body})
+
+(defn- ^:async wait-fixture! [mode]
+  (let [endpoint (atom nil)
+        sse (atom nil)
+        seen (atom [])
+        reads (atom [])
+        controller (js/AbortController.)
+        old (wait-message 1)
+        unrelated [(assoc (wait-message 2) "message_from" fixture-actor)
+                   (assoc (wait-message 3) "message_to" fixture-actor)
+                   (assoc-in (wait-message 4) ["message_body" "kind"] "work_received")
+                   (assoc-in (wait-message 5) ["message_body" "run"] "other-run")
+                   (assoc-in (wait-message 6) ["message_body" "reply_to"] (get old "message_id"))]
+        fresh (wait-message 7)
+        respond! (fn [response method body url stream]
+                   (let [id (get body "id")]
+                     (case method
+                       "resources/subscribe"
+                       (do
+                         (is (some? @stream))
+                         (is (= {"uri" law/inbox-uri} (get body "params")))
+                         (rpc! response id #js {})
+                         (when (= :matched mode)
+                           ;; Buffered before the catch-up read completes.
+                           (.write @stream (update-frame law/inbox-uri))))
+
+                       "read_inbox"
+                       (let [read-number (count (swap! reads conj id))
+                             messages (cond
+                                        (= read-number 1) [old]
+                                        (= mode :caught-up) [old fresh]
+                                        (= read-number 2) [old]
+                                        (= read-number 3) (into [old] unrelated)
+                                        :else (into [old fresh] unrelated))]
+                         (is (= {} (get-in body ["params" "arguments"])))
+                         (rpc! response id (clj->js {"structuredContent" {"messages" messages}}))
+                         (when @stream
+                           (.write @stream (str ": heartbeat\n\n" (update-frame "axxium://mailbox/other")))
+                           (case mode
+                             :matched (when (= read-number 3)
+                                        (.write @stream (update-frame law/inbox-uri)))
+                             :cancelled (.abort controller)
+                             :stream-closed (.end @stream)
+                             nil)))
+
+                       (handle-post! response method body url stream))))
+        server (fixture-server endpoint sse seen respond! (when (= :stream-in-use mode) 409))]
+    (try
+      (await (js/Promise.
+              (fn [resolve reject]
+                (.once server "error" reject)
+                (.listen server 0 "127.0.0.1" resolve))))
+      (reset! endpoint (str "http://127.0.0.1:" (.-port (.address server)) "/api/mailbox/mcp"))
+      (let [opts {:endpoint @endpoint :actor-did fixture-actor :mailbox-did fixture-mailbox
+                  :authorization fixture-auth :signal (.-signal controller)}
+            pattern {:sender wait-sender :kind "work_report" :run "fixture-run"
+                     :reply_to wait-reply-to :timeout_ms (if (= :timeout mode) 500 5000)}
+            invalid (try
+                      (await (stream/wait-for-message! opts (dissoc pattern :run)))
+                      :unexpected-success
+                      (catch :default error (:reason (ex-data error))))]
+        (is (= :invalid-wait-pattern invalid))
+        (is (empty? @seen))
+        (is (= (if (#{:matched :caught-up} mode)
+                 {:status "matched" :message fresh}
+                 {:status (name mode)})
+               (await (stream/wait-for-message! opts pattern))))
+        (is (= (cond-> ["initialize" "notifications/initialized" "whoami" "read_inbox" "GET"]
+                 (not= :stream-in-use mode) (into ["resources/subscribe" "read_inbox"])
+                 (= :matched mode) (into ["read_inbox" "read_inbox"]))
+               @seen))
+        (is (= (case mode
+                 :matched [3 5 6 7]
+                 :stream-in-use [3]
+                 [3 5])
+               @reads)))
+      (finally
+        (.abort controller)
+        (.closeAllConnections server)
+        (.close server)))))
+
+(deftest bounded-mailbox-wait-matches-only-new-correlated-messages
+  (async done
+    ((^:async fn []
+       (try
+         (doseq [mode [:matched :caught-up :timeout :cancelled :stream-closed :stream-in-use]]
+           (await (wait-fixture! mode)))
+         (catch :default error
+           (is false (str error " " (pr-str (ex-data error)))))
+         (finally (done)))))))
 
 (defn- fixture-fetch [chunks]
   (let [endpoint "https://axxium.test/api/mailbox/mcp"]

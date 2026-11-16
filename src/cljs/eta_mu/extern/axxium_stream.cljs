@@ -1,6 +1,6 @@
 ;; SPDX-License-Identifier: LGPL-3.0-or-later
 (ns eta-mu.extern.axxium-stream
-  "A one-connection Axxium MCP receiver. It exposes wake hints, never mail bodies."
+  "Authenticated Axxium MCP tools, payload-free wake hints and opt-in inbox waits."
   (:require [clojure.string :as str]
             [eta-mu.law.axxium-inbox :as law]))
 
@@ -130,13 +130,13 @@
                 :mailbox-binding-mismatch)
       {:session session :identity identity})))
 
-(defn- ^:async subscription! [url signal headers mailbox-did]
-  (let [{:keys [session]} (await (open-session! url signal headers mailbox-did true))
-        response (await (request! url signal headers "GET" session nil))]
+(defn- ^:async subscription! [url signal headers session id]
+  (let [response (await (request! url signal headers "GET" session nil))]
+    (require! (not= 409 (.-status response)) :stream-in-use)
     (require! (and (= 200 (.-status response)) (.-body response)
                    (= "text/event-stream" (media-type response)))
               :stream-unavailable)
-    (let [{:keys [result]} (await (rpc! url signal headers session 3 "resources/subscribe"
+    (let [{:keys [result]} (await (rpc! url signal headers session id "resources/subscribe"
                                        {"uri" law/inbox-uri}))]
       (require! (empty? result) :subscription-rejected))
     response))
@@ -182,6 +182,86 @@
         (close!)
         (cleanup!)))))
 
+(defn- ^:async read-inbox! [url signal headers session id]
+  (let [{:keys [result]} (await (rpc! url signal headers session id "tools/call"
+                                     {"name" "read_inbox" "arguments" {}}))
+        messages (get-in result ["structuredContent" "messages"])]
+    (require! (and (not (get result "isError")) (law/inbox-messages? messages))
+              :invalid-inbox-response)
+    messages))
+
+(defn ^:async wait-for-message!
+  "Wait for one new message matching an exact sender and correlation fields.
+   Take a baseline before subscribing and read once more after subscription
+   to cover the gap. Then read only on a valid inbox update. The deadline
+   includes setup. No mail is sent or acknowledged."
+  [{:keys [endpoint actor-did mailbox-did authorization signal] :as options}
+   {:keys [timeout_ms] :as pattern}]
+  (require! (law/valid-connection? options) :invalid-options)
+  (require! (law/valid-wait? pattern) :invalid-wait-pattern)
+  (let [url (checked-url endpoint)
+        {local-signal :signal :keys [close! cleanup!]} (connect-options signal)
+        headers {"authorization" authorization "x-axxium-actor" actor-did}
+        deadline (+ (js/performance.now) timeout_ms)
+        timed-out? (volatile! false)
+        matched (volatile! nil)
+        expire! (fn []
+                  (vreset! timed-out? true)
+                  (close!))
+        check-time! (fn []
+                      (when (>= (js/performance.now) deadline)
+                        (expire!))
+                      (require! (not (.-aborted local-signal)) :aborted))
+        timeout (js/setTimeout expire! timeout_ms)]
+    (try
+      (let [terminal
+            (try
+              (let [{:keys [session]} (await (open-session! url local-signal headers mailbox-did true))
+                    rpc-id (volatile! 2)
+                    read! (^:async fn []
+                            (check-time!)
+                            (let [messages (await (read-inbox! url local-signal headers session (vswap! rpc-id inc)))]
+                              (check-time!)
+                              messages))
+                    seen (volatile! (into #{} (map #(get % "message_id")) (await (read!))))
+                    response (await (subscription! url local-signal headers session (vswap! rpc-id inc)))
+                    observe! (^:async fn [_]
+                               (let [messages (await (read!))]
+                                 (when-not (.-aborted local-signal)
+                                   (let [matches (filterv
+                                                  #(and (not (contains? @seen (get % "message_id")))
+                                                        (law/message-matches? mailbox-did pattern %))
+                                                  messages)]
+                                     (vswap! seen into (map #(get % "message_id") messages))
+                                     (require! (<= (count matches) 1) :ambiguous-match)
+                                     (when-let [message (first matches)]
+                                       (vreset! matched
+                                                (select-keys message ["message_id" "message_from"
+                                                                      "message_to" "message_body"]))
+                                       (close!))))))]
+                ;; Complete the one catch-up read before handling buffered
+                ;; notices. Reads and message selection are always serial.
+                (await (observe! nil))
+                (when-not (.-aborted local-signal)
+                  (await (receive! response local-signal observe! nil)))
+                "stream-closed")
+              (catch :default error
+                (let [reason (:reason (ex-data error))]
+                  (cond
+                    (.-aborted local-signal) nil
+                    (= reason :stream-in-use) "stream-in-use"
+                    :else (throw (ex-info "Axxium mailbox wait failed"
+                                          {:reason (or reason :request-failed)}))))))]
+        (cond
+          @matched {:status "matched" :message @matched}
+          @timed-out? {:status "timeout"}
+          (.-aborted local-signal) {:status "cancelled"}
+          :else {:status terminal}))
+      (finally
+        (js/clearTimeout timeout)
+        (close!)
+        (cleanup!)))))
+
 (defn ^:async start!
   "Start one explicitly authorized connection. Configure :endpoint, :actor-did,
    :mailbox-did, :authorization and :on-wake!. :signal may abort startup or the
@@ -196,7 +276,8 @@
         hint {:kind :axxium.inbox/updated :actor-did actor-did :mailbox-did mailbox-did}
         timeout (js/setTimeout close! handshake-timeout-ms)]
     (try
-      (let [response (await (subscription! url local-signal headers mailbox-did))
+      (let [{:keys [session]} (await (open-session! url local-signal headers mailbox-did true))
+            response (await (subscription! url local-signal headers session 3))
             drain! (^:async fn []
                      (let [reason (try
                                     (await (receive! response local-signal on-wake! hint))

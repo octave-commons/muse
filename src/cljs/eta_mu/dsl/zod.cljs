@@ -44,6 +44,7 @@
         :maybe  (.nullable (schema->zod (first args)))
         :enum   (.enum z (to-array (map #(if (keyword? %) (name %) (str %)) args)))
         :or     (.union z (to-array (map schema->zod args)))
+        :and    (schema->zod (first args))
         (:int :double :number) (.number z)
         :string (.string z)
         (.any z)))
@@ -54,5 +55,6 @@
   "Tool :args is a [:map ...] schema expression; hosts want the raw shape."
   [args]
   (if (and (vector? args) (= :map (first args)))
-    (map-entries->shape (rest args))
+    (let [entries (rest args)]
+      (map-entries->shape (if (entry-properties? (first entries)) (rest entries) entries)))
     #js {}))
