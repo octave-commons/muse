@@ -384,3 +384,13 @@
   spore: none
   receipt-refs: /home/err/.local/share/openhax-codex/20261010/review-state/Muse29-a4d-three-behavioral-and-fixed-DAG-GREEN-v1/root-canonical-receipt-event.edn
   note: Lawvalidatesactualcoveragewithoutshapeimport/expectedmapproducer. Realbegincomponents/viewbound; supportcategorylexicalrefsrestricted; canonicaloriginalhunkspanscarriedacrosspagesandfullreadbinding. Helperalignmentsuseactualownerresults/spanmeta; allfrozenREDassertionspreserved. 216coldartifactfiles20610701bytesretained. Mongoavailability/nativeproducer/authremainunqualified; publicadoption/strictv2nativequalificationunfinished. No newmodelprobe/account/provider/production effects.
+
+- ts: "2026-11-18T02:54:10.714923+00:00"
+  origin: axxium-codex-app-path-preparation-20261118
+  task: Separate safe queue admission from generic active-turn steering
+  p-efficiency: 0.91
+  p-friction: 0.24
+  p-skill-candidate: 0.45
+  spore: none
+  receipt-refs: axxium-codex-app-path-preparation-20261118
+  note: Inspect installed contracts and runtime custody independently. Validate malformed data before destructuring it. Pure admission tests do not establish live queue availability, restart recovery, task results or ACK authority. Keep existing ledger format and byte prefixes; no new engine or activation.
